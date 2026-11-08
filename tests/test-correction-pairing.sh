@@ -274,10 +274,11 @@ assert_eq "$CD_MISSING" "" "no domain detect_domain can return is missing from t
 # a quiet week.
 section "correction-detector — a corrupt stats.json is repaired, not ignored"
 CD_STATS="$HOME/.claude/corrections/stats.json"
+CD_RUNTIME="$TMP_ROOT/corrupt-runtime"
 mkdir -p "$(dirname "$CD_STATS")"
 printf '%s\n' '<<<<<<< Updated upstream' '{"frontend": 3}' '=======' '{"frontend": 9}' '>>>>>>> Stashed changes' > "$CD_STATS"
 printf '{"prompt":"no, that is wrong, you broke the component again"}' \
-  | CLAUDE_PROJECT_DIR="$CD_REPO" bash "$CD_HOOK" >/dev/null 2>&1
+  | CLAUDE_PROJECT_DIR="$CD_REPO" CLADE_RUNTIME_DIR="$CD_RUNTIME" bash "$CD_HOOK" >/dev/null 2>&1
 assert_eq "$(jq -e . "$CD_STATS" >/dev/null 2>&1 && echo valid || echo invalid)" "valid" \
   "a stats.json full of conflict markers is rebuilt into valid JSON"
 CD_BUMPED=$(jq -r '.frontend // 0' "$CD_STATS" 2>/dev/null)
@@ -286,8 +287,25 @@ if [[ "${CD_BUMPED:-0}" -ge 1 ]]; then
 else
   fail "the correction that found it is still counted" "frontend=$CD_BUMPED"
 fi
-CD_SAVED=$(ls "$HOME/.claude/corrections/"stats.json.corrupt.* 2>/dev/null | wc -l)
-assert_eq "$CD_SAVED" "1" "the unreadable file is kept beside it, not discarded"
+CD_SYNC_SAVED=$(find "$HOME/.claude/corrections" -type f -name 'stats.json.corrupt.*' -print 2>/dev/null | wc -l | tr -d ' ')
+assert_eq "$CD_SYNC_SAVED" "0" "no corrupt backup is left in the synced corrections directory"
+CD_RUNTIME_SAVED=$(find "$CD_RUNTIME/corrupt-backups" -type f -name 'stats.json.corrupt.*' -print 2>/dev/null | wc -l | tr -d ' ')
+assert_eq "$CD_RUNTIME_SAVED" "1" "the unreadable file is kept under the per-user runtime directory"
+CD_BACKUP=$(find "$CD_RUNTIME/corrupt-backups" -type f -name 'stats.json.corrupt.*' -print 2>/dev/null | head -n 1)
+assert_contains "$(cat "$CD_BACKUP" 2>/dev/null)" '<<<<<<< Updated upstream' \
+  "the runtime backup preserves the unreadable original"
+
+# A runtime root that fails closed must disable only the backup, never move it
+# back into the sync store. Rebuilding and counting the stats still happens.
+CD_BLOCKED="$TMP_ROOT/runtime-unavailable"
+printf 'not a directory\n' > "$CD_BLOCKED"
+printf '%s\n' '<<<<<<< Updated upstream' '{"frontend": 3}' '=======' '{"frontend": 9}' '>>>>>>> Stashed changes' > "$CD_STATS"
+printf '{"prompt":"no, that is wrong, you broke the component again"}' \
+  | CLAUDE_PROJECT_DIR="$CD_REPO" CLADE_RUNTIME_DIR="$CD_BLOCKED" bash "$CD_HOOK" >/dev/null 2>&1
+assert_eq "$(jq -e . "$CD_STATS" >/dev/null 2>&1 && echo valid || echo invalid)" "valid" \
+  "stats still self-heal when the runtime directory is unavailable"
+CD_BLOCKED_SAVED=$(find "$HOME/.claude/corrections" -type f -name 'stats.json.corrupt.*' -print 2>/dev/null | wc -l | tr -d ' ')
+assert_eq "$CD_BLOCKED_SAVED" "0" "an unavailable runtime directory skips the backup without using the synced directory"
 
 # ─── 3b. the field-data record that motivated the fix ────────────────
 # Verbatim shape from history.jsonl: a revert in ANOTHER repo, filed under this

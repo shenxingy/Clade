@@ -253,6 +253,188 @@ grep -q 'Auto-Promoted Rules' "$BPROJ/CLAUDE.md" \
   || fail "control: without the marker, the due project audit promotes the rule" "no promotion happened"
 rm -f "$BUDGET_HOME/.claude/.env-fingerprint"
 
+# ─── Next TODO selection ─────────────────────────────────────────────
+# The hook is global, so fixtures include both this repository's emoji markers
+# and the plain TODO.md files used by other projects. Conversation mode keeps
+# these runs offline without changing the TODO selection path.
+section "session-context.sh — Next TODO selection"
+
+TODO_HOME="$TMP_ROOT/todo-home"
+TODO_PROJ="$TMP_ROOT/todo-proj"
+mkdir -p "$TODO_HOME/.claude" "$TODO_PROJ/.claude"
+touch "$TODO_PROJ/.claude/conversation-mode"
+git -C "$TODO_PROJ" init -q -b main . >/dev/null 2>&1
+git -C "$TODO_PROJ" -c user.email=t@t -c user.name=t commit -q --allow-empty -m init >/dev/null 2>&1
+
+todo_ctx() {
+  echo '{}' | env HOME="$TODO_HOME" CLAUDE_PROJECT_DIR="$TODO_PROJ" \
+    bash "$SESSION_CONTEXT" | jq -r '.hookSpecificOutput.additionalContext // empty'
+}
+
+cat > "$TODO_PROJ/TODO.md" <<'EOF'
+- [ ] Unmarked item comes first
+- [ ] 🟠 Orange item outranks it
+EOF
+OUT=$(todo_ctx)
+assert_contains "$OUT" "Next TODO: - [ ] 🟠 Orange item outranks it" \
+  "an orange item after an unmarked item wins"
+
+cat > "$TODO_PROJ/TODO.md" <<'EOF'
+- [ ] 🟠 Orange item comes first
+- [ ] 🔴 Red item wins from later in the file
+EOF
+OUT=$(todo_ctx)
+assert_contains "$OUT" "Next TODO: - [ ] 🔴 Red item wins from later in the file" \
+  "red beats orange regardless of file order"
+
+cat > "$TODO_PROJ/TODO.md" <<'EOF'
+- [ ] 🔵 Blue item comes first
+- [ ] 🟡 Yellow item outranks it
+EOF
+OUT=$(todo_ctx)
+assert_contains "$OUT" "Next TODO: - [ ] 🟡 Yellow item outranks it" \
+  "yellow beats blue regardless of file order"
+
+cat > "$TODO_PROJ/TODO.md" <<'EOF'
+- [ ] Unmarked item comes first
+- [ ] 🔵 Blue item outranks it
+EOF
+OUT=$(todo_ctx)
+assert_contains "$OUT" "Next TODO: - [ ] 🔵 Blue item outranks it" \
+  "a blue item after an unmarked item wins"
+
+cat > "$TODO_PROJ/TODO.md" <<'EOF'
+- [ ] 🔴 First red item stays selected
+- [ ] 🔴 Second red item does not replace it
+EOF
+OUT=$(todo_ctx)
+assert_contains "$OUT" "Next TODO: - [ ] 🔴 First red item stays selected" \
+  "file order breaks ties within a priority tier"
+
+cat > "$TODO_PROJ/TODO.md" <<'EOF'
+## Needs ThE OwNeR — reconciled today
+- [ ] 🔴 Owner-section red item is skipped
+### Nested details
+- [ ] 🟠 Nested owner-section orange item is skipped
+## Agent work
+- [ ] 🟡 Agent yellow item is eligible
+EOF
+OUT=$(todo_ctx)
+assert_contains "$OUT" "Next TODO: - [ ] 🟡 Agent yellow item is eligible" \
+  "a level-two owner section skips even red items until its section ends"
+
+cat > "$TODO_PROJ/TODO.md" <<'EOF'
+## Backlog
+### Owner decisions
+- [ ] 🔴 Level-three owner-section red item is skipped
+#### Nested details
+- [ ] 🟠 Deeply nested owner-section orange item is skipped
+### Agent work
+- [ ] 🔵 Agent blue item after the owner section is eligible
+EOF
+OUT=$(todo_ctx)
+assert_contains "$OUT" "Next TODO: - [ ] 🔵 Agent blue item after the owner section is eligible" \
+  "a level-three owner section ends at the next same-level heading"
+
+cat > "$TODO_PROJ/TODO.md" <<'EOF'
+## Backlog
+### Owner decisions
+- [ ] 🔴 Level-three owner-section red item is skipped
+## Agent work
+- [ ] 🟠 Agent orange item after the higher-level heading is eligible
+EOF
+OUT=$(todo_ctx)
+assert_contains "$OUT" "Next TODO: - [ ] 🟠 Agent orange item after the higher-level heading is eligible" \
+  "an owner section also ends at a higher-level heading"
+
+cat > "$TODO_PROJ/TODO.md" <<'EOF'
+- [ ] 🔴 Inline item (Needs The Owner) is skipped
+- [ ] 🟠 Agent orange item is eligible
+EOF
+OUT=$(todo_ctx)
+assert_contains "$OUT" "Next TODO: - [ ] 🟠 Agent orange item is eligible" \
+  "an inline needs-the-owner item is skipped case-insensitively"
+
+cat > "$TODO_PROJ/TODO.md" <<'EOF'
+- [ ] 🔴 This is an OWNER DECISION, not agent work
+- [ ] 🟠 Agent orange item is eligible
+EOF
+OUT=$(todo_ctx)
+assert_contains "$OUT" "Next TODO: - [ ] 🟠 Agent orange item is eligible" \
+  "an inline owner-decision item is skipped case-insensitively"
+
+cat > "$TODO_PROJ/TODO.md" <<'EOF'
+- [ ] 🔴 Owner: make this choice yourself
+- [ ] 🟠 Agent orange item is eligible
+EOF
+OUT=$(todo_ctx)
+assert_contains "$OUT" "Next TODO: - [ ] 🟠 Agent orange item is eligible" \
+  "an inline Owner-colon item is skipped"
+
+cat > "$TODO_PROJ/TODO.md" <<'EOF'
+## Needs the owner
+- [ ] Owner item must not win the fallback
+## Agent work
+- [ ] First unmarked agent item's unmatched quote stays safe
+- [ ] Second unmarked agent item
+EOF
+OUT=$(todo_ctx)
+assert_contains "$OUT" "Next TODO: - [ ] First unmarked agent item's unmatched quote stays safe" \
+  "without markers the first open item outside owner sections wins"
+
+cat > "$TODO_PROJ/TODO.md" <<'EOF'
+- [x] Completed item
+EOF
+OUT=$(todo_ctx)
+assert_not_contains "$OUT" "Next TODO:" "no open items produce no Next TODO line"
+
+cat > "$TODO_PROJ/TODO.md" <<'EOF'
+## Needs the owner
+- [ ] 🔴 Owner red item is the only open item
+EOF
+OUT=$(todo_ctx)
+assert_not_contains "$OUT" "Next TODO:" "only owner-only open items produce no Next TODO line"
+
+cat > "$TODO_PROJ/TODO.md" <<'EOF'
+  - [ ] 🔴 Indented item retains the old top-level-only exclusion
+- [ ] Unmarked top-level item
+EOF
+OUT=$(todo_ctx)
+assert_contains "$OUT" "Next TODO: - [ ] Unmarked top-level item" \
+  "indented checkboxes remain outside the top-level-only matcher"
+
+for spec in \
+  '🔴|Red marked bold title' \
+  '🟠|Orange marked bold title' \
+  '🟡|Yellow marked bold title' \
+  '🔵|Blue marked bold title'
+do
+  marker=${spec%%|*}
+  title=${spec#*|}
+  printf -- '- [ ] %s **%s** marked-bold-body\n' "$marker" "$title" > "$TODO_PROJ/TODO.md"
+  OUT=$(todo_ctx)
+  assert_contains "$OUT" "Next TODO: $marker $title\\n" \
+    "a $marker marked bold item prints its title"
+  assert_not_contains "$OUT" "marked-bold-body" \
+    "a $marker marked bold item omits the body after its title"
+done
+
+cat > "$TODO_PROJ/TODO.md" <<'EOF'
+- [ ] 🔴 **Don't break on a quote** quote-body
+EOF
+OUT=$(todo_ctx)
+assert_contains "$OUT" "Next TODO: 🔴 Don't break on a quote\\n" \
+  "a marked bold title preserves an unmatched quote"
+assert_not_contains "$OUT" "quote-body" "a quoted marked bold item omits its body"
+
+cat > "$TODO_PROJ/TODO.md" <<'EOF'
+- [ ] **Old style title** old-style-body
+EOF
+OUT=$(todo_ctx)
+# Control: this unmarked old-style shape prints the same line on HEAD too.
+assert_contains "$OUT" "Next TODO: Old style title\\n" \
+  "control: an unmarked bold title keeps its old rendering"
+
 
 # ─── Summary ─────────────────────────────────────────────────────────
 

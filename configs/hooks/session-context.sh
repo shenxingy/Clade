@@ -177,9 +177,43 @@ PYEOF
   [[ -n "$LOOP_LINE" ]] && CONTEXT="${CONTEXT}${LOOP_LINE}\n"
 fi
 
-# Next TODO item
-# trim with sed, not bare xargs — xargs errors on unmatched quotes in TODO text
-NEXT_TODO=$(grep -m1 "^\- \[ \]" TODO.md 2>/dev/null | sed 's/- \[ \] \*\*//' | sed 's/\*\*.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+# Next TODO item: priority tiers first, then file order; owner sections and
+# inline owner-only phrasings in this TODO.md are skipped case-insensitively:
+# "needs the owner", "owner decision", and "Owner:".
+# Move marked bold titles past the opening "**" so the shared trim keeps the
+# title and drops the body. Trim with sed, not bare xargs — xargs errors on
+# unmatched quotes in TODO text.
+NEXT_TODO=$(awk '
+  {
+    if ($0 ~ /^#+[[:space:]]/) {
+      heading = $0
+      sub(/[[:space:]].*$/, "", heading)
+      level = length(heading)
+      if (owner_level && level <= owner_level) owner_level = 0
+      if ((level == 2 || level == 3) && tolower($0) ~ /owner/) owner_level = level
+    }
+    if ($0 !~ /^- \[ \]/ || owner_level) next
+    item = tolower($0)
+    if (item ~ /needs the owner/ || item ~ /owner decision/ || item ~ /owner:/) next
+    if (!fallback) fallback = $0
+    if ($0 ~ /🔴/) tier = 1
+    else if ($0 ~ /🟠/) tier = 2
+    else if ($0 ~ /🟡/) tier = 3
+    else if ($0 ~ /🔵/) tier = 4
+    else next
+    if (!seen[tier]) {
+      selected[tier] = $0
+      seen[tier] = 1
+    }
+  }
+  END {
+    if (seen[1]) print selected[1]
+    else if (seen[2]) print selected[2]
+    else if (seen[3]) print selected[3]
+    else if (seen[4]) print selected[4]
+    else if (fallback) print fallback
+  }
+' TODO.md 2>/dev/null | sed 's/^- \[ \] 🔴 \*\*/🔴 /;s/^- \[ \] 🟠 \*\*/🟠 /;s/^- \[ \] 🟡 \*\*/🟡 /;s/^- \[ \] 🔵 \*\*/🔵 /;s/- \[ \] \*\*//' | sed 's/\*\*.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
 if [[ -n "$NEXT_TODO" ]]; then
   CONTEXT="${CONTEXT}\nNext TODO: ${NEXT_TODO}\n"
 fi
@@ -200,13 +234,36 @@ fi
 # a local radar/<date> branch of the kit repository instead of whatever
 # checkout is open (radar-cron.sh), and never pushes them. Nothing else
 # surfaces those branches, so list them when a session opens that repository
-# or one of its worktrees.
+# or one of its worktrees. The optional upkeep TSV adds merge/rebase debt;
+# without it the original branch-and-subject lines are unchanged.
 _KIT_SRC=$(cat "$HOME/.claude/.kit-source-dir" 2>/dev/null || true)
 if [[ -n "$_KIT_SRC" ]]; then
   _HERE_GIT=$(cd "$(git rev-parse --git-common-dir 2>/dev/null || echo /nonexistent)" 2>/dev/null && pwd -P)
   _KIT_GIT=$(cd "$_KIT_SRC" 2>/dev/null && cd "$(git rev-parse --git-common-dir 2>/dev/null || echo /nonexistent)" 2>/dev/null && pwd -P)
   if [[ -n "$_HERE_GIT" && "$_HERE_GIT" == "$_KIT_GIT" ]]; then
-    RADAR_BRANCHES=$(git for-each-ref --format='  %(refname:short) — %(subject)' 'refs/heads/radar/' 2>/dev/null | head -5)
+    _RADAR_STATE="${CLADE_RADAR_BRANCH_STATE:-$HOME/.claude/research/radar-branch-state.tsv}"
+    _RADAR_DELETE_WEEKS="${CLADE_RADAR_DELETE_AFTER_WEEKS:-4}"
+    case "$_RADAR_DELETE_WEEKS" in ''|*[!0-9]*) _RADAR_DELETE_WEEKS=4 ;; esac
+    RADAR_BRANCHES=""
+    while IFS=$'\t' read -r _RADAR_BRANCH _RADAR_SUBJECT; do
+      [[ -n "$_RADAR_BRANCH" ]] || continue
+      _RADAR_LINE="  $_RADAR_BRANCH — $_RADAR_SUBJECT"
+      if [[ -f "$_RADAR_STATE" ]]; then
+        _RADAR_ROW=$(awk -F '\t' -v b="$_RADAR_BRANCH" '$1 == b { print; exit }' "$_RADAR_STATE" 2>/dev/null)
+        IFS=$'\t' read -r _RS_BRANCH _RS_STATUS _RS_DATE _RS_DETAILS _RS_CANDIDATE _RS_TIP _RS_SINCE <<< "$_RADAR_ROW"
+        case "$_RS_STATUS" in
+          conflict)
+            _RADAR_LINE+=" — conflicts with main in $_RS_DETAILS since $_RS_DATE"
+            [[ "$_RS_CANDIDATE" == 1 ]] && _RADAR_LINE+=" (deletion candidate: branch older than $_RADAR_DELETE_WEEKS weeks; review before manual deletion)"
+            ;;
+          rebased) _RADAR_LINE+=" — rebased onto main $_RS_DATE" ;;
+          upstream) _RADAR_LINE+=" — has upstream $_RS_DETAILS; left untouched $_RS_DATE" ;;
+          unknown) _RADAR_LINE+=" — radar merge/upkeep status unknown (checked $_RS_DATE)" ;;
+        esac
+      fi
+      [[ -z "$RADAR_BRANCHES" ]] || RADAR_BRANCHES+=$'\n'
+      RADAR_BRANCHES+="$_RADAR_LINE"
+    done < <(git for-each-ref --format='%(refname:short)%09%(subject)' 'refs/heads/radar/' 2>/dev/null | head -5)
     if [[ -n "$RADAR_BRANCHES" ]]; then
       CONTEXT="${CONTEXT}Radar edits awaiting review (unattended, never pushed; read with git log -p origin/main..<branch>, then land via PR or delete):\n${RADAR_BRANCHES}\n"
     fi
