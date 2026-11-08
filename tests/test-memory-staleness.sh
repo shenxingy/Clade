@@ -103,12 +103,31 @@ class FakeTime:
         return cls.now
 
 
+class ReverseOrderScan:
+    """A repository directory's entries in reverse name order: the worst order a
+    filesystem may return, so a walk that depends on it fails on every host."""
+
+    def __init__(self, path):
+        with real_scandir(path) as scanner:
+            self.entries = sorted(scanner, key=lambda entry: entry.name, reverse=True)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def __iter__(self):
+        return iter(self.entries)
+
+
 def recording_scandir(path):
     path_string = os.fspath(path)
     if path_string.startswith(project_dir):
         calls.append(path_string)
         if mode == "walk-timeout":
             FakeTime.now += 1.0
+        return ReverseOrderScan(path)
     return real_scandir(path)
 
 
@@ -1085,6 +1104,8 @@ python_mutation red "literal-before-glob history matching" '    if path == ancho
         return True' edge_guard_cases
 python_mutation red "literal-before-glob existence" '    if (root / anchor.value).exists():' \
   '    if False:' edge_guard_cases
+python_mutation red "a name-ordered walk" '                entries = sorted(scanner, key=lambda entry: entry.name)' \
+  '                entries = list(scanner)' final_edge_guard_cases
 python_mutation red "the repository-root glob walk" '    pending = [(base, len(prefix))]' \
   '    pending = []' edge_guard_cases
 python_mutation red "the per-directory walk deadline" '        current, pattern_index = pending.pop()
@@ -1104,12 +1125,11 @@ if [[ "$(id -u)" -eq 0 ]]; then
 else
   python_mutation red "an error-proof literal-prefix check" '    if not os.path.isdir(base):' \
     '    if not (os.stat(base).st_mode & 0o040000):' final_edge_guard_cases
-  python_mutation red "per-directory scandir errors" '        try:
-            with os.scandir(current) as scanner:
-                entries = list(scanner)
+  python_mutation red "per-directory scandir errors" '                entries = sorted(scanner, key=lambda entry: entry.name)
         except OSError:
-            continue' '        with os.scandir(current) as scanner:
-            entries = list(scanner)' final_edge_guard_cases
+            continue' '                entries = sorted(scanner, key=lambda entry: entry.name)
+        except FileNotFoundError:
+            continue' final_edge_guard_cases
 fi
 python_mutation red "NUL-delimited git history" \
   '_git_bytes(root, ["log", "--name-only", "-z", "--format=%ct"' \

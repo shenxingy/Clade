@@ -367,7 +367,10 @@ def _anchor_exists(root: Path, anchor: Anchor, deadline: Deadline) -> bool:
             raise BudgetExceeded()
         try:
             with os.scandir(current) as scanner:
-                entries = list(scanner)
+                # By name, not in the order the filesystem returns: the walk stops
+                # at the first match, so which directories it opens must not differ
+                # between hosts (a hosted runner opened none a local run did).
+                entries = sorted(scanner, key=lambda entry: entry.name)
         except OSError:
             continue
         directories = []
