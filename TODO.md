@@ -3133,7 +3133,8 @@ items below include the code that keeps the next failure from being silent.
   path-keyed entry is copied once into the new key and keeps a `.migrated-to` marker. The dry run's one conflict was two checkouts of one repository on aries: the
   owner retired the stale one (archived first), and its 9 memories were merged by hand
   into the live checkout's key. The re-run dry run planned 15 migrations and 0
-  conflicts and changed no state. Implemented by Kimi K3.1 Pro (max effort) in its own
+  conflicts and changed no state. The real run made the same 15 migrations and then
+  reported 5 link conflicts the dry run had not predicted (follow-up below). Implemented by Kimi K3.1 Pro (max effort) in its own
   worktree; verified independently by Claude (re-run suites, red proof, mutations).
 - [ ] 🟡 **82 memory files in 14 legacy store directories reach no session** —
   11 directories with memories plus three index-only directories (11 + 3 = 14).
@@ -3151,6 +3152,13 @@ items below include the code that keeps the next failure from being silent.
   adopt/archive/delete recommendation is in the private
   `~/.claude/research/legacy-memory-triage-2026-11-07.md`, kept out of this public
   repository. Still the owner's decision; nothing was moved.
+  UPDATE 2026-11-08: the premise was wrong for `inkweave`. On aries every profile's
+  memory link for that project pointed at this legacy directory, so its sessions
+  loaded these 4 files and not the 10 in its current key. #209's first real run kept
+  those links and reported a conflict. Claude then marked the directory `.migrated-to`
+  the repository key WITHOUT adopting its files (the triage judged them stale or
+  duplicated, and one contradicts the current test setup), so the links moved to the
+  current key. 13 directories remain.
 
 **Open — memory hygiene:**
 
@@ -3283,3 +3291,10 @@ owner); none is a regression on main.
   computed with the hook's own formula (the epochs are fixed, so only rendering
   is mirrored); a timestamp with a leading zero parses as octal (predates #213,
   shared with memory-sync's parser).
+- [ ] 🟡 **`sync-link-projects.sh --dry-run` misses link conflicts its own
+  migrations cause** (#209). On aries the dry run planned 15 migrations and 0
+  conflicts; the real run made the same 15 and then reported 5 link conflicts,
+  because one project's links pointed at a different legacy key than the one it
+  migrated. The dry run never creates the new key, so its link pass cannot see that
+  key claim the project. Have the dry run's link pass treat planned migrations as
+  done, and add a dry/real parity case with two legacy keys for one project.
