@@ -478,6 +478,13 @@ jobs:
       - name: Run sync-link-projects tests
         run: bash tests/test-sync-link-projects.sh
 
+      # sync-health sees a wedged store: unmerged index paths, leftover
+      # autostash, stale/never-synced host commits, trailing REFUSED runs and
+      # fetched upstream divergence; MEMORY.md at 79% vs 80% of either native
+      # cap; bounded git calls, non-repositories and every added guard mutated.
+      - name: Run sync-health tests
+        run: bash tests/test-sync-health.sh
+
       # Per-host sync circuit breaker: every failure class records a reason and
       # count outside the store, all write classes are gated, half-open retries
       # double to a cap, manual recovery always runs, and each guard is mutated.
