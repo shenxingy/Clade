@@ -52,14 +52,14 @@ assert_both_linked() {
 
 two_legacy_entries() {
   new_home
-  PM="$H/store/projects-memory"; RK=$(remote_key_of 'github.com/scamai/internal'); E="$PM/$RK"
-  L1="$PM/projects-internal"; L2="$PM/shared-nfs-internal"
-  for p in projects/internal shared-nfs/internal; do
-    git_repo "$H/$p"; git -C "$H/$p" remote add origin git@github.com:scamai/internal.git
+  PM="$H/store/projects-memory"; RK=$(remote_key_of 'github.com/owner/shared'); E="$PM/$RK"
+  L1="$PM/projects-shared"; L2="$PM/srv-shared"
+  for p in projects/shared srv/shared; do
+    git_repo "$H/$p"; git -C "$H/$p" remote add origin git@github.com:owner/shared.git
     k=$(slug_of "$p"); mkdir -p "$PM/$k"; printf '%s\n' "$p" > "$PM/$k/.project-path"
     m=$(memdir "$H" "$H/$p"); mkdir -p "${m%/memory}"; ln -s "$PM/$k" "$m"
   done
-  M1=$(memdir "$H" "$H/projects/internal"); M2=$(memdir "$H" "$H/shared-nfs/internal")
+  M1=$(memdir "$H" "$H/projects/shared"); M2=$(memdir "$H" "$H/srv/shared")
 }
 
 migration_keys() {
@@ -71,13 +71,13 @@ t_checkouts() {
 section "checkouts — two linked legacy entries at one origin"
 new_home
 PM="$H/store/projects-memory"
-for p in projects/internal shared-nfs/internal; do
+for p in projects/shared srv/shared; do
   git_repo "$H/$p"
-  git -C "$H/$p" remote add origin git@github.com:scamai/internal.git
+  git -C "$H/$p" remote add origin git@github.com:owner/shared.git
 done
-RK=$(remote_key_of 'github.com/scamai/internal'); E="$PM/$RK"
-M1=$(memdir "$H" "$H/projects/internal"); M2=$(memdir "$H" "$H/shared-nfs/internal")
-for p in projects/internal shared-nfs/internal; do
+RK=$(remote_key_of 'github.com/owner/shared'); E="$PM/$RK"
+M1=$(memdir "$H" "$H/projects/shared"); M2=$(memdir "$H" "$H/srv/shared")
+for p in projects/shared srv/shared; do
   k=$(slug_of "$p"); mkdir -p "$PM/$k"
   printf '%s\n' "$p" > "$PM/$k/.project-path"
   printf 'note from %s\n' "$p" > "$PM/$k/note-$k.md"
@@ -86,7 +86,7 @@ done
 store_commit "$H"
 SLP_HOSTNAME=aries run_slp "$H" >/dev/null
 assert_both_linked "$E" "$M1" "$M2" "migration run 1"
-assert_eq "$(cat "$M1/note-shared-nfs-internal.md" 2>/dev/null)" "note from shared-nfs/internal" \
+assert_eq "$(cat "$M1/note-srv-shared.md" 2>/dev/null)" "note from srv/shared" \
   "the second legacy memory is visible through the first checkout"
 HEAD1=$(store_head "$H")
 assert_eq "$(SLP_HOSTNAME=aries run_slp "$H")" "" "migration run 2 changes nothing"
@@ -95,16 +95,16 @@ assert_eq "$(grep -c '^aries' "$E/.project-paths")" "2" "both checkout paths rem
 
 section "checkouts — two real memory dirs and a later write"
 new_home
-for p in projects/internal shared-nfs/internal; do
+for p in projects/shared srv/shared; do
   git_repo "$H/$p"
-  git -C "$H/$p" remote add origin git@github.com:scamai/internal.git
+  git -C "$H/$p" remote add origin git@github.com:owner/shared.git
   m=$(memdir "$H" "$H/$p"); mkdir -p "$m"; printf 'memory from %s\n' "$p" > "$m/$(slug_of "$p").md"
 done
 PM="$H/store/projects-memory"; E="$PM/$RK"
-M1=$(memdir "$H" "$H/projects/internal"); M2=$(memdir "$H" "$H/shared-nfs/internal")
+M1=$(memdir "$H" "$H/projects/shared"); M2=$(memdir "$H" "$H/srv/shared")
 OUT=$(SLP_HOSTNAME=aries run_slp "$H")
 assert_both_linked "$E" "$M1" "$M2" "adoption run 1"
-assert_not_contains "$OUT" "pruned $(slug_of "$H/projects/internal")/memory -> projects-memory/$RK" \
+assert_not_contains "$OUT" "pruned $(slug_of "$H/projects/shared")/memory -> projects-memory/$RK" \
   "a matching remote link is not pruned and recreated"
 HEAD1=$(store_head "$H")
 assert_eq "$(SLP_HOSTNAME=aries run_slp "$H")" "" "adoption run 2 changes nothing"
@@ -116,18 +116,18 @@ assert_eq "$(cat "$M2/again.md" 2>/dev/null)" "written again" "the later write i
 
 section "checkouts — an unrecorded second link is retained"
 new_home
-for p in projects/internal shared-nfs/internal; do
-  git_repo "$H/$p"; git -C "$H/$p" remote add origin git@github.com:scamai/internal.git
+for p in projects/shared srv/shared; do
+  git_repo "$H/$p"; git -C "$H/$p" remote add origin git@github.com:owner/shared.git
 done
 PM="$H/store/projects-memory"; E="$PM/$RK"; mkdir -p "$E"
-printf 'github.com/scamai/internal\n' > "$E/.project-remote"
-printf 'aries\tprojects/internal\n' > "$E/.project-paths"
-M1=$(memdir "$H" "$H/projects/internal"); M2=$(memdir "$H" "$H/shared-nfs/internal")
+printf 'github.com/owner/shared\n' > "$E/.project-remote"
+printf 'aries\tprojects/shared\n' > "$E/.project-paths"
+M1=$(memdir "$H" "$H/projects/shared"); M2=$(memdir "$H" "$H/srv/shared")
 mkdir -p "${M1%/memory}" "${M2%/memory}"; ln -s "$E" "$M1"; ln -s "$E" "$M2"
 store_commit "$H"
 OUT=$(SLP_HOSTNAME=aries run_slp "$H")
 assert_both_linked "$E" "$M1" "$M2" "unrecorded checkout run 1"
-assert_not_contains "$OUT" "pruned $(slug_of "$H/shared-nfs/internal")/memory -> projects-memory/$RK" \
+assert_not_contains "$OUT" "pruned $(slug_of "$H/srv/shared")/memory -> projects-memory/$RK" \
   "the matching second link is recorded, not pruned and recreated"
 HEAD1=$(store_head "$H")
 assert_eq "$(SLP_HOSTNAME=aries run_slp "$H")" "" "unrecorded checkout run 2 changes nothing"
@@ -244,21 +244,21 @@ printf 'projects version\n' > "$L1/MEMORY.md"
 printf 'shared version\n' > "$L2/MEMORY.md"
 store_commit "$H"
 DRY=$(run_slp "$H" --dry-run)
-assert_contains "$DRY" "would migrate projects-memory/projects-internal" "the first migration is still previewed"
-assert_not_contains "$DRY" "would migrate projects-memory/shared-nfs-internal" \
+assert_contains "$DRY" "would migrate projects-memory/projects-shared" "the first migration is still previewed"
+assert_not_contains "$DRY" "would migrate projects-memory/srv-shared" \
   "the conflicting second migration is not previewed"
-assert_not_contains "$DRY" "would prune $(slug_of "$H/shared-nfs/internal")" \
+assert_not_contains "$DRY" "would prune $(slug_of "$H/srv/shared")" \
   "the conflicting checkout has no would-prune line"
-assert_not_contains "$DRY" "would link $(slug_of "$H/shared-nfs/internal")" \
+assert_not_contains "$DRY" "would link $(slug_of "$H/srv/shared")" \
   "the conflicting checkout has no would-link line"
 REAL=$(run_slp "$H")
-DRY_CONFLICT=$(grep '^  conflict: projects-memory/shared-nfs-internal' <<< "$DRY")
-REAL_CONFLICT=$(grep '^  conflict: projects-memory/shared-nfs-internal' <<< "$REAL")
+DRY_CONFLICT=$(grep '^  conflict: projects-memory/srv-shared' <<< "$DRY")
+REAL_CONFLICT=$(grep '^  conflict: projects-memory/srv-shared' <<< "$REAL")
 assert_eq "$DRY_CONFLICT" "$REAL_CONFLICT" "dry and real print the identical conflict"
 check "the real run leaves the second legacy entry unmigrated" test ! -e "$L2/.migrated-to"
 assert_eq "$(migration_keys <<< "$DRY")" "$(migration_keys <<< "$REAL")" \
   "dry and real agree on the migrated key set"
-assert_eq "$(migration_keys <<< "$REAL")" "projects-internal" "only the first legacy key migrates"
+assert_eq "$(migration_keys <<< "$REAL")" "projects-shared" "only the first legacy key migrates"
 assert_eq "$(target_of "$M2")" "$L2" "the second checkout keeps its legacy memory link"
 
 section "dry-run — a planned migration into an EXISTING entry still counts"
@@ -266,15 +266,15 @@ section "dry-run — a planned migration into an EXISTING entry still counts"
 # synced). A real run copies the first legacy entry into it before checking the
 # second; a dry run must compare the second with that planned entry too.
 two_legacy_entries
-mkdir -p "$E"; printf 'github.com/scamai/internal\n' > "$E/.project-remote"
+mkdir -p "$E"; printf 'github.com/owner/shared\n' > "$E/.project-remote"
 printf 'from another host\n' > "$E/other-host.md"
 printf 'projects version\n' > "$L1/MEMORY.md"
 printf 'shared version\n' > "$L2/MEMORY.md"
 store_commit "$H"
 DRY=$(run_slp "$H" --dry-run)
-assert_contains "$DRY" "would migrate projects-memory/projects-internal" \
+assert_contains "$DRY" "would migrate projects-memory/projects-shared" \
   "the first migration into the existing entry is previewed"
-assert_not_contains "$DRY" "would migrate projects-memory/shared-nfs-internal" \
+assert_not_contains "$DRY" "would migrate projects-memory/srv-shared" \
   "the second is not previewed when it clashes with the first, though the entry exists"
 REAL=$(run_slp "$H")
 assert_eq "$(migration_keys <<< "$DRY")" "$(migration_keys <<< "$REAL")" \
@@ -287,7 +287,7 @@ printf 'only projects\n' > "$L1/projects.md"
 printf 'only shared\n' > "$L2/shared.md"
 store_commit "$H"
 DRY=$(run_slp "$H" --dry-run)
-EXPECTED_KEYS=$(printf 'projects-internal\nshared-nfs-internal')
+EXPECTED_KEYS=$(printf 'projects-shared\nsrv-shared')
 assert_eq "$(migration_keys <<< "$DRY")" "$EXPECTED_KEYS" "dry-run previews both disjoint migrations"
 REAL=$(run_slp "$H")
 assert_eq "$(migration_keys <<< "$REAL")" "$EXPECTED_KEYS" "the real run migrates both disjoint entries"
@@ -301,7 +301,7 @@ printf 'first-only extra\n' > "$L1/first.md"
 printf 'shared memory\n' > "$L2/MEMORY.md"
 store_commit "$H"
 DRY=$(run_slp "$H" --dry-run)
-EXPECTED_KEYS=$(printf 'projects-internal\nshared-nfs-internal')
+EXPECTED_KEYS=$(printf 'projects-shared\nsrv-shared')
 assert_eq "$(migration_keys <<< "$DRY")" "$EXPECTED_KEYS" "dry-run previews the identical subset too"
 REAL=$(run_slp "$H")
 assert_eq "$(migration_keys <<< "$REAL")" "$EXPECTED_KEYS" "the real run also migrates the identical subset"
