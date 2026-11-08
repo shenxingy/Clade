@@ -396,6 +396,11 @@ jobs:
       - name: Run commit-path checks tests
         run: bash tests/test-checks.sh
 
+      # SessionStart lessons never wait for git archaeology: stale-while-
+      # revalidate, per-repo locking, HEAD-keyed freshness and batched history.
+      - name: Run commit-archeology tests
+        run: bash tests/test-commit-archeology.sh
+
       # Skill routing (shell side): domain-detect classification, skill-suggest
       # PostToolUse hints + throttle, session-context project-aware routing +
       # no-catalog-reinjection regression guard
