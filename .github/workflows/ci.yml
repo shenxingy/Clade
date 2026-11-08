@@ -431,6 +431,11 @@ jobs:
       - name: Run correction-pairing tests
         run: bash tests/test-correction-pairing.sh
 
+      # Sync-store quarantine patterns: generated on setup, healed on push before
+      # the conflict-marker scan, without weakening that scan for ordinary files.
+      - name: Run sync-store ignore tests
+        run: bash tests/test-sync-store.sh
+
       - name: Run session-scorecard tests
         run: bash tests/test-session-scorecard.sh
 
@@ -477,6 +482,19 @@ jobs:
       # per run, discovery budget, existing-entry dry-runs and remote/root guards.
       - name: Run sync-link-projects remote regression tests
         run: bash tests/test-sync-link-projects-remote.sh
+
+      # sync-health sees a wedged store: unmerged index paths, leftover
+      # autostash, stale/never-synced host commits, trailing REFUSED runs and
+      # fetched upstream divergence; MEMORY.md at 79% vs 80% of either native
+      # cap; bounded git calls, non-repositories and every added guard mutated.
+      - name: Run sync-health tests
+        run: bash tests/test-sync-health.sh
+
+      # Per-host sync circuit breaker: every failure class records a reason and
+      # count outside the store, all write classes are gated, half-open retries
+      # double to a cap, manual recovery always runs, and each guard is mutated.
+      - name: Run memory-sync circuit-breaker tests
+        run: bash tests/test-memory-sync-breaker.sh
 
       # post-edit-check: exit-2 asyncRewake findings vs silent success, the per-file mypy scope, errors already
       # in the file's HEAD version, a crashed checker, nested worktrees
