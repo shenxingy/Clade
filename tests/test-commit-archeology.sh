@@ -291,7 +291,7 @@ printf '# slow refresher start: a dead holder in a young lock is not reclaimed d
 # The first caller exits long before its refresher records itself (4 s start
 # delay), so the lock names a dead PID; a second caller arriving in between must
 # leave that young lock alone. #210 let it reclaim the lock and launch another
-# scan - the hosted-CI flake on #209 and #211.
+# scan.
 seed_cache
 age_cache
 move_head
@@ -384,6 +384,83 @@ if command -v setsid >/dev/null 2>&1; then
     printf '# environment: setsid forks for a background child here\n'
   fi
 fi
+
+printf '# racy mkdir: a lost mkdir race reported as success takes no lock\n'
+# uutils mkdir before 0.11.0, the default mkdir on Ubuntu 26.04 (0.10.0), tells a
+# racer whose mkdir(2) failed with EEXIST that it succeeded (uutils #13970). With
+# mkdir as the whole lock, two concurrent callers each took it and each launched
+# a scan: the hosted-CI failure of 'two concurrent injections launch exactly one
+# scan'. The stand-in reports success whenever the directory exists, which makes
+# that lost race deterministic. Given COMMIT_ARCH_TEST_LOSE_PATH, it also loses
+# the creation of that path to a rival that records COMMIT_ARCH_TEST_RIVAL_PID,
+# and still reports success.
+MKDIR_VERSION=$(mkdir --version 2>/dev/null | head -1)
+printf '# environment: mkdir is %s\n' "${MKDIR_VERSION:-unversioned}"
+RACY_MKDIR_BIN="$SANDBOX/racy-mkdir-bin"
+REAL_MKDIR=$(command -v mkdir)
+mkdir -p "$RACY_MKDIR_BIN"
+cat > "$RACY_MKDIR_BIN/mkdir" <<EOF
+#!/usr/bin/env bash
+for target in "\$@"; do :; done
+if "$REAL_MKDIR" "\$@" 2>/dev/null; then
+  if [[ "\$target" == "\${COMMIT_ARCH_TEST_LOSE_PATH:-}" ]]; then
+    printf '%s\\n' "\$COMMIT_ARCH_TEST_RIVAL_PID" > "\$target/pid"
+  fi
+  exit 0
+fi
+[[ -d "\$target" ]]
+EOF
+chmod +x "$RACY_MKDIR_BIN/mkdir"
+seed_cache
+age_cache
+move_head
+mkdir -p "$(lock_dir)"
+printf '%s\n' "$$" > "$(lock_dir)/pid"
+RACY_OUT=$(PATH="$RACY_MKDIR_BIN:$PATH" COMMIT_ARCH_TEST_SCAN_DELAY=0 run_arch --inject)
+assert_contains "$RACY_OUT" 'wiring-gap' 'a racy mkdir does not suppress cached output'
+sleep 0.5
+assert_eq "$(scan_count)" '0' 'a racy mkdir does not give a second caller a held lock'
+assert_eq "$(head -1 "$(lock_dir)/pid" 2>/dev/null)" "$$" 'a held lock keeps its holder under a racy mkdir'
+rm -f "$(lock_dir)/pid"
+rmdir "$(lock_dir)" 2>/dev/null
+wait_for_lock_release
+
+printf '# racy mkdir: a reclaimer cannot take a held reclaim mutex\n'
+seed_cache
+age_cache
+move_head
+mkdir -p "$(lock_dir)" "$(lock_dir).reclaim"
+printf '%s\n' "$(dead_pid)" > "$(lock_dir)/pid"
+age_lock
+printf '%s\n' "$$" > "$(lock_dir).reclaim/pid"
+PATH="$RACY_MKDIR_BIN:$PATH" COMMIT_ARCH_TEST_SCAN_DELAY=0 run_arch --inject > /dev/null
+sleep 0.5
+assert_eq "$(scan_count)" '0' 'a racy mkdir does not give a second reclaimer the mutex'
+assert_eq "$(head -1 "$(lock_dir).reclaim/pid" 2>/dev/null)" "$$" 'a held reclaim mutex keeps its holder under a racy mkdir'
+rm -f "$(lock_dir)/pid" "$(lock_dir).reclaim/pid"
+rmdir "$(lock_dir)" "$(lock_dir).reclaim" 2>/dev/null
+wait_for_lock_release
+
+printf '# racy mkdir: a reclaimer that loses the re-take leaves the rival its lock\n'
+seed_cache
+age_cache
+move_head
+mkdir -p "$(lock_dir)"
+printf '%s\n' "$(dead_pid)" > "$(lock_dir)/pid"
+age_lock
+PATH="$RACY_MKDIR_BIN:$PATH" COMMIT_ARCH_TEST_LOSE_PATH="$(lock_dir)" COMMIT_ARCH_TEST_RIVAL_PID="$$" \
+  COMMIT_ARCH_TEST_SCAN_DELAY=0 run_arch --inject > /dev/null
+sleep 0.5
+assert_eq "$(scan_count)" '0' 'a reclaimer that loses the re-take launches no scan'
+assert_eq "$(head -1 "$(lock_dir)/pid" 2>/dev/null)" "$$" 'the rival keeps the lock it won'
+if [[ -d "$(lock_dir).reclaim" ]]; then
+  fail 'a reclaimer that loses the re-take releases the reclaim mutex' "$(lock_dir).reclaim remains"
+else
+  pass 'a reclaimer that loses the re-take releases the reclaim mutex'
+fi
+rm -f "$(lock_dir)/pid"
+rmdir "$(lock_dir)" 2>/dev/null
+wait_for_lock_release
 
 printf '# stale lock: a paused reclaimer cannot delete a fresh PID\n'
 seed_cache
