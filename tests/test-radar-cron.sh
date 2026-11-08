@@ -83,7 +83,7 @@ run_cron() {  # run_cron <date> <mode>
   # An empty CLAUDE_CONFIG_DIR means ~/.claude: Lane D's scan must not reach the
   # transcripts of the session running this suite.
   CLAUDE_CONFIG_DIR= CLADE_CLAUDE_BIN="$T/claude" CLADE_RADAR_DATE="$1" STUB_MODE="$2" STUB_LOG="$T/stub.log" \
-    CLADE_RADAR_LOCK="$T/radar.lock" CLADE_RADAR_WORKTREES="$T/wts" \
+    CLADE_RADAR_LOCK="$T/radar.lock" CLADE_RADAR_WORKTREES="$T/wts" CLADE_RUNTIME_DIR="${CLADE_RUNTIME_DIR:-$T/runtime}" \
     bash "$CRON" >/dev/null 2>&1
 }
 
@@ -161,6 +161,13 @@ mv "$T/kit-source-dir.bak" "$HOME/.claude/.kit-source-dir"
 section "session-context lists radar branches in the kit repository"
 SC_OUT=$(cd "$T/kit" && printf '{"session_id":"t"}' | CLAUDE_PROJECT_DIR="$T/kit" bash "$SESSION_HOOK" 2>/dev/null)
 check "a session in the kit names radar/2026-01-05" '[[ "$SC_OUT" == *"radar/2026-01-05"* ]]' "output: ${SC_OUT:0:300}"
+RADAR_SUBJECT=$(git -C "$T/kit" log -1 --format=%s radar/2026-01-05)
+RADAR_ORIGINAL_LINE="  radar/2026-01-05 — $RADAR_SUBJECT"
+SC_NO_STATE=$(cd "$T/kit" && printf '{"session_id":"t"}' | CLADE_RADAR_BRANCH_STATE="$T/no-such-state" CLAUDE_PROJECT_DIR="$T/kit" bash "$SESSION_HOOK" 2>/dev/null)
+SC_NO_STATE_CONTEXT=$(jq -r '.hookSpecificOutput.additionalContext // empty' <<< "$SC_NO_STATE")
+SC_NO_STATE_LINE=$(printf '%b\n' "$SC_NO_STATE_CONTEXT" | grep -F "  radar/2026-01-05 ")
+check "without a state file the original branch-and-subject line is exact" \
+  '[[ "$SC_NO_STATE_LINE" == "$RADAR_ORIGINAL_LINE" ]]' "got: $SC_NO_STATE_LINE; want: $RADAR_ORIGINAL_LINE"
 mkdir -p "$T/other" && git -C "$T/other" init -q
 SC_OTHER=$(cd "$T/other" && printf '{"session_id":"t"}' | CLAUDE_PROJECT_DIR="$T/other" bash "$SESSION_HOOK" 2>/dev/null)
 check "a session in another repository does not" '[[ "$SC_OTHER" != *"radar/2026-01-05"* ]]'
@@ -223,6 +230,296 @@ if command -v timeout >/dev/null 2>&1; then
 else
   skip "a hanging keep-sessions is cut off" "no timeout(1) on this host"
 fi
+
+# ─── 9. old radar branches are rebased or reported before the next run ──
+section "radar branch upkeep preserves local work and records review debt"
+UPKEEP_REPO="$T/upkeep"
+UPKEEP_STATE="$HOME/.claude/research/radar-branch-state.tsv"
+git init -q -b main "$UPKEEP_REPO"
+git -C "$UPKEEP_REPO" config user.email t@example.com
+git -C "$UPKEEP_REPO" config user.name t
+printf 'base\n' > "$UPKEEP_REPO/shared.txt"
+git -C "$UPKEEP_REPO" add . && git -C "$UPKEEP_REPO" commit -qm base
+git -C "$UPKEEP_REPO" branch radar/merged main
+MERGED_TIP=$(git -C "$UPKEEP_REPO" rev-parse radar/merged)
+
+git -C "$UPKEEP_REPO" checkout -qb radar/behind
+printf 'behind work\n' > "$UPKEEP_REPO/behind.txt"
+git -C "$UPKEEP_REPO" add . && git -C "$UPKEEP_REPO" commit -qm behind
+BEHIND_TIP=$(git -C "$UPKEEP_REPO" rev-parse radar/behind)
+
+git -C "$UPKEEP_REPO" checkout -q main
+git -C "$UPKEEP_REPO" checkout -qb radar/conflict
+printf 'radar version\n' > "$UPKEEP_REPO/shared.txt"
+GIT_AUTHOR_DATE=2020-01-01T00:00:00Z GIT_COMMITTER_DATE=2020-01-01T00:00:00Z \
+  git -C "$UPKEEP_REPO" commit -qam conflict
+CONFLICT_TIP=$(git -C "$UPKEEP_REPO" rev-parse radar/conflict)
+
+# The final tree merges cleanly (shared.txt is back at base), but replaying the
+# intermediate commit onto main stops. The wrapper must abort that rebase.
+git -C "$UPKEEP_REPO" checkout -q main
+git -C "$UPKEEP_REPO" checkout -qb radar/rebase-conflict
+printf 'intermediate conflict\n' > "$UPKEEP_REPO/shared.txt"
+printf 'step one\n' > "$UPKEEP_REPO/step-one.txt"
+git -C "$UPKEEP_REPO" add . && git -C "$UPKEEP_REPO" commit -qm rebase-step-one
+printf 'base\n' > "$UPKEEP_REPO/shared.txt"
+printf 'step two\n' > "$UPKEEP_REPO/step-two.txt"
+git -C "$UPKEEP_REPO" add . && git -C "$UPKEEP_REPO" commit -qm rebase-step-two
+REBASE_CONFLICT_TIP=$(git -C "$UPKEEP_REPO" rev-parse radar/rebase-conflict)
+
+git -C "$UPKEEP_REPO" checkout -q main
+printf 'main version\n' > "$UPKEEP_REPO/shared.txt"
+printf 'main advanced\n' > "$UPKEEP_REPO/main.txt"
+git -C "$UPKEEP_REPO" add . && git -C "$UPKEEP_REPO" commit -qm main-advanced
+git -C "$UPKEEP_REPO" checkout -qb radar/clean main
+printf 'clean ahead work\n' > "$UPKEEP_REPO/clean.txt"
+git -C "$UPKEEP_REPO" add . && git -C "$UPKEEP_REPO" commit -qm clean
+CLEAN_TIP=$(git -C "$UPKEEP_REPO" rev-parse radar/clean)
+git -C "$UPKEEP_REPO" checkout -q main
+
+run_upkeep() {  # run_upkeep <date>; UPKEEP_RUNTIME can force no fallback root
+  CLADE_RADAR_REPO="$UPKEEP_REPO" CLADE_KEEP_SESSIONS="$T/no-keep.py" \
+    CLADE_RUNTIME_DIR="${UPKEEP_RUNTIME:-$T/upkeep-runtime}" run_cron "$1" none
+}
+upkeep_field() {  # upkeep_field <branch> <TSV column>
+  awk -F '\t' -v b="$1" -v f="$2" '$1 == b { print $f; exit }' "$UPKEEP_STATE" 2>/dev/null
+}
+
+REAL_GIT=$(command -v git)
+mkdir -p "$T/log-git"
+cat > "$T/log-git/git" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$GIT_TRACE_LOG"
+exec "$REAL_GIT" "$@"
+EOF
+chmod +x "$T/log-git/git"
+PATH="$T/log-git:$PATH" REAL_GIT="$REAL_GIT" GIT_TRACE_LOG="$T/upkeep-git.log" run_upkeep 2026-03-02
+check "a clean behind branch has a new tip" \
+  '[[ "$(git -C "$UPKEEP_REPO" rev-parse radar/behind)" != "$BEHIND_TIP" ]]'
+check "the rebased branch descends from main" \
+  'git -C "$UPKEEP_REPO" merge-base --is-ancestor main radar/behind'
+check "rebase preserves the branch content and gains main's content" \
+  '[[ "$(git -C "$UPKEEP_REPO" show radar/behind:behind.txt)" == "behind work" ]] && [[ "$(git -C "$UPKEEP_REPO" show radar/behind:main.txt)" == "main advanced" ]]'
+check "a conflicting branch is left at its exact old tip" \
+  '[[ "$(git -C "$UPKEEP_REPO" rev-parse radar/conflict)" == "$CONFLICT_TIP" ]]'
+check "the conflict state records first-seen date and path" \
+  '[[ "$(upkeep_field radar/conflict 2)" == conflict ]] && [[ "$(upkeep_field radar/conflict 3)" == 2026-03-02 ]] && [[ "$(upkeep_field radar/conflict 4)" == *shared.txt* ]]'
+check "a conflicting branch older than four weeks is only a deletion candidate" \
+  '[[ "$(upkeep_field radar/conflict 5)" == 1 ]] && git -C "$UPKEEP_REPO" rev-parse -q --verify refs/heads/radar/conflict >/dev/null'
+check "a young conflicting branch is not a deletion candidate" \
+  '[[ "$(upkeep_field radar/rebase-conflict 5)" == 0 ]]'
+check "a branch already merged into main is untouched and absent from state" \
+  '[[ "$(git -C "$UPKEEP_REPO" rev-parse radar/merged)" == "$MERGED_TIP" ]] && [[ -z "$(upkeep_field radar/merged 1)" ]]'
+check "an ahead-only clean branch is untouched and recorded clean" \
+  '[[ "$(git -C "$UPKEEP_REPO" rev-parse radar/clean)" == "$CLEAN_TIP" ]] && [[ "$(upkeep_field radar/clean 2)" == clean ]]'
+check "a stopped rebase is aborted and leaves the branch untouched" \
+  '[[ "$(git -C "$UPKEEP_REPO" rev-parse radar/rebase-conflict)" == "$REBASE_CONFLICT_TIP" ]] && grep -q "rebase --abort" "$T/upkeep-git.log"'
+check "a stopped rebase is reported with its conflict path" \
+  '[[ "$(upkeep_field radar/rebase-conflict 2)" == conflict ]] && [[ "$(upkeep_field radar/rebase-conflict 4)" == *shared.txt* ]]'
+check "branch upkeep leaves no throwaway worktree registered" \
+  '[[ "$(git -C "$UPKEEP_REPO" worktree list --porcelain | grep -c "^worktree ")" == 1 ]]'
+
+printf '%s\n' "$UPKEEP_REPO" > "$HOME/.claude/.kit-source-dir"
+SC_UPKEEP=$(cd "$UPKEEP_REPO" && printf '{"session_id":"t"}' | CLAUDE_PROJECT_DIR="$UPKEEP_REPO" bash "$SESSION_HOOK" 2>/dev/null)
+printf '%s\n' "$T/kit" > "$HOME/.claude/.kit-source-dir"
+SC_UPKEEP_CONTEXT=$(jq -r '.hookSpecificOutput.additionalContext // empty' <<< "$SC_UPKEEP")
+SC_CONFLICT_LINE=$(printf '%b\n' "$SC_UPKEEP_CONTEXT" | grep -F "  radar/conflict ")
+SC_REBASE_CONFLICT_LINE=$(printf '%b\n' "$SC_UPKEEP_CONTEXT" | grep -F "  radar/rebase-conflict ")
+SC_MERGED_LINE=$(printf '%b\n' "$SC_UPKEEP_CONTEXT" | grep -F "  radar/merged ")
+SC_CLEAN_LINE=$(printf '%b\n' "$SC_UPKEEP_CONTEXT" | grep -F "  radar/clean ")
+check "session-context reports conflict paths and first-seen date" \
+  '[[ "$SC_CONFLICT_LINE" == *"conflicts with main in shared.txt since 2026-03-02"* ]]' \
+  "line: $SC_CONFLICT_LINE"
+check "session-context marks the old conflict's own line as a deletion candidate" \
+  '[[ "$SC_CONFLICT_LINE" == *"deletion candidate"* ]]'
+check "the young conflict's own line has no deletion-candidate annotation" \
+  '[[ "$SC_REBASE_CONFLICT_LINE" == *"conflicts with main"* ]] && [[ "$SC_REBASE_CONFLICT_LINE" != *"deletion candidate"* ]]'
+check "a merged branch has no upkeep annotation" \
+  '[[ "$SC_MERGED_LINE" == "  radar/merged — base" ]]'
+check "a clean state row has no upkeep annotation" \
+  '[[ "$SC_CLEAN_LINE" == "  radar/clean — clean" ]]'
+check "session-context reports the rebase date" \
+  '[[ "$SC_UPKEEP" == *"radar/behind"* ]] && [[ "$SC_UPKEEP" == *"rebased onto main 2026-03-02"* ]]'
+
+CLADE_RADAR_DELETE_AFTER_WEEKS=1000 run_upkeep 2026-03-05
+check "the deletion-age threshold override leaves the old conflict too young" \
+  '[[ "$(upkeep_field radar/conflict 5)" == 0 ]]'
+run_upkeep 2026-03-09
+check "a later run preserves the conflict's first-seen date" \
+  '[[ "$(upkeep_field radar/conflict 3)" == 2026-03-02 ]]'
+check "a later run preserves the last rebase report" \
+  '[[ "$(upkeep_field radar/behind 2)" == rebased ]] && [[ "$(upkeep_field radar/behind 3)" == 2026-03-02 ]]'
+
+# Simulate git < 2.38: every merge-tree --write-tree call is unsupported.
+REAL_GIT=$(command -v git)
+mkdir -p "$T/old-git"
+cat > "$T/old-git/git" <<'EOF'
+#!/usr/bin/env bash
+for arg in "$@"; do
+  [[ "$arg" == --write-tree ]] && exit 129
+done
+exec "$REAL_GIT" "$@"
+EOF
+chmod +x "$T/old-git/git"
+git -C "$UPKEEP_REPO" checkout -qb radar/fallback main
+printf 'fallback work\n' > "$UPKEEP_REPO/fallback.txt"
+git -C "$UPKEEP_REPO" add . && git -C "$UPKEEP_REPO" commit -qm fallback
+FALLBACK_TIP=$(git -C "$UPKEEP_REPO" rev-parse radar/fallback)
+git -C "$UPKEEP_REPO" checkout -q main
+printf 'main advances again\n' > "$UPKEEP_REPO/main-again.txt"
+git -C "$UPKEEP_REPO" add . && git -C "$UPKEEP_REPO" commit -qm main-advanced-again
+PATH="$T/old-git:$PATH" REAL_GIT="$REAL_GIT" run_upkeep 2026-03-16
+check "the throwaway-worktree fallback rebases on older git" \
+  '[[ "$(git -C "$UPKEEP_REPO" rev-parse radar/fallback)" != "$FALLBACK_TIP" ]] && git -C "$UPKEEP_REPO" merge-base --is-ancestor main radar/fallback && [[ "$(git -C "$UPKEEP_REPO" show radar/fallback:fallback.txt)" == "fallback work" ]]'
+check "the fallback also leaves no worktree behind" \
+  '[[ "$(git -C "$UPKEEP_REPO" worktree list --porcelain | grep -c "^worktree ")" == 1 ]]'
+
+git -C "$UPKEEP_REPO" checkout -qb radar/unknown main
+printf 'unknown work\n' > "$UPKEEP_REPO/unknown.txt"
+git -C "$UPKEEP_REPO" add . && git -C "$UPKEEP_REPO" commit -qm unknown
+UNKNOWN_TIP=$(git -C "$UPKEEP_REPO" rev-parse radar/unknown)
+git -C "$UPKEEP_REPO" checkout -q main
+printf 'main advances once more\n' > "$UPKEEP_REPO/main-once-more.txt"
+git -C "$UPKEEP_REPO" add . && git -C "$UPKEEP_REPO" commit -qm main-advanced-once-more
+UPKEEP_RUNTIME=/dev/null PATH="$T/old-git:$PATH" REAL_GIT="$REAL_GIT" run_upkeep 2026-03-23
+check "with neither merge mechanism the branch is untouched and unknown" \
+  '[[ "$(git -C "$UPKEEP_REPO" rev-parse radar/unknown)" == "$UNKNOWN_TIP" ]] && [[ "$(upkeep_field radar/unknown 2)" == unknown ]]'
+run_upkeep 2026-03-30
+check "an unknown probe does not erase the conflict's first-seen date" \
+  '[[ "$(upkeep_field radar/conflict 3)" == 2026-03-02 ]]'
+
+# A rebase refreshes committer dates but preserves author dates. Age must still
+# be old when a later main change turns the rebased branch into a conflict.
+git -C "$UPKEEP_REPO" checkout -q main
+printf 'age base\n' > "$UPKEEP_REPO/age-shared.txt"
+git -C "$UPKEEP_REPO" add . && git -C "$UPKEEP_REPO" commit -qm age-base
+git -C "$UPKEEP_REPO" checkout -qb radar/age
+printf 'age radar one\n' > "$UPKEEP_REPO/age-shared.txt"
+printf 'age step one\n' > "$UPKEEP_REPO/age-one.txt"
+git -C "$UPKEEP_REPO" add .
+GIT_AUTHOR_DATE=2020-01-06T00:00:00Z GIT_COMMITTER_DATE=2020-01-06T00:00:00Z \
+  git -C "$UPKEEP_REPO" commit -qm age-step-one
+printf 'age step two\n' > "$UPKEEP_REPO/age-two.txt"
+git -C "$UPKEEP_REPO" add .
+GIT_AUTHOR_DATE=2020-01-06T00:00:00Z GIT_COMMITTER_DATE=2020-01-06T00:00:00Z \
+  git -C "$UPKEEP_REPO" commit -qm age-step-two
+AGE_TIP=$(git -C "$UPKEEP_REPO" rev-parse radar/age)
+AGE_AUTHOR_BEFORE=$(git -C "$UPKEEP_REPO" log -1 --format=%at radar/age)
+git -C "$UPKEEP_REPO" checkout -q main
+printf 'clean main advance\n' > "$UPKEEP_REPO/age-main.txt"
+git -C "$UPKEEP_REPO" add . && git -C "$UPKEEP_REPO" commit -qm age-main-clean
+run_upkeep 2026-04-06
+AGE_REBASED_TIP=$(git -C "$UPKEEP_REPO" rev-parse radar/age)
+git -C "$UPKEEP_REPO" checkout -q main
+printf 'age main conflict\n' > "$UPKEEP_REPO/age-shared.txt"
+git -C "$UPKEEP_REPO" add . && git -C "$UPKEEP_REPO" commit -qm age-main-conflict
+run_upkeep 2026-04-13
+check "a rebase-refreshed committer date does not reset deletion age" \
+  '[[ "$AGE_REBASED_TIP" != "$AGE_TIP" ]] && [[ "$(git -C "$UPKEEP_REPO" log -1 --format=%at radar/age)" == "$AGE_AUTHOR_BEFORE" ]] && [[ "$(git -C "$UPKEEP_REPO" log -1 --format=%ct radar/age)" != "$AGE_AUTHOR_BEFORE" ]] && [[ "$(upkeep_field radar/age 2)" == conflict ]] && [[ "$(upkeep_field radar/age 5)" == 1 ]]'
+
+# An operational rebase failure has no unmerged paths and is not a conflict.
+git -C "$UPKEEP_REPO" checkout -qb radar/rebase-error main
+printf 'rebase error work\n' > "$UPKEEP_REPO/rebase-error.txt"
+git -C "$UPKEEP_REPO" add . && git -C "$UPKEEP_REPO" commit -qm rebase-error
+REBASE_ERROR_TIP=$(git -C "$UPKEEP_REPO" rev-parse radar/rebase-error)
+git -C "$UPKEEP_REPO" checkout -q main
+printf 'main advances cleanly\n' > "$UPKEEP_REPO/rebase-error-main.txt"
+git -C "$UPKEEP_REPO" add . && git -C "$UPKEEP_REPO" commit -qm rebase-error-main
+mkdir -p "$T/failing-rebase-git"
+cat > "$T/failing-rebase-git/git" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$GIT_TRACE_LOG"
+rebase_seen=0
+for arg in "$@"; do
+  if [[ $rebase_seen -eq 1 ]]; then
+    if [[ "$arg" != --abort ]]; then
+      printf 'injected rebase failure\n'
+      exit 1
+    fi
+    rebase_seen=0
+  elif [[ "$arg" == rebase ]]; then
+    rebase_seen=1
+  fi
+done
+exec "$REAL_GIT" "$@"
+EOF
+chmod +x "$T/failing-rebase-git/git"
+PATH="$T/failing-rebase-git:$PATH" REAL_GIT="$REAL_GIT" GIT_TRACE_LOG="$T/rebase-error-git.log" run_upkeep 2026-04-20
+check "a rebase failure without unmerged paths is aborted and unknown" \
+  '[[ "$(git -C "$UPKEEP_REPO" rev-parse radar/rebase-error)" == "$REBASE_ERROR_TIP" ]] && [[ "$(upkeep_field radar/rebase-error 2)" == unknown ]] && [[ "$(upkeep_field radar/rebase-error 4)" == *"rebase failed: injected rebase failure"* ]] && [[ "$(upkeep_field radar/rebase-error 5)" == 0 ]] && grep -q "rebase --abort" "$T/rebase-error-git.log"'
+
+# ─── 10. tracking main is local; a pushed radar branch is shared ──────
+section "radar upkeep distinguishes auto-tracking from a pushed copy"
+SHARED_ORIGIN="$T/shared-origin.git"
+SHARED_REPO="$T/shared"
+SHARED_STATE="$HOME/.claude/research/radar-branch-state.tsv"
+git init -q --bare "$SHARED_ORIGIN"
+git clone -q "$SHARED_ORIGIN" "$SHARED_REPO" 2>/dev/null
+git -C "$SHARED_REPO" config user.email t@example.com
+git -C "$SHARED_REPO" config user.name t
+git -C "$SHARED_REPO" checkout -qb main
+mkdir -p "$SHARED_REPO/configs/hooks"
+printf '#!/usr/bin/env bash\necho foo\n' > "$SHARED_REPO/configs/hooks/foo.sh"
+printf '.radar-staged/\n' > "$SHARED_REPO/.gitignore"
+git -C "$SHARED_REPO" add . && git -C "$SHARED_REPO" commit -qm base
+git -C "$SHARED_REPO" push -q -u origin main
+run_shared() {  # run_shared <date> <stub-mode>
+  CLADE_RADAR_REPO="$SHARED_REPO" CLADE_KEEP_SESSIONS="$T/no-keep.py" \
+    CLADE_RUNTIME_DIR="$T/shared-runtime" run_cron "$1" "$2"
+}
+shared_field() {  # shared_field <branch> <TSV column>
+  awk -F '\t' -v b="$1" -v f="$2" '$1 == b { print $f; exit }' "$SHARED_STATE" 2>/dev/null
+}
+
+# This branch is created by the wrapper from origin/main and therefore has the
+# same autoSetupMerge configuration as the production radar branches.
+run_shared 2026-05-04 edit
+PROD_BRANCH=radar/2026-05-04
+PROD_TIP=$(git -C "$SHARED_REPO" rev-parse "$PROD_BRANCH")
+
+# The non-main upstream is the only guard for this branch: its second commit
+# has never been pushed, so no remote-tracking ref contains its current tip.
+git -C "$SHARED_REPO" checkout -qb radar/pushed main
+printf 'pushed commit\n' > "$SHARED_REPO/pushed.txt"
+git -C "$SHARED_REPO" add . && git -C "$SHARED_REPO" commit -qm pushed
+git -C "$SHARED_REPO" push -q -u origin radar/pushed
+printf 'local-only commit\n' > "$SHARED_REPO/pushed-local.txt"
+git -C "$SHARED_REPO" add . && git -C "$SHARED_REPO" commit -qm pushed-local
+PUSHED_TIP=$(git -C "$SHARED_REPO" rev-parse radar/pushed)
+
+# This copy is genuinely on the remote, but has no upstream configuration.
+git -C "$SHARED_REPO" checkout -q main
+git -C "$SHARED_REPO" checkout -qb radar/pushed-no-upstream
+printf 'pushed without upstream\n' > "$SHARED_REPO/pushed-no-upstream.txt"
+git -C "$SHARED_REPO" add . && git -C "$SHARED_REPO" commit -qm pushed-no-upstream
+git -C "$SHARED_REPO" push -q origin radar/pushed-no-upstream
+NO_UPSTREAM_TIP=$(git -C "$SHARED_REPO" rev-parse radar/pushed-no-upstream)
+git -C "$SHARED_REPO" checkout -q main
+
+# Advance main from another clone, without touching any radar branch's files.
+git clone -q --branch main "$SHARED_ORIGIN" "$T/shared-pusher"
+git -C "$T/shared-pusher" config user.email t@example.com
+git -C "$T/shared-pusher" config user.name t
+printf 'unrelated main advance\n' > "$T/shared-pusher/main-update.txt"
+git -C "$T/shared-pusher" add . && git -C "$T/shared-pusher" commit -qm main-update
+git -C "$T/shared-pusher" push -q origin main
+git -C "$SHARED_REPO" fetch -q origin
+run_shared 2026-05-11 none
+
+check "a cron-created branch tracking only origin/main is rebased" \
+  '[[ "$(git -C "$SHARED_REPO" config --get branch.$PROD_BRANCH.remote)" == origin ]] && [[ "$(git -C "$SHARED_REPO" config --get branch.$PROD_BRANCH.merge)" == refs/heads/main ]] && [[ "$(git -C "$SHARED_REPO" rev-parse "$PROD_BRANCH")" != "$PROD_TIP" ]] && git -C "$SHARED_REPO" merge-base --is-ancestor origin/main "$PROD_BRANCH" && [[ "$(git -C "$SHARED_REPO" show "$PROD_BRANCH":configs/hooks/new-note.md)" == note ]] && [[ "$(shared_field "$PROD_BRANCH" 2)" == rebased ]]'
+check "a non-main upstream is never rewritten even when its tip is unpushed" \
+  '[[ -z "$(git -C "$SHARED_REPO" for-each-ref --contains refs/heads/radar/pushed --format="%(refname)" refs/remotes/)" ]] && [[ "$(git -C "$SHARED_REPO" rev-parse radar/pushed)" == "$PUSHED_TIP" ]] && [[ "$(shared_field radar/pushed 2)" == upstream ]]'
+check "a pushed tip without upstream configuration is never rewritten" \
+  '[[ -n "$(git -C "$SHARED_REPO" for-each-ref --contains refs/heads/radar/pushed-no-upstream --format="%(refname)" refs/remotes/)" ]] && [[ -z "$(git -C "$SHARED_REPO" config --get branch.radar/pushed-no-upstream.remote)" ]] && [[ -z "$(git -C "$SHARED_REPO" config --get branch.radar/pushed-no-upstream.merge)" ]] && [[ "$(git -C "$SHARED_REPO" rev-parse radar/pushed-no-upstream)" == "$NO_UPSTREAM_TIP" ]] && [[ "$(shared_field radar/pushed-no-upstream 2)" == upstream ]]'
+
+printf '%s\n' "$SHARED_REPO" > "$HOME/.claude/.kit-source-dir"
+SC_SHARED=$(cd "$SHARED_REPO" && printf '{"session_id":"t"}' | CLAUDE_PROJECT_DIR="$SHARED_REPO" bash "$SESSION_HOOK" 2>/dev/null)
+printf '%s\n' "$T/kit" > "$HOME/.claude/.kit-source-dir"
+SC_SHARED_CONTEXT=$(jq -r '.hookSpecificOutput.additionalContext // empty' <<< "$SC_SHARED")
+SC_PROD_LINE=$(printf '%b\n' "$SC_SHARED_CONTEXT" | grep -F "  $PROD_BRANCH ")
+check "the cron-created branch's session line reports rebase, not upstream" \
+  '[[ "$SC_PROD_LINE" == *"rebased onto main 2026-05-11"* ]] && [[ "$SC_PROD_LINE" != *"has upstream"* ]]'
 
 # ─── Summary ─────────────────────────────────────────────────────────
 printf "\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"

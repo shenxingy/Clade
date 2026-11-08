@@ -200,13 +200,36 @@ fi
 # a local radar/<date> branch of the kit repository instead of whatever
 # checkout is open (radar-cron.sh), and never pushes them. Nothing else
 # surfaces those branches, so list them when a session opens that repository
-# or one of its worktrees.
+# or one of its worktrees. The optional upkeep TSV adds merge/rebase debt;
+# without it the original branch-and-subject lines are unchanged.
 _KIT_SRC=$(cat "$HOME/.claude/.kit-source-dir" 2>/dev/null || true)
 if [[ -n "$_KIT_SRC" ]]; then
   _HERE_GIT=$(cd "$(git rev-parse --git-common-dir 2>/dev/null || echo /nonexistent)" 2>/dev/null && pwd -P)
   _KIT_GIT=$(cd "$_KIT_SRC" 2>/dev/null && cd "$(git rev-parse --git-common-dir 2>/dev/null || echo /nonexistent)" 2>/dev/null && pwd -P)
   if [[ -n "$_HERE_GIT" && "$_HERE_GIT" == "$_KIT_GIT" ]]; then
-    RADAR_BRANCHES=$(git for-each-ref --format='  %(refname:short) — %(subject)' 'refs/heads/radar/' 2>/dev/null | head -5)
+    _RADAR_STATE="${CLADE_RADAR_BRANCH_STATE:-$HOME/.claude/research/radar-branch-state.tsv}"
+    _RADAR_DELETE_WEEKS="${CLADE_RADAR_DELETE_AFTER_WEEKS:-4}"
+    case "$_RADAR_DELETE_WEEKS" in ''|*[!0-9]*) _RADAR_DELETE_WEEKS=4 ;; esac
+    RADAR_BRANCHES=""
+    while IFS=$'\t' read -r _RADAR_BRANCH _RADAR_SUBJECT; do
+      [[ -n "$_RADAR_BRANCH" ]] || continue
+      _RADAR_LINE="  $_RADAR_BRANCH — $_RADAR_SUBJECT"
+      if [[ -f "$_RADAR_STATE" ]]; then
+        _RADAR_ROW=$(awk -F '\t' -v b="$_RADAR_BRANCH" '$1 == b { print; exit }' "$_RADAR_STATE" 2>/dev/null)
+        IFS=$'\t' read -r _RS_BRANCH _RS_STATUS _RS_DATE _RS_DETAILS _RS_CANDIDATE _RS_TIP _RS_SINCE <<< "$_RADAR_ROW"
+        case "$_RS_STATUS" in
+          conflict)
+            _RADAR_LINE+=" — conflicts with main in $_RS_DETAILS since $_RS_DATE"
+            [[ "$_RS_CANDIDATE" == 1 ]] && _RADAR_LINE+=" (deletion candidate: branch older than $_RADAR_DELETE_WEEKS weeks; review before manual deletion)"
+            ;;
+          rebased) _RADAR_LINE+=" — rebased onto main $_RS_DATE" ;;
+          upstream) _RADAR_LINE+=" — has upstream $_RS_DETAILS; left untouched $_RS_DATE" ;;
+          unknown) _RADAR_LINE+=" — radar merge/upkeep status unknown (checked $_RS_DATE)" ;;
+        esac
+      fi
+      [[ -z "$RADAR_BRANCHES" ]] || RADAR_BRANCHES+=$'\n'
+      RADAR_BRANCHES+="$_RADAR_LINE"
+    done < <(git for-each-ref --format='%(refname:short)%09%(subject)' 'refs/heads/radar/' 2>/dev/null | head -5)
     if [[ -n "$RADAR_BRANCHES" ]]; then
       CONTEXT="${CONTEXT}Radar edits awaiting review (unattended, never pushed; read with git log -p origin/main..<branch>, then land via PR or delete):\n${RADAR_BRANCHES}\n"
     fi

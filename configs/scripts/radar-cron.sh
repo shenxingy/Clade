@@ -144,6 +144,214 @@ fold_staged() {
 
 fold_staged
 
+# ─── Keep earlier radar branches reviewable ──────────────────────────
+# One TSV in the existing radar state directory is the handoff to
+# session-context.sh. Fields: branch, status, date, paths/upstream/error,
+# deletion-candidate (0/1), branch tip, first-conflict date. The last field
+# preserves that date even when a later probe can only report "unknown".
+RADAR_BRANCH_STATE="${CLADE_RADAR_BRANCH_STATE:-$RESEARCH_DIR/radar-branch-state.tsv}"
+RADAR_DELETE_WEEKS="${CLADE_RADAR_DELETE_AFTER_WEEKS:-4}"
+case "$RADAR_DELETE_WEEKS" in
+  ''|*[!0-9]*) RADAR_DELETE_WEEKS=4 ;;
+esac
+
+radar_state_field() {  # radar_state_field <branch> <column>
+  [[ -f "$RADAR_BRANCH_STATE" ]] || return 0
+  awk -F '\t' -v b="$1" -v f="$2" '$1 == b { print $f; exit }' "$RADAR_BRANCH_STATE" 2>/dev/null
+}
+
+radar_previous_conflict() {
+  local branch="$1" since
+  since=$(radar_state_field "$branch" 7)
+  case "$since" in
+    [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]) ;;
+    *) since="" ;;
+  esac
+  if [[ -z "$since" && "$(radar_state_field "$branch" 2)" == conflict ]]; then
+    since=$(radar_state_field "$branch" 3)
+    case "$since" in
+      [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]) ;;
+      *) since="" ;;
+    esac
+  fi
+  printf '%s' "$since"
+}
+
+radar_conflict_since() {
+  local since
+  since=$(radar_previous_conflict "$1")
+  printf '%s' "${since:-$RUN_DATE}"
+}
+
+radar_join_paths() {  # radar_join_paths <newline-separated paths>; sets RADAR_PATHS
+  local paths="$1" p
+  RADAR_PATHS=""
+  while IFS= read -r p; do
+    [[ -n "$p" ]] || continue
+    RADAR_PATHS+="${RADAR_PATHS:+, }$p"
+  done <<< "$paths"
+  [[ -n "$RADAR_PATHS" ]] || RADAR_PATHS="paths unavailable"
+}
+
+radar_record_state() {  # branch status date details candidate tip conflict-since
+  local details="${4:--}"
+  details=${details//$'\t'/ }
+  details=${details//$'\n'/ }
+  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+    "$1" "$2" "$3" "$details" "$5" "${6:--}" "${7:--}" >> "$RADAR_STATE_NEXT"
+}
+
+radar_branch_upkeep() {
+  local main_ref="$1" branch old_tip new_tip after_tip upstream_remote upstream_merge
+  local merge_out merge_rc probe_wt rebase_out paths behind runtime_root
+  local status date details candidate conflict_since previous previous_date previous_tip
+  local first_ts now mode=modern pushed_refs non_main_upstream main_merge_ref
+  main_merge_ref="refs/heads/${main_ref##*/}"
+  RADAR_STATE_NEXT="$RADAR_BRANCH_STATE.tmp.$$"
+  if ! printf '# branch\tstatus\tdate\tdetails\tdeletion-candidate\ttip\tfirst-conflict\n' > "$RADAR_STATE_NEXT"; then
+    log "UPKEEP SKIPPED: cannot write $RADAR_STATE_NEXT"
+    return 0
+  fi
+
+  # A same-ref probe is a capability check, not a version parser. Apple Git and
+  # distribution builds do not all use upstream's version suffixes.
+  if ! _timeout 60 git -C "$KIT_DIR" merge-tree --write-tree "$main_ref" "$main_ref" >/dev/null 2>&1; then
+    mode=fallback
+  fi
+
+  while IFS= read -r branch; do
+    [[ "$branch" == radar/* ]] || continue
+    old_tip=$(git -C "$KIT_DIR" rev-parse "refs/heads/$branch" 2>/dev/null)
+    upstream_remote=$(git -C "$KIT_DIR" config --get "branch.$branch.remote" 2>/dev/null)
+    upstream_merge=$(git -C "$KIT_DIR" config --get "branch.$branch.merge" 2>/dev/null)
+    pushed_refs=$(git -C "$KIT_DIR" for-each-ref --contains "refs/heads/$branch" --format='%(refname)' refs/remotes/ 2>/dev/null)
+    # branch.autoSetupMerge makes a branch cut from origin/main track main even
+    # though no radar branch was pushed. Only a non-main upstream or an actual
+    # remote-tracking copy makes the branch shared.
+    non_main_upstream=0
+    if [[ -n "$upstream_remote" || -n "$upstream_merge" ]]; then
+      if [[ "$upstream_merge" != "$main_merge_ref" ]]; then
+        non_main_upstream=1
+      elif [[ "$upstream_remote" != origin && "$upstream_remote" != . ]]; then
+        non_main_upstream=1
+      fi
+    fi
+    status=clean; date="$RUN_DATE"; details="-"; candidate=0; conflict_since="-"
+    new_tip="$old_tip"; merge_rc=0; merge_out=""; paths=""
+
+    if [[ "$mode" == modern ]]; then
+      merge_out=$(_timeout 60 git -C "$KIT_DIR" merge-tree --write-tree --name-only "$main_ref" "$branch" 2>&1)
+      merge_rc=$?
+      if [[ $merge_rc -eq 1 ]]; then
+        paths=$(printf '%s\n' "$merge_out" | sed -n '2,/^$/p' | sed '/^$/d')
+      fi
+    else
+      probe_wt=""
+      if declare -f clade_runtime_dir >/dev/null 2>&1 && runtime_root=$(clade_runtime_dir 2>/dev/null); then
+        probe_wt=$(mktemp -d "$runtime_root/radar-merge.XXXXXX" 2>/dev/null)
+      fi
+      if [[ -n "$probe_wt" ]] && git -C "$KIT_DIR" -c core.hooksPath=/dev/null worktree add -q --detach "$probe_wt" "$branch" >/dev/null 2>&1; then
+        merge_out=$(_timeout 60 git -C "$probe_wt" -c core.hooksPath=/dev/null merge --no-commit --no-ff "$main_ref" 2>&1)
+        merge_rc=$?
+        [[ $merge_rc -eq 1 ]] && paths=$(git -C "$probe_wt" diff --name-only --diff-filter=U 2>/dev/null)
+        git -C "$probe_wt" merge --abort >/dev/null 2>&1
+        git -C "$KIT_DIR" worktree remove --force "$probe_wt" >/dev/null 2>&1
+      else
+        merge_rc=129
+        [[ -z "$probe_wt" ]] || rmdir "$probe_wt" 2>/dev/null
+      fi
+    fi
+
+    if [[ $merge_rc -eq 0 ]]; then
+      behind=$(git -C "$KIT_DIR" rev-list --count "$branch..$main_ref" 2>/dev/null)
+      case "$behind" in ''|*[!0-9]*) behind=0 ;; esac
+      if [[ $behind -gt 0 ]]; then
+        if [[ -n "$pushed_refs" ]]; then
+          status=upstream
+          details="remote ref: ${pushed_refs%%$'\n'*}"
+          log "UPKEEP $branch has a remote-tracking copy; left untouched"
+        elif [[ $non_main_upstream -eq 1 ]]; then
+          status=upstream
+          details="${upstream_remote:-unknown}:${upstream_merge:-unknown}"
+          log "UPKEEP $branch has a non-main upstream; left untouched"
+        else
+          probe_wt=""
+          if declare -f clade_runtime_dir >/dev/null 2>&1 && runtime_root=$(clade_runtime_dir 2>/dev/null); then
+            probe_wt=$(mktemp -d "$runtime_root/radar-rebase.XXXXXX" 2>/dev/null)
+          fi
+          if [[ -n "$probe_wt" ]] && git -C "$KIT_DIR" -c core.hooksPath=/dev/null worktree add -q "$probe_wt" "$branch" >/dev/null 2>&1; then
+            rebase_out=$(_timeout 120 git -C "$probe_wt" -c core.hooksPath=/dev/null rebase "$main_ref" 2>&1)
+            merge_rc=$?
+            if [[ $merge_rc -eq 0 ]]; then
+              git -C "$KIT_DIR" worktree remove --force "$probe_wt" >/dev/null 2>&1
+              new_tip=$(git -C "$KIT_DIR" rev-parse "refs/heads/$branch" 2>/dev/null)
+              status=rebased; details="$main_ref"
+              log "UPKEEP $branch rebased onto $main_ref"
+            else
+              paths=$(git -C "$probe_wt" diff --name-only --diff-filter=U 2>/dev/null)
+              git -C "$probe_wt" -c core.hooksPath=/dev/null rebase --abort >/dev/null 2>&1
+              git -C "$KIT_DIR" worktree remove --force "$probe_wt" >/dev/null 2>&1
+              after_tip=$(git -C "$KIT_DIR" rev-parse "refs/heads/$branch" 2>/dev/null)
+              [[ "$after_tip" == "$old_tip" ]] || log "UPKEEP WARNING: $branch moved during a failed rebase ($old_tip -> $after_tip)"
+              new_tip="$after_tip"
+              if [[ -n "$paths" ]]; then
+                radar_join_paths "$paths"
+                status=conflict; date=$(radar_conflict_since "$branch"); details="$RADAR_PATHS"
+                conflict_since="$date"
+                log "UPKEEP $branch rebase stopped; aborted; conflicts: $details"
+              else
+                details=$(printf '%s\n' "$rebase_out" | tail -n 1)
+                status=unknown; details="rebase failed: ${details:-exit $merge_rc}"
+                conflict_since=$(radar_previous_conflict "$branch")
+                [[ -n "$conflict_since" ]] || conflict_since="-"
+                log "UPKEEP $branch rebase failed without unmerged paths; aborted: $details"
+              fi
+            fi
+          else
+            status=unknown; details="no throwaway worktree available for rebase"
+            [[ -z "$probe_wt" ]] || rmdir "$probe_wt" 2>/dev/null
+          fi
+        fi
+      else
+        previous=$(radar_state_field "$branch" 2)
+        previous_tip=$(radar_state_field "$branch" 6)
+        if [[ "$previous" == rebased && "$previous_tip" == "$old_tip" ]]; then
+          previous_date=$(radar_state_field "$branch" 3)
+          status=rebased; date="$previous_date"; details="$main_ref"
+        fi
+      fi
+    elif [[ $merge_rc -eq 1 ]]; then
+      radar_join_paths "$paths"
+      status=conflict; date=$(radar_conflict_since "$branch"); details="$RADAR_PATHS"
+      conflict_since="$date"
+      log "UPKEEP $branch conflicts with $main_ref: $details"
+    else
+      status=unknown; details="merge status could not be checked"
+      conflict_since=$(radar_previous_conflict "$branch")
+      [[ -n "$conflict_since" ]] || conflict_since="-"
+      log "UPKEEP $branch merge status unknown: $(printf '%s\n' "$merge_out" | tail -n 1)"
+    fi
+
+    if [[ "$status" == conflict ]]; then
+      # Author time survives our own rebases; committer time does not.
+      first_ts=$(git -C "$KIT_DIR" log --format=%at --reverse "$main_ref..$branch" 2>/dev/null | head -n 1)
+      now=$(date +%s)
+      case "$first_ts" in
+        ''|*[!0-9]*) ;;
+        *) [[ $((now - first_ts)) -gt $((RADAR_DELETE_WEEKS * 7 * 86400)) ]] && candidate=1 ;;
+      esac
+    fi
+    radar_record_state "$branch" "$status" "$date" "$details" "$candidate" "$new_tip" "$conflict_since"
+  done < <(git -C "$KIT_DIR" branch --no-merged "$main_ref" --list 'radar/*' --format='%(refname:short)' 2>/dev/null)
+
+  if mv "$RADAR_STATE_NEXT" "$RADAR_BRANCH_STATE"; then
+    log "UPKEEP state written to $RADAR_BRANCH_STATE"
+  else
+    rm -f "$RADAR_STATE_NEXT"
+    log "UPKEEP state write failed: $RADAR_BRANCH_STATE"
+  fi
+}
+
 # ─── The run's own worktree ──────────────────────────────────────────
 # radar_worktree — sets WT and RADAR_BRANCH, or leaves WT empty. A second run
 # on one day takes radar/<date>-2, -3, … rather than reusing a branch someone
@@ -157,8 +365,14 @@ radar_worktree() {
     return 0
   }
   _timeout 60 git -C "$KIT_DIR" fetch -q origin main >/dev/null 2>&1 || log "fetch failed; branching from the last known origin/main"
-  if git -C "$KIT_DIR" rev-parse -q --verify origin/main >/dev/null 2>&1; then base=origin/main
-  else base=$(git -C "$KIT_DIR" symbolic-ref --short -q HEAD 2>/dev/null || echo HEAD); fi
+  if git -C "$KIT_DIR" rev-parse -q --verify origin/main >/dev/null 2>&1; then
+    base=origin/main
+  elif git -C "$KIT_DIR" rev-parse -q --verify refs/heads/main >/dev/null 2>&1; then
+    base=main
+  else
+    base=$(git -C "$KIT_DIR" symbolic-ref --short -q HEAD 2>/dev/null || echo HEAD)
+  fi
+  radar_branch_upkeep "$base"
   branch="radar/$RUN_DATE"
   while git -C "$KIT_DIR" rev-parse -q --verify "refs/heads/$branch" >/dev/null 2>&1; do
     n=$((n + 1)); branch="radar/$RUN_DATE-$n"
