@@ -11,6 +11,27 @@ set -euo pipefail
 
 CLAUDE_DIR="$HOME/.claude"
 SYNC_CONFIG="$CLAUDE_DIR/.sync-config"
+SYNC_PUSH_BACKOFF="${CLADE_SYNC_PUSH_BACKOFF_FILE:-$CLAUDE_DIR/.sync-push-backoff}"
+
+# One line: <last-failure-or-probe epoch> <consecutive-failures> <reason-token>.
+# This file is per-host and outside every directory sync-setup.sh links into the store.
+sync_push_record_failure() {
+  local reason="$1" previous=0 ts="" count="" old_reason="" extra=""
+  if [[ -f "$SYNC_PUSH_BACKOFF" ]]; then
+    IFS=' ' read -r ts count old_reason extra < "$SYNC_PUSH_BACKOFF" || true
+    case "$count" in
+      ''|*[!0-9]*) ;;
+      *) previous=$count ;;
+    esac
+  fi
+  printf '%s %s %s\n' "${CLADE_SYNC_PUSH_BACKOFF_NOW:-$(date +%s)}" \
+    "$((previous + 1))" "$reason" > "$SYNC_PUSH_BACKOFF.tmp.$$"
+  mv -f "$SYNC_PUSH_BACKOFF.tmp.$$" "$SYNC_PUSH_BACKOFF"
+}
+
+sync_push_clear_backoff() {
+  rm -f "$SYNC_PUSH_BACKOFF"
+}
 
 [[ -f "$SYNC_CONFIG" ]] || exit 0
 # shellcheck source=/dev/null
@@ -52,6 +73,12 @@ fi
 
 cd "$SYNC_DIR"
 
+if [[ -n "$(git ls-files -u 2>/dev/null)" ]]; then
+  echo "sync-push: unmerged paths present, refusing to commit; resolve them by hand." >&2
+  sync_push_record_failure unmerged-paths
+  exit 1
+fi
+
 # NEVER stage a file carrying conflict markers. This is not hygiene — it is the
 # bug that ate the correction log. `git pull --rebase --autostash` leaves marker
 # text in the working tree when the AUTOSTASH POP conflicts (not the rebase), and
@@ -72,10 +99,15 @@ if [ -n "$_marker_files" ]; then
     >> "$CLAUDE_DIR/.sync-conflicts.log"
   echo "sync-push: conflict markers present, refusing to commit:$_marker_files" >&2
   echo "sync-push: resolve them by hand, then the next sync will proceed." >&2
+  sync_push_record_failure conflict-markers
   exit 1
 fi
 
-git add -A 2>/dev/null || exit 0
+git add -A 2>/dev/null || {
+  echo "sync-push: could not stage the store; check its index lock and permissions." >&2
+  sync_push_record_failure stage-failed
+  exit 1
+}
 
 # ─── Privacy: what is private never leaves this machine ──────────────────────
 # The store is a git repository with its own remote, and `git add -A` stages
@@ -122,10 +154,20 @@ if [ -s "$_priv_pats" ]; then
 fi
 rm -f "$_priv_pats"
 
-# Nothing to commit?
-git diff --cached --quiet 2>/dev/null && exit 0
-
-git commit -m "sync: $(hostname) $(date +%H:%M)" --quiet 2>/dev/null || exit 0
+# An empty index stays offline unless a local commit is ahead of its upstream or
+# a failed push needs a manual retry. The ahead check is local, never a network call.
+if git diff --cached --quiet 2>/dev/null; then
+  _ahead=$(git rev-list --count '@{u}..HEAD' 2>/dev/null || echo 0)
+  if [[ "$_ahead" -eq 0 && ! -f "$SYNC_PUSH_BACKOFF" ]]; then
+    exit 0
+  fi
+else
+  git commit -m "sync: $(hostname) $(date +%H:%M)" --quiet 2>/dev/null || {
+    echo "sync-push: could not commit the staged store changes." >&2
+    sync_push_record_failure commit-failed
+    exit 1
+  }
+fi
 
 # ─── Push to GitHub remote (both github and nfs-with-remote modes) ───────────
 
@@ -147,18 +189,30 @@ if [[ "$SYNC_BACKEND" == "github" ]] || [[ "$HAS_REMOTE" -gt 0 ]]; then
     git rebase --abort 2>/dev/null || true
     REMOTE_BRANCH=$(git rev-parse --abbrev-ref --symbolic-full-name @{u} 2>/dev/null || echo "origin/master")
     _conflicted=$(git diff --name-only "$REMOTE_BRANCH"...HEAD 2>/dev/null | tr '\n' ' ')
-    git merge --no-edit -X ours "$REMOTE_BRANCH" 2>/dev/null || true
+    git merge --no-edit -X ours "$REMOTE_BRANCH" 2>/dev/null || {
+      echo "sync-push: unresolved conflict after pull; resolve it by hand." >&2
+      sync_push_record_failure unresolved-conflict
+      exit 1
+    }
     echo "[$(date)] sync conflict on $(hostname) — merged -X ours; their side dropped for:$_conflicted" \
       >> "$CLAUDE_DIR/.sync-conflicts.log"
   }
 
   # Retry push up to 3 times
+  _push_ok=false
   for attempt in 1 2 3; do
-    git push --quiet 2>/dev/null && break
-    [[ $attempt -lt 3 ]] && sleep 2
-  done || {
+    if git push --quiet 2>/dev/null; then
+      _push_ok=true
+      break
+    fi
+    if [[ $attempt -lt 3 ]]; then sleep 2; fi
+  done
+  if [[ "$_push_ok" == false ]]; then
     echo "sync-push: push failed after 3 attempts (will retry next session)" >&2
-  }
+    sync_push_record_failure push-failed
+    exit 1
+  fi
 fi
 
+sync_push_clear_backoff
 exit 0

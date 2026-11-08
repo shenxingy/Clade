@@ -473,6 +473,12 @@ jobs:
       - name: Run sync-link-projects tests
         run: bash tests/test-sync-link-projects.sh
 
+      # Per-host sync circuit breaker: every failure class records a reason and
+      # count outside the store, all write classes are gated, half-open retries
+      # double to a cap, manual recovery always runs, and each guard is mutated.
+      - name: Run memory-sync circuit-breaker tests
+        run: bash tests/test-memory-sync-breaker.sh
+
       # post-edit-check: exit-2 asyncRewake findings vs silent success, the per-file mypy scope, errors already
       # in the file's HEAD version, a crashed checker, nested worktrees
       # (split out of test-hooks.sh when it crossed the 1500-line rule again)
