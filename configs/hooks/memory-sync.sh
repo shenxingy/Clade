@@ -25,40 +25,9 @@ SYNC_CONFIG="$CLAUDE_DIR/.sync-config"
 INPUT=$(cat)
 TOOL_NAME=$(echo "$INPUT" | jq -r '.tool_name // empty' 2>/dev/null)
 
-sync_push_backoff_active() {
-  _backoff_half_open=false
-  local _file="${CLADE_SYNC_PUSH_BACKOFF_FILE:-$CLAUDE_DIR/.sync-push-backoff}"
-  local _failed_at="" _failures="" _reason="" _extra=""
-  [[ -f "$_file" ]] || return 1
-  IFS=' ' read -r _failed_at _failures _reason _extra < "$_file"
-  case "$_failed_at" in ''|*[!0-9]*) return 1 ;; esac
-  case "$_failures" in ''|*[!0-9]*) return 1 ;; esac
-  [[ "$_failures" -ge 1 && -n "$_reason" && -z "$_extra" ]] || return 1
-
-  local _base="${CLADE_SYNC_PUSH_BACKOFF_BASE_SECONDS:-1800}"
-  local _max="${CLADE_SYNC_PUSH_BACKOFF_MAX_SECONDS:-86400}"
-  local _now="${CLADE_SYNC_PUSH_BACKOFF_NOW:-$(date +%s)}"
-  case "$_base" in ''|*[!0-9]*|0) _base=1800 ;; esac
-  case "$_max" in ''|*[!0-9]*) _max=86400 ;; esac
-  case "$_now" in ''|*[!0-9]*) _now=$(date +%s) ;; esac
-
-  local _window="$_base" _remaining
-  _remaining=$((_failures - 1))
-  while [[ "$_remaining" -gt 0 && "$_window" -lt "$_max" ]]; do
-    _window=$((_window * 2))
-    _remaining=$((_remaining - 1))
-  done
-  [[ "$_window" -gt "$_max" ]] && _window="$_max"
-  if [[ $((_now - _failed_at)) -lt "$_window" ]]; then
-    return 0
-  fi
-  _backoff_half_open=true
-  _backoff_file="$_file"
-  _backoff_now="$_now"
-  _backoff_failures="$_failures"
-  _backoff_reason="$_reason"
-  return 1
-}
+HOOK_LIBDIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib"
+# shellcheck source=/dev/null
+source "$HOOK_LIBDIR/sync-push-backoff.sh" 2>/dev/null || true
 
 # A project memory under any projects directory sync-link-projects.sh scans:
 # ~/.claude/projects, $CLAUDE_CONFIG_DIR/projects and
@@ -112,7 +81,7 @@ fi
 [[ "$is_synced_path" == false ]] && exit 0
 
 # The breaker precedes every memory topic gate and every non-memory path class.
-if sync_push_backoff_active; then
+if declare -F sync_push_backoff_active >/dev/null 2>&1 && sync_push_backoff_active; then
   exit 0
 fi
 
