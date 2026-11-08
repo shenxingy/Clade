@@ -3118,7 +3118,7 @@ items below include the code that keeps the next failure from being silent.
   one shared parser in `configs/hooks/lib/sync-push-backoff.sh`. Implemented by Kimi K3.1
   Pro (max effort) in its own worktree; verified independently by Claude (re-run suites,
   red proof, mutations).
-- [ ] 🟠 **Project memory is keyed by path, so one repository on two machines is two
+- [x] 🟠 **Project memory is keyed by path, so one repository on two machines is two
   memories.** aries writes `projects-memory/projects-Clade`, the Mac
   `shenxingy-Clade`; `sync-link-projects.sh` derives the key from the path under
   `$HOME` and reports the other machine's key as "no top-level project named X
@@ -3127,15 +3127,14 @@ items below include the code that keeps the next failure from being silent.
   normalised; path as the fallback), record one `.project-path` per host, and
   migrate the legacy pairs; `tests/test-sync-link-projects.sh` gains the two-path
   case.
-  IN REVIEW 2026-11-07: PR #209, not merged: the first run on each host migrates its
-  path-keyed entries, so the owner reviews it. A `--dry-run` on aries at f218b1b changed
-  no state (sorted before/after snapshots, 20 s no-run control) and planned 15 migrations
-  to `repo-github-com-<owner>-<name>` keys, 74 relinks across five profiles and 1
-  conflict. That conflict is two checkouts of one repository on the host (9 and 45 memory
-  files, differing `MEMORY.md`); the real run migrates the first and refuses the second.
-  The dry run used to print both as migrations, fixed in 0bd3fd7 with dry/real parity
-  tests. Owner decision before the real run: merge the two checkouts' memories by hand,
-  or accept the conflict line.
+  DONE 2026-11-08 (#209): a repository root with an origin is keyed `repo-` plus its
+  encoded, normalised origin URL (no origin: the path key, unchanged), with one
+  `.project-paths` line per host and checkout, union-merged across hosts; a legacy
+  path-keyed entry is copied once into the new key and keeps a `.migrated-to` marker. The dry run's one conflict was two checkouts of one repository on aries: the
+  owner retired the stale one (archived first), and its 9 memories were merged by hand
+  into the live checkout's key. The re-run dry run planned 15 migrations and 0
+  conflicts and changed no state. Implemented by Kimi K3.1 Pro (max effort) in its own
+  worktree; verified independently by Claude (re-run suites, red proof, mutations).
 - [ ] 🟡 **82 memory files in 14 legacy store directories reach no session** —
   11 directories with memories plus three index-only directories (11 + 3 = 14).
   Under `~/shared-nfs/claude-dotfiles/projects-memory/`, counting directories
