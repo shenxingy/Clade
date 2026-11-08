@@ -37,6 +37,8 @@ WINDOW_DAYS="${COMMIT_ARCH_WINDOW:-60}"
 CACHE_HOURS="${COMMIT_ARCH_CACHE_HOURS:-24}"
 TOP_N="${COMMIT_ARCH_TOP_N:-4}"
 MIN_OCCURRENCES="${COMMIT_ARCH_MIN:-3}"
+# A refresh lock or reclaim mutex younger than this is never taken from its holder.
+LOCK_GRACE_SECONDS=30
 
 mkdir -p "$LESSONS_DIR" 2>/dev/null
 
@@ -247,9 +249,20 @@ scan() {
 }
 
 # ─── Background refresh ───────────────────────────────────────────────
+# lock_is_young <path> — true while <path> was written within LOCK_GRACE_SECONDS.
+# An unreadable mtime counts as young: a lock is left alone rather than stolen.
+lock_is_young() {
+  local mtime
+  if mtime=$(stat -c %Y "$1" 2>/dev/null); then :
+  elif mtime=$(stat -f %m "$1" 2>/dev/null); then :
+  else return 0
+  fi
+  [[ "$(( $(date +%s) - mtime ))" -lt "$LOCK_GRACE_SECONDS" ]]
+}
+
 start_refresh() {
   local script_dir runtime_lib state lock pid
-  local reclaim current_pid mtime now
+  local reclaim current_pid
   script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)
   runtime_lib="$script_dir/../hooks/lib/runtime-dir.sh"
   # shellcheck source=/dev/null
@@ -260,16 +273,19 @@ start_refresh() {
   if ! mkdir "$lock" 2>/dev/null; then
     pid=$(head -1 "$lock/pid" 2>/dev/null)
     [[ "$pid" =~ ^[0-9]+$ ]] || return 0
+    # Until the refresher has started and recorded its own PID, the lock names a
+    # process that has already exited: the caller that spawned it, which returns
+    # at once. A dead PID is therefore no evidence of an abandoned lock until the
+    # lock is older than any startup. #212 recorded $! instead, which names the
+    # refresher only if setsid does not fork (util-linux setsid forks when its
+    # caller leads a process group), and hosted CI still ran two scans for two
+    # concurrent callers - possible only if one reclaimed a live refresh's lock.
+    lock_is_young "$lock/pid" && return 0
     kill -0 "$pid" 2>/dev/null && return 0
 
     reclaim="$lock.reclaim"
     if ! mkdir "$reclaim" 2>/dev/null; then
-      if mtime=$(stat -c %Y "$reclaim" 2>/dev/null); then :
-      elif mtime=$(stat -f %m "$reclaim" 2>/dev/null); then :
-      else return 0
-      fi
-      now=$(date +%s)
-      [[ "$((now - mtime))" -lt 30 ]] && return 0
+      lock_is_young "$reclaim" && return 0
       rmdir "$reclaim" 2>/dev/null || return 0
       mkdir "$reclaim" 2>/dev/null || return 0
     fi
@@ -297,13 +313,8 @@ start_refresh() {
     nohup bash "$script_dir/$(basename "${BASH_SOURCE[0]}")" --refresh "$lock" \
       </dev/null >/dev/null 2>&1 &
   fi
-  # Hand the lock to the child at once: it records its own $$ only after bash has
-  # started, and this process exits first. Leaving our PID there let a second
-  # caller see a dead holder and reclaim the lock under a live refresh (two scans;
-  # #210 waited 1 s for the hand-off, which a loaded CI runner outlasted).
-  # Neither setsid (a background child of a non-interactive shell leads no
-  # process group, so it does not fork) nor nohup forks, so $! is the refresher.
-  printf '%s\n' "$!" > "$lock/pid" 2>/dev/null
+  # Our PID stays in the lock until the refresher records its own; the grace
+  # period above, not the PID, protects that hand-off.
   disown %% 2>/dev/null || true
 }
 

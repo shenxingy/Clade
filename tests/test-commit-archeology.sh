@@ -194,6 +194,23 @@ seed_cache() {
   reset_scan_log
 }
 age_cache() { touch -t 200001010000 "$(lessons_file)"; }
+# A dead holder is reclaimed only once its lock is past the grace period.
+age_lock() { touch -t 200001010000 "$(lock_dir)/pid"; }
+dead_pid() {
+  local pid
+  bash -c 'exit 0' &
+  pid=$!
+  wait "$pid" 2>/dev/null
+  printf '%s\n' "$pid"
+}
+wait_for_dead() {
+  local pid="$1" waited=0
+  while kill -0 "$pid" 2>/dev/null && [[ "$waited" -lt 100 ]]; do
+    sleep 0.05
+    waited=$((waited + 1))
+  done
+  ! kill -0 "$pid" 2>/dev/null
+}
 move_head() { commit_file "$PROJ" moved.txt 'feat: move HEAD for refresh'; }
 
 make_project
@@ -270,11 +287,11 @@ assert_eq "$(scan_count)" '1' 'two concurrent injections launch exactly one scan
 assert_contains "$(< "$SANDBOX/concurrent-1.out")" 'wiring-gap' 'first concurrent caller gets cached lessons'
 assert_contains "$(< "$SANDBOX/concurrent-2.out")" 'wiring-gap' 'second concurrent caller gets cached lessons'
 
-printf '# slow refresher start: the lock never names a dead holder during the hand-off\n'
+printf '# slow refresher start: a dead holder in a young lock is not reclaimed during the hand-off\n'
 # The first caller exits long before its refresher records itself (4 s start
-# delay); a second caller arriving in between must see a live holder. Before the
-# fix the lock held the exited caller's PID, the second caller reclaimed it and
-# launched another scan - the hosted-CI flake on #209 and #211.
+# delay), so the lock names a dead PID; a second caller arriving in between must
+# leave that young lock alone. #210 let it reclaim the lock and launch another
+# scan - the hosted-CI flake on #209 and #211.
 seed_cache
 age_cache
 move_head
@@ -302,6 +319,72 @@ assert_eq "$RC" '0' 'a refresh with nothing to do exits zero'
 assert_eq "$(scan_count)" '0' 'a refresh whose HEAD the cache already holds skips the scan'
 assert_eq "$([[ -d "$(lock_dir)" ]] && echo held || echo released)" 'released' 'a skipped refresh still releases the lock'
 
+printf '# young lock: a dead PID is not reclaimed inside the grace period\n'
+seed_cache
+age_cache
+move_head
+mkdir -p "$(lock_dir)"
+YOUNG_PID=$(dead_pid)
+printf '%s\n' "$YOUNG_PID" > "$(lock_dir)/pid"
+YOUNG_OUT=$(COMMIT_ARCH_TEST_SCAN_DELAY=0 run_arch --inject)
+assert_contains "$YOUNG_OUT" 'wiring-gap' 'a young lock does not suppress cached output'
+sleep 0.5
+assert_eq "$(scan_count)" '0' 'a young lock naming a dead PID launches no scan'
+assert_eq "$(head -1 "$(lock_dir)/pid" 2>/dev/null)" "$YOUNG_PID" 'a young lock keeps the PID it was given'
+rm -f "$(lock_dir)/pid"
+rmdir "$(lock_dir)"
+
+printf '# forking setsid: the PID the caller saw exits before the refresher starts\n'
+# util-linux setsid forks when its caller leads a process group: the process the
+# caller knows as $! exits at once and the refresher carries on as its child. A
+# second caller arriving before the refresher records itself finds a dead PID in
+# a live refresh's lock. The stand-in below forks unconditionally; the refresher
+# takes 2 s to start and the second caller's own scan would take 4 s, so a
+# reclaim shows as two scans and a rewritten lock.
+FORK_SETSID_BIN="$SANDBOX/forking-setsid-bin"
+mkdir -p "$FORK_SETSID_BIN"
+cat > "$FORK_SETSID_BIN/setsid" <<'EOF'
+#!/usr/bin/env bash
+"$@" &
+exit 0
+EOF
+chmod +x "$FORK_SETSID_BIN/setsid"
+seed_cache
+age_cache
+move_head
+NEW_HEAD=$(git -C "$PROJ" rev-parse HEAD)
+PATH="$FORK_SETSID_BIN:$PATH" COMMIT_ARCH_TEST_REFRESH_START_DELAY=2 \
+  COMMIT_ARCH_TEST_SCAN_DELAY=1 run_arch --inject > "$SANDBOX/fork-1.out"
+RC1=$?
+FORK_HOLDER=$(head -1 "$(lock_dir)/pid" 2>/dev/null)
+if [[ "$FORK_HOLDER" =~ ^[0-9]+$ ]] && wait_for_dead "$FORK_HOLDER"; then
+  pass 'the PID in the lock has exited while the refresher is still starting'
+else
+  fail 'the PID in the lock has exited while the refresher is still starting' "holder='$FORK_HOLDER'"
+fi
+PATH="$FORK_SETSID_BIN:$PATH" COMMIT_ARCH_TEST_SCAN_DELAY=4 run_arch --inject > "$SANDBOX/fork-2.out"
+RC2=$?
+assert_eq "$RC1|$RC2" '0|0' 'both callers around a forking setsid exit zero'
+assert_eq "$(head -1 "$(lock_dir)/pid" 2>/dev/null)" "$FORK_HOLDER" 'the second caller leaves the starting refresh its lock'
+wait_for_scan_count 1
+wait_for_head "$NEW_HEAD"
+wait_for_lock_release
+sleep 0.5
+assert_eq "$(scan_count)" '1' 'a forking setsid still yields exactly one scan'
+# Report, not assert: whether this host's setsid forks for a background child is
+# the environment fact the case above stands in for.
+if command -v setsid >/dev/null 2>&1; then
+  setsid bash -c 'printf "%s\n" "$$" > "$1"' _ "$SANDBOX/setsid-probe.pid" </dev/null >/dev/null 2>&1 &
+  SETSID_SEEN=$!
+  if ! wait_for_nonempty "$SANDBOX/setsid-probe.pid"; then
+    printf '# environment: setsid probe did not report\n'
+  elif [[ "$(head -1 "$SANDBOX/setsid-probe.pid")" == "$SETSID_SEEN" ]]; then
+    printf '# environment: setsid does not fork for a background child here\n'
+  else
+    printf '# environment: setsid forks for a background child here\n'
+  fi
+fi
+
 printf '# stale lock: a paused reclaimer cannot delete a fresh PID\n'
 seed_cache
 age_cache
@@ -312,6 +395,7 @@ bash -c 'exit 0' &
 DEAD_PID=$!
 wait "$DEAD_PID" 2>/dev/null
 printf '%s\n' "$DEAD_PID" > "$(lock_dir)/pid"
+age_lock
 RECLAIM_LOG="$SANDBOX/reclaim.log"
 : > "$RECLAIM_LOG"
 (COMMIT_ARCH_TEST_RECLAIM_LOG="$RECLAIM_LOG" COMMIT_ARCH_TEST_RECLAIM_DELAY=1 \
@@ -347,6 +431,7 @@ bash -c 'exit 0' &
 DEAD_PID=$!
 wait "$DEAD_PID" 2>/dev/null
 printf '%s\n' "$DEAD_PID" > "$(lock_dir)/pid"
+age_lock
 HOLD_LOG="$SANDBOX/reclaim-held.log"
 : > "$HOLD_LOG"
 (COMMIT_ARCH_TEST_HOLD_LOG="$HOLD_LOG" COMMIT_ARCH_TEST_HOLD_DELAY=1 \
@@ -387,6 +472,7 @@ bash -c 'exit 0' &
 DEAD_PID=$!
 wait "$DEAD_PID" 2>/dev/null
 printf '%s\n' "$DEAD_PID" > "$(lock_dir)/pid"
+age_lock
 mkdir "$(lock_dir).reclaim"
 touch -t 200001010000 "$(lock_dir).reclaim"
 ABANDONED_OUT=$(COMMIT_ARCH_TEST_SCAN_DELAY=1 run_arch --inject)
@@ -448,7 +534,7 @@ fi
 wait_for_lock_release
 assert_eq "$(scan_count)" '1' 'nohup fallback scans exactly once'
 
-printf '# setsid preference and prompt PID handoff\n'
+printf '# setsid preference and an unblocked launch\n'
 REAL_SETSID=$(command -v setsid 2>/dev/null || true)
 if [[ -n "$REAL_SETSID" ]]; then
   SETSID_BIN="$SANDBOX/setsid-bin"
@@ -485,7 +571,7 @@ EOF
   SETSID_CALLS=$(grep -c . "$SANDBOX/setsid.log" 2>/dev/null)
   assert_eq "${SETSID_CALLS:-0}" '1' 'setsid is preferred when available'
   HANDOFF_SLEEPS=$(grep -c '^0.1$' "$SANDBOX/sleep.log" 2>/dev/null)
-  assert_le "${HANDOFF_SLEEPS:-0}" '2' 'PID handoff breaks promptly once the child owns the lock'
+  assert_eq "${HANDOFF_SLEEPS:-0}" '0' 'launching the refresher never waits for it'
 else
   printf 'setsid unavailable: preferred-launch assertions not applicable\n'
 fi
