@@ -21,6 +21,7 @@
 | Hook | Trigger | What it does |
 |------|---------|-------------|
 | `session-context.sh` | SessionStart | Injects git state, model guidance, correction rules into context |
+| `memory-staleness.sh` | SessionStart | Prints up to 10 memories whose anchored paths changed, or one incomplete-budget notice; never rewrites `MEMORY.md` |
 | `pre-tool-guardian.sh` | PreToolUse (Bash) | Blocks dangerous commands (force-push, rm -rf, migrations outside dev mode). Inside a subagent, warns — never blocks — when a foreground wait (`until … sleep`, `sleep 600`, `tail -f`, …) can outlive the subagent prompt cache (5 minutes by default) |
 | `linter-config-guard.sh` | PreToolUse (Edit/Write) | Guards linter config files from accidental overwrite |
 | `workflow-preflight.sh` | PreToolUse (Workflow) | Runs `check-workflow-script.py --hook` on the launch. **Denies** args that carry a placeholder sentinel instead of data (`"__FILL__"`, `{"__see": …}`, `"(see packet file)"`, a lone `...`): 10 of 324 launches on one host did and one ran to "completed" on it; replayed over all 370 launches in that host's transcripts (2026-09-22 → 10-23), it denies 9 of those 10 plus one later placeholder launch, and no real data. **Warns** (the launch proceeds) when a stringified prior result is `.slice()`d into a prompt with no `log()` naming the cut, when `args` is a JSON-encoded string, and when the profile's usage cache is under 10 minutes old and reads 7-day ≥ 90% or 5-hour ≥ 85% — refreshing that cache first with `claude-usage-watch.py --refresh-only`, because the status line rarely writes it. Reads inline `script`, `scriptPath` and saved `name` launches. Fails open on every error |
@@ -325,10 +326,10 @@ clade/
 ├── uninstall.sh             # Removes what install.sh deployed
 ├── configs/                 # ← THE PRODUCT CENTER
 │   ├── skills/              # 148 skill definitions
-│   ├── hooks/               # 35 event hooks
+│   ├── hooks/               # 36 event hooks
 │   ├── agents/              # 40 agent definitions
 │   ├── output-styles/       # 2 output styles (system-prompt register; opt-in)
-│   └── scripts/             # 44 shell + 55 Python utilities
+│   └── scripts/             # 44 shell + 56 Python utilities
 ├── plugins/clade/           # Native Codex plugin (30 generated core skills + hooks)
 ├── .agents/plugins/         # Codex marketplace manifest
 ├── orchestrator/            # ← THE EXECUTION ADAPTER
