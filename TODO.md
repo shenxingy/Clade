@@ -2211,7 +2211,7 @@ tiering are real but unmeasured. Each needs a paired A/B before rollout.
   check the prefix syntax live), or give `wf-reader` a frontmatter PreToolUse
   Bash hook; and the smoke test must show a write command (`touch`, `git
   commit`, `gh pr comment`) is denied.
-- [ ] 🔵 `doc-align.py sync` rewrites a count inside a DATED verification row and leaves the date alone. On 2026-10-23 it turned VERIFY.md H6/SH1 into "all 35 hooks pass" under a 2026-07-13 date, a day the 33rd hook did not exist; the date was then set by hand after `bash -n` was re-run on all 33. Letting the tool bump the date was rejected: it would date a check the tool never ran. Candidate: when a fix lands in a table row that carries a `YYYY-MM-DD`, print the row with "re-verify, then update its date" (report-only), plus a self-test case and its mutation.
+- [ ] 🔵 `doc-align.py sync` rewrites a count inside a DATED verification row and leaves the date alone. On 2026-10-23 it rewrote the hook count in VERIFY.md H6/SH1 to 35 under a 2026-07-13 date, a day the 33rd hook did not exist; the date was then set by hand after `bash -n` was re-run on all 33. Letting the tool bump the date was rejected: it would date a check the tool never ran. Candidate: when a fix lands in a table row that carries a `YYYY-MM-DD`, print the row with "re-verify, then update its date" (report-only), plus a self-test case and its mutation.
   - [x] Control half DONE 2026-10-23 — `wf-reader.md` wires a frontmatter
     PreToolUse Bash hook, `bash ~/.claude/hooks/wf-reader-guard.sh || exit 2`.
     Verified in the 2.1.283 binary: frontmatter `hooks:` is parsed for agents

@@ -19,6 +19,14 @@
             "command": "~/.claude/hooks/session-context.sh",
             "timeout": 10,
             "statusMessage": "Loading project context..."
+          },
+          {
+            "id": "memory-staleness",
+            "description": "Print memories whose declared path/glob or commit anchors changed in git. Read-only: never rewrites the multi-host synced MEMORY.md index.",
+            "type": "command",
+            "command": "~/.claude/hooks/memory-staleness.sh",
+            "timeout": 5,
+            "statusMessage": "Checking memory anchors..."
           }
         ]
       },

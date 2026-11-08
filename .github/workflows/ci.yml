@@ -513,6 +513,13 @@ jobs:
       - name: Run post-compact-reinject tests
         run: bash tests/test-post-compact-reinject.sh
 
+      # Auto-memory anchors: paths changed since the memory (or since its
+      # commit baseline), deleted paths and unknown baselines print STALE;
+      # malformed frontmatter is safe, review is age-filtered, git work and the
+      # hook output are bounded, and MEMORY.md is never rewritten.
+      - name: Run memory-staleness tests
+        run: bash tests/test-memory-staleness.sh
+
       # Context-budget warning delivery (Round-4 dead-code fix): drain +
       # at-most-once, task-id sanitizer, symlink refusal, no-env/no-file no-ops
       - name: Run context-warning-drain tests
