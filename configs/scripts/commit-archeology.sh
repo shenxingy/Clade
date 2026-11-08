@@ -37,6 +37,8 @@ WINDOW_DAYS="${COMMIT_ARCH_WINDOW:-60}"
 CACHE_HOURS="${COMMIT_ARCH_CACHE_HOURS:-24}"
 TOP_N="${COMMIT_ARCH_TOP_N:-4}"
 MIN_OCCURRENCES="${COMMIT_ARCH_MIN:-3}"
+# A refresh lock or reclaim mutex younger than this is never taken from its holder.
+LOCK_GRACE_SECONDS=30
 
 mkdir -p "$LESSONS_DIR" 2>/dev/null
 
@@ -247,9 +249,36 @@ scan() {
 }
 
 # ─── Background refresh ───────────────────────────────────────────────
+# lock_is_young <path> — true while <path> was written within LOCK_GRACE_SECONDS.
+# An unreadable mtime counts as young: a lock is left alone rather than stolen.
+lock_is_young() {
+  local mtime
+  if mtime=$(stat -c %Y "$1" 2>/dev/null); then :
+  elif mtime=$(stat -f %m "$1" 2>/dev/null); then :
+  else return 0
+  fi
+  [[ "$(( $(date +%s) - mtime ))" -lt "$LOCK_GRACE_SECONDS" ]]
+}
+
+# take_lock <dir> — create <dir> holding a pid file with our PID. Of any number
+# of concurrent callers exactly one succeeds, because the pid file is created
+# O_EXCL (bash noclobber). mkdir alone does not decide it: uutils mkdir before
+# 0.11.0, the default mkdir on Ubuntu 26.04 (0.10.0), reports success to a racer
+# whose mkdir(2) failed with EEXIST (uutils #13970) - 39 of 300 four-way races
+# on a hosted runner had two winners, and two sessions each launched a scan.
+take_lock() {
+  mkdir "$1" 2>/dev/null && ( set -C; printf '%s\n' "$$" > "$1/pid" ) 2>/dev/null
+}
+
+# drop_lock <dir> — remove a lock taken with take_lock.
+drop_lock() {
+  rm -f "$1/pid"
+  rmdir "$1" 2>/dev/null
+}
+
 start_refresh() {
-  local script_dir runtime_lib state lock pid recorded="" waited=0
-  local reclaim current_pid mtime now
+  local script_dir runtime_lib state lock pid
+  local reclaim current_pid
   script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)
   runtime_lib="$script_dir/../hooks/lib/runtime-dir.sh"
   # shellcheck source=/dev/null
@@ -257,37 +286,36 @@ start_refresh() {
   state=$(clade_state_dir commit-archeology 2>/dev/null) || return 0
   lock="$state/$(slug "$(pwd)").lock"
 
-  if ! mkdir "$lock" 2>/dev/null; then
+  if ! take_lock "$lock"; then
     pid=$(head -1 "$lock/pid" 2>/dev/null)
     [[ "$pid" =~ ^[0-9]+$ ]] || return 0
+    # Until the refresher has started and recorded its own PID, the lock names a
+    # process that has already exited: the caller that spawned it, which returns
+    # at once. A dead PID is therefore no evidence of an abandoned lock until the
+    # lock is older than any startup. #212 recorded $! instead, which names the
+    # refresher only if setsid does not fork (util-linux setsid forks when its
+    # caller leads a process group, as a job under job control does).
+    lock_is_young "$lock/pid" && return 0
     kill -0 "$pid" 2>/dev/null && return 0
 
     reclaim="$lock.reclaim"
-    if ! mkdir "$reclaim" 2>/dev/null; then
-      if mtime=$(stat -c %Y "$reclaim" 2>/dev/null); then :
-      elif mtime=$(stat -f %m "$reclaim" 2>/dev/null); then :
-      else return 0
-      fi
-      now=$(date +%s)
-      [[ "$((now - mtime))" -lt 30 ]] && return 0
-      rmdir "$reclaim" 2>/dev/null || return 0
-      mkdir "$reclaim" 2>/dev/null || return 0
+    if ! take_lock "$reclaim"; then
+      lock_is_young "$reclaim" && return 0
+      drop_lock "$reclaim" || return 0
+      take_lock "$reclaim" || return 0
     fi
     current_pid=$(head -1 "$lock/pid" 2>/dev/null)
     if [[ "$current_pid" != "$pid" ]] || kill -0 "$current_pid" 2>/dev/null; then
-      rmdir "$reclaim" 2>/dev/null
+      drop_lock "$reclaim"
       return 0
     fi
     rm -f "$lock/pid"
     rmdir "$lock" 2>/dev/null
-    if ! mkdir "$lock" 2>/dev/null; then
-      rmdir "$reclaim" 2>/dev/null
+    if ! take_lock "$lock"; then
+      drop_lock "$reclaim"
       return 0
     fi
-    printf '%s\n' "$$" > "$lock/pid"
-    rmdir "$reclaim" 2>/dev/null
-  else
-    printf '%s\n' "$$" > "$lock/pid"
+    drop_lock "$reclaim"
   fi
 
   if command -v setsid >/dev/null 2>&1; then
@@ -297,15 +325,8 @@ start_refresh() {
     nohup bash "$script_dir/$(basename "${BASH_SOURCE[0]}")" --refresh "$lock" \
       </dev/null >/dev/null 2>&1 &
   fi
-  while [[ -d "$lock" && "$waited" -lt 10 ]]; do
-    recorded=""
-    IFS= read -r recorded 2>/dev/null < "$lock/pid" || true
-    if [[ "$recorded" =~ ^[0-9]+$ && "$recorded" != "$$" ]]; then
-      break
-    fi
-    sleep 0.1
-    waited=$((waited + 1))
-  done
+  # Our PID stays in the lock until the refresher records its own; the grace
+  # period above, not the PID, protects that hand-off.
   disown %% 2>/dev/null || true
 }
 
@@ -314,6 +335,9 @@ run_refresh() {
   [[ -n "$REFRESH_LOCK_DIR" && -d "$REFRESH_LOCK_DIR" ]] || return 0
   trap 'rm -f "$REFRESH_LOCK_DIR/pid"; rmdir "$REFRESH_LOCK_DIR" 2>/dev/null' EXIT
   printf '%s\n' "$$" > "$REFRESH_LOCK_DIR/pid"
+  # A caller that judged the cache stale just before another refresh finished and
+  # released the lock arrives here with nothing left to do.
+  [[ "$(head -1 "$(lessons_path).head" 2>/dev/null)" == "$(git rev-parse HEAD 2>/dev/null)" ]] && return 0
   scan
 }
 

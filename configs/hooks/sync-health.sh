@@ -14,16 +14,29 @@
 #   8. a trailing streak of sync-push REFUSED lines
 #   9. commits behind the fetched upstream, or stale unpushed commits ahead
 #  10. MEMORY.md files approaching Claude Code's native index cap
+#  11. sync-push's per-host backoff: paused pushes, probe expiry or bad state
 #
 # Cases 1-3 emit a single-line warning to stderr (visible in transcript) and
 # write a one-liner to ~/.claude/.sync-health.log so a human can grep history.
 # Case 4 prints to stdout, which SessionStart adds to the session's context: it
 # needs a hand merge, and the linker that found it runs in an async hook whose
-# own output reaches nobody. Cases 5-10 also print one line per finding to
+# own output reaches nobody. Cases 5-11 also print one line per finding to
 # stdout and append that finding to the health log when sync is configured.
-# Case 10 is stdout-only without a config so it cannot arm Case 1's heuristic.
+# Case 10 is stdout-only without a config so it cannot arm Case 1's heuristic;
+# Case 11's pre-existing backoff file already establishes prior sync setup.
 
 set -euo pipefail
+
+HOOK_LIBDIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib"
+# shellcheck source=/dev/null
+source "$HOOK_LIBDIR/sync-push-backoff.sh" 2>/dev/null || true
+
+_sync_epoch_local() {
+  python3 -c 'from datetime import datetime; import sys; print(datetime.fromtimestamp(int(sys.argv[1])).astimezone().strftime("%Y-%m-%d %H:%M:%S %Z"))' \
+    "$1" 2>/dev/null ||
+    date -r "$1" '+%Y-%m-%d %H:%M:%S %Z' 2>/dev/null ||
+    printf 'epoch %s\n' "$1"
+}
 
 CLAUDE_DIR="$HOME/.claude"
 SYNC_CONFIG="$CLAUDE_DIR/.sync-config"
@@ -94,9 +107,12 @@ _refused_epoch() {
   printf '%s\n' "$epoch"
 }
 
-# Case 1: sync was set up on this host previously (heuristic: NFS dir or
-# log file exists) but config file is gone.
-if [[ ! -f "$SYNC_CONFIG" ]]; then
+# Load the store path for Case 11's recovery hints. Case 1: sync was set up on
+# this host previously (heuristic: NFS dir or log file exists) but config is gone.
+if [[ -f "$SYNC_CONFIG" ]]; then
+# shellcheck source=/dev/null
+source "$SYNC_CONFIG"
+else
   if [[ -d "$HOME/shared-nfs/claude-dotfiles/.git" ]] || \
      [[ -d "$HOME/claude-dotfiles/.git" ]] || \
      [[ -f "$LOG" ]]; then
@@ -105,11 +121,37 @@ if [[ ! -f "$SYNC_CONFIG" ]]; then
   SYNC_DIR=""
 fi
 
+# Case 11: the per-host circuit breaker is a local file, so report it before
+# any store probes. The first timestamp can be a claimed probe's start time.
+_backoff_status=absent
+_backoff_reason=""
+if declare -F sync_push_backoff_active >/dev/null 2>&1; then
+  sync_push_backoff_active || true
+fi
+BACKOFF_STORE="${SYNC_DIR:-the sync store (SYNC_DIR in ~/.claude/.sync-config)}"
+BACKOFF_MANUAL_FIX="run ~/.claude/scripts/sync-push.sh by hand (manual pushes always run and clear the backoff file on success)"
+BACKOFF_FIX="inspect $CONFLICT_LOG and $BACKOFF_STORE, then $BACKOFF_MANUAL_FIX"
+case "$_backoff_reason" in
+  unmerged-paths|conflict-markers)
+    BACKOFF_FIX="resolve $_backoff_reason in $BACKOFF_STORE, then $BACKOFF_MANUAL_FIX"
+    ;;
+esac
+case "$_backoff_status" in
+  active)
+    BACKOFF_UNTIL_LOCAL=$(_sync_epoch_local "$_backoff_until")
+    notice "sync-push backoff: reason=$_backoff_reason consecutive-failures=$_backoff_failures; pushes paused until $BACKOFF_UNTIL_LOCAL; fix: $BACKOFF_FIX"
+    ;;
+  expired)
+    notice "sync-push backoff: reason=$_backoff_reason consecutive-failures=$_backoff_failures; window expired, next write probes; fix: $BACKOFF_FIX"
+    ;;
+  unreadable)
+    notice "sync-push backoff file is unreadable: $_backoff_file; fix: repair or remove the file, then $BACKOFF_MANUAL_FIX"
+    ;;
+esac
+
 # The index watch below is useful without a store; every store check stays
 # behind this guard, and Case 1 otherwise behaves exactly as it did before.
 if [[ -f "$SYNC_CONFIG" ]]; then
-# shellcheck source=/dev/null
-source "$SYNC_CONFIG"
 
 # Case 2: config present, but synced paths are real dirs (symlinks broken).
 broken=()

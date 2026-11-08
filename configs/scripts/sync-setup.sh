@@ -134,19 +134,18 @@ projects-memory/**/MEMORY.md          merge=union
 projects-memory/*/.project-paths merge=union
 ATTRS
 
-# Quarantine files are local recovery state, not dotfiles to replicate. Preserve
-# an existing ignore file and append only patterns that are absent.
-_SYNC_GITIGNORE="$SYNC_DIR/.gitignore"
-for _sync_ignore in '*.corrupt.*' 'skills/.trash/'; do
-  if grep -qxF "$_sync_ignore" "$_SYNC_GITIGNORE" 2>/dev/null; then
-    continue
-  fi
-  if [[ -s "$_SYNC_GITIGNORE" ]] && [[ -n "$(tail -c 1 "$_SYNC_GITIGNORE")" ]]; then
-    printf '\n' >> "$_SYNC_GITIGNORE"
-  fi
-  printf '%s\n' "$_sync_ignore" >> "$_SYNC_GITIGNORE"
-done
-unset _sync_ignore _SYNC_GITIGNORE
+# Preserve existing ignore lines and comments; append only absent defaults.
+_SYNC_STORE_HEAL="$(cd "$(dirname "$0")" 2>/dev/null && pwd)/sync-store-heal.sh"
+# shellcheck source=/dev/null
+source "$_SYNC_STORE_HEAL" 2>/dev/null || {
+  echo "sync-setup: could not load $_SYNC_STORE_HEAL for $SYNC_DIR/.gitignore; no initial commit was made." >&2
+  exit 1
+}
+sync_store_heal_gitignore "$SYNC_DIR/.gitignore" || {
+  echo "sync-setup: could not write $SYNC_DIR/.gitignore; no initial commit was made." >&2
+  exit 1
+}
+unset _SYNC_STORE_HEAL
 
 # Add/update GitHub remote if we have a URL
 if [[ -n "$SYNC_REPO_URL" ]]; then

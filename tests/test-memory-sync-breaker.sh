@@ -70,10 +70,18 @@ new_store() {
   printf 'SYNC_BACKEND=nfs\nSYNC_DIR=%s\n' "$STORE" > "$H/.claude/.sync-config"
   printf -- '- rule one\n' > "$STORE/corrections/rules.md"
   printf 'base\n' > "$STORE/notes.txt"
-  # A store as current sync-setup.sh creates it: the quarantine ignores and the
-  # project-paths union attribute are already present, so sync-push.sh's heal
-  # writes nothing and a no-op run stays a no-op.
-  printf '*.corrupt.*\nskills/.trash/\n' > "$STORE/.gitignore"
+  # All default patterns and the project-paths union attribute are present
+  # without the helper's comments, so a no-op store stays byte-identical and a
+  # no-op run stays offline.
+  printf '%s\n' \
+    'corrections/history.jsonl' \
+    '*.bak-*' \
+    '.backups/' \
+    'skills/synced/' \
+    '__pycache__/' \
+    '*.py[cod]' \
+    '*.corrupt.*' \
+    'skills/.trash/' > "$STORE/.gitignore"
   printf 'projects-memory/*/.project-paths merge=union\n' > "$STORE/.gitattributes"
   git init -q "$STORE"
   git -C "$STORE" config user.email test@example.com
@@ -613,6 +621,22 @@ t_robustness() {
   run_push 8001
   assert_eq "$(backoff_line)" "8001 2 conflict-markers" \
     "a newline-less prior count is still incremented"
+
+  new_store missing-library
+  install_stub
+  mkdir -p "$H/hooks-without-lib"
+  cp "$HOOK" "$H/hooks-without-lib/memory-sync.sh"
+  SAVED_HOOK="$HOOK"
+  HOOK="$H/hooks-without-lib/memory-sync.sh"
+  fire_write 8100 "$H/.claude/skills/demo/SKILL.md"
+  HOOK="$SAVED_HOOK"
+  assert_eq "$HOOK_RC" "0" "a missing backoff library cannot abort memory-sync"
+  check "a missing backoff library fails open and pushes" wait_count 1
+  if grep -qE 'command not found|No such file or directory' "$H/hook.err"; then
+    fail "a missing backoff library stays silent" "$(cat "$H/hook.err")"
+  else
+    pass "a missing backoff library stays silent"
+  fi
 }
 
 t_defaults() {
@@ -656,11 +680,14 @@ if [[ -z "$MSB_MUTANT" && -z "${MSB_SKIP_MUTATIONS:-}" ]]; then
     local expect="$1" target="$2" name="$3" only="$4" dir="$MUT_DIR/m$NMUT" src
     mkdir -p "$dir/scripts" "$dir/hooks/lib"
     cp "$REPO_ROOT/configs/scripts/sync-push.sh" "$dir/scripts/sync-push.sh"
+    cp "$REPO_ROOT/configs/scripts/sync-store-heal.sh" "$dir/scripts/sync-store-heal.sh"
     cp "$REPO_ROOT/configs/hooks/memory-sync.sh" "$dir/hooks/memory-sync.sh"
     cp "$REPO_ROOT/configs/hooks/lib/runtime-dir.sh" "$dir/hooks/lib/runtime-dir.sh"
+    cp "$REPO_ROOT/configs/hooks/lib/sync-push-backoff.sh" "$dir/hooks/lib/sync-push-backoff.sh"
     case "$target" in
       push) src="$dir/scripts/sync-push.sh" ;;
       hook) src="$dir/hooks/memory-sync.sh" ;;
+      lib) src="$dir/hooks/lib/sync-push-backoff.sh" ;;
     esac
     shift 4
     while [[ "$#" -ge 2 ]]; do
@@ -721,21 +748,28 @@ exit 0'
     '2>/dev/null || {
     rm -f "$_backoff_tmp" 2>/dev/null || true
   }' '2>/dev/null'
-  mutation red hook "tripling rather than doubling the window" half_open \
+  mutation red lib "tripling rather than doubling the window" half_open \
     '_window=$((_window * 2))' '_window=$((_window * 3))'
   mutation red push "the consecutive-failure increment" failures \
     '"$((previous + 1))"' '"1"'
+  mutation red hook "the missing backoff library source guard" robustness \
+    'source "$HOOK_LIBDIR/sync-push-backoff.sh" 2>/dev/null || true' \
+    'source "$HOOK_LIBDIR/sync-push-backoff.sh"'
+  mutation red hook "the missing backoff library function guard" robustness \
+    'if declare -F sync_push_backoff_active >/dev/null 2>&1 && sync_push_backoff_active; then' \
+    'if sync_push_backoff_active; then'
   mutation red hook "the circuit-breaker call" gate \
-    'if sync_push_backoff_active; then' 'if false; then'
-  mutation red hook "the active-window comparison" gate \
+    'if declare -F sync_push_backoff_active >/dev/null 2>&1 && sync_push_backoff_active; then' \
+    'if false; then'
+  mutation red lib "the active-window comparison" gate \
     'if [[ $((_now - _failed_at)) -lt "$_window" ]]; then' 'if false; then'
-  mutation red hook "exponential doubling" half_open \
+  mutation red lib "exponential doubling" half_open \
     'while [[ "$_remaining" -gt 0 && "$_window" -lt "$_max" ]]; do' 'while false; do'
-  mutation red hook "the maximum-window cap" robustness \
+  mutation red lib "the maximum-window cap" robustness \
     '[[ "$_window" -gt "$_max" ]] && _window="$_max"' ':'
-  mutation red hook "timestamp validation" robustness \
+  mutation red lib "timestamp validation" robustness \
     "case \"\$_failed_at\" in ''|*[!0-9]*) return 1 ;; esac" ':'
-  mutation red hook "failure-count validation" robustness \
+  mutation red lib "failure-count validation" robustness \
     "case \"\$_failures\" in ''|*[!0-9]*) return 1 ;; esac" ':'
   mutation red push "the missing-backoff fast path" failures \
     'if [[ -f "$SYNC_PUSH_BACKOFF" ]]; then' 'if true; then'
@@ -747,22 +781,22 @@ exit 0'
       ''|*[!0-9]*) ;;
       *) previous=\$count ;;
     esac" 'previous=$count'
-  mutation red hook "the missing-file fast path" robustness \
+  mutation red lib "the missing-file fast path" robustness \
     '[[ -f "$_file" ]] || return 1' ':'
-  mutation red hook "the complete-state shape check" robustness \
+  mutation red lib "the complete-state shape check" robustness \
     '[[ "$_failures" -ge 1 && -n "$_reason" && -z "$_extra" ]] || return 1' ':'
-  mutation red hook "base-window validation" robustness \
+  mutation red lib "base-window validation" robustness \
     "case \"\$_base\" in ''|*[!0-9]*|0) _base=1800 ;; esac" ':'
-  mutation red hook "the zero-base guard" robustness \
+  mutation red lib "the zero-base guard" robustness \
     '*[!0-9]*|0) _base=1800' '*[!0-9]*) _base=1800'
-  mutation red hook "maximum-window validation" robustness \
+  mutation red lib "maximum-window validation" robustness \
     "case \"\$_max\" in ''|*[!0-9]*) _max=86400 ;; esac" ':'
-  mutation red hook "clock-override validation" robustness \
+  mutation red lib "clock-override validation" robustness \
     "case \"\$_now\" in ''|*[!0-9]*) _now=\$(date +%s) ;; esac" ':'
-  mutation red hook "the default 30-minute base" defaults \
+  mutation red lib "the default 30-minute base" defaults \
     'local _base="${CLADE_SYNC_PUSH_BACKOFF_BASE_SECONDS:-1800}"' \
     'local _base="${CLADE_SYNC_PUSH_BACKOFF_BASE_SECONDS:-60}"'
-  mutation red hook "the default 24-hour cap" defaults \
+  mutation red lib "the default 24-hour cap" defaults \
     'local _max="${CLADE_SYNC_PUSH_BACKOFF_MAX_SECONDS:-86400}"' \
     'local _max="${CLADE_SYNC_PUSH_BACKOFF_MAX_SECONDS:-240}"'
 
