@@ -12,16 +12,5 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4.3.1
-      - name: Environment
-        run: |
-          nproc; bash --version | head -1; setsid --version; awk --version 2>&1 | head -1
-          ps -o pid,ppid,pgid,sid,args -p $$ -p $PPID
-      - name: Real suite up to the concurrent case, 25 runs
-        run: |
-          for i in $(seq 1 25); do echo "### run $i"; bash tests/probe-suite.sh 2>&1 | sed -n '/^===/,$p'; done
-      - name: Standalone concurrent loop, 30 iterations
-        run: ITERS=30 bash tests/probe-arch.sh
-      - name: Standalone under load, 3 parallel x 15
-        run: |
-          for k in 1 2 3; do ITERS=15 bash tests/probe-arch.sh > "probe-$k.out" 2>&1 & done; wait
-          cat probe-*.out
+      - name: Concurrent creation race, 300 rounds of 4
+        run: bash tests/probe-mkdir-race.sh
