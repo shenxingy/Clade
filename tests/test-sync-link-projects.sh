@@ -40,6 +40,9 @@
 #   lock       a second linker while one holds the lock does nothing (flock)
 #   limits     a store key past 200 characters; a .project-path climbing out
 #              of $HOME
+#   remote     two hosts share one origin at different paths; per-checkout paths,
+#              no-origin fallback, safe union migration and relinking, conflicts,
+#              private projects, dry-run checksums, discovery and budget
 #
 # The last suite mutates one guard at a time and requires red from the sections
 # that cover it. EXACTLY these are mutated (sync-link-projects.sh unless noted):
@@ -56,7 +59,12 @@
 #   profile projects dirs; $CLAUDE_CONFIG_DIR; the time budget; keeping
 #   conflicts across a deferred run; writing the conflict state file; removing
 #   it when nothing conflicts; the conflict log; its once-a-day dedup; the
-#   .project-path traversal guard; and sync-health.sh's conflict notice.
+#   .project-path/.project-paths traversal guard; remote scheme, user, slash,
+#   .git, scp-colon and host-case normalisation; origin adoption; discovery
+#   privacy; migration privacy, origin ownership, active destination, clash,
+#   verification and dry-run; migrated-link preservation; remote-prune privacy
+#   and matching-slug retention; migrated-entry link skip; private-copy metadata
+#   exclusion; .migrated-to key and target checks; and sync-health.sh's notice.
 #   Two only where the machine can show them: the lock (needs flock) and the
 #   200-character key cap (needs a short enough TMPDIR); a skip is printed.
 # NOT mutated: the de-duplication of projects dirs by physical path (a second
@@ -162,11 +170,14 @@ new_home() {
 store_commit() { (cd "$1/store" && git add -A && git commit -qm fixture) >/dev/null 2>&1; }
 git_repo() { mkdir -p "$1" && git -C "$1" init -q . >/dev/null 2>&1; }
 memdir() { printf '%s/.claude/projects/%s/memory' "$1" "$(slug_of "$2")"; }
+remote_key_of() { printf '%s' "repo-$1" | LC_ALL=C sed 's/[^A-Za-z0-9]/-/g'; }
 # run_slp HOME ARGS... — the linker, as sync-pull.sh runs it. Prefix
-# SLP_BUDGET=, SLP_CCD= (CLAUDE_CONFIG_DIR), SLP_PATH=, SLP_SHIM_MODE= to vary it.
+# SLP_BUDGET=, SLP_CCD= (CLAUDE_CONFIG_DIR), SLP_HOSTNAME=, SLP_PATH=,
+# SLP_SHIM_MODE= to vary it.
 run_slp() {
   local h=$1; shift
   HOME="$h" CLADE_RUNTIME_DIR="$h/.rt" CLAUDE_CONFIG_DIR="${SLP_CCD:-}" \
+    HOSTNAME="${SLP_HOSTNAME:-test-host}" \
     CLADE_SYNC_LINK_BUDGET="${SLP_BUDGET:-0}" PATH="${SLP_PATH:-$PATH}" \
     SLP_SHIM_MODE="${SLP_SHIM_MODE:-}" \
     bash "$SCRIPTS/sync-link-projects.sh" "$@" 2>&1
@@ -176,6 +187,17 @@ store_head() { git -C "$1/store" rev-parse HEAD 2>/dev/null; }
 target_of() { local t; t=$(readlink "$1" 2>/dev/null) || return 1; printf '%s' "${t%/}"; }
 real_dir() { [[ -d "$1" && ! -L "$1" ]]; }
 no_links_inside() { [[ -z "$(find "$1" -mindepth 1 -type l 2>/dev/null)" ]]; }
+snapshot_with_sums() {
+  (cd "$1" && {
+    find . -path ./store/.git -prune -o -print | LC_ALL=C sort
+    find . -path ./store/.git -prune -o -type f -exec cksum {} + | LC_ALL=C sort
+    find . -path ./store/.git -prune -o -type l -print | LC_ALL=C sort | while IFS= read -r f; do
+      printf '%s -> %s\n' "$f" "$(readlink "$f")"
+    done
+    git -C store status --porcelain
+    git -C store rev-parse HEAD
+  })
+}
 
 # PATH shims for the race cases. They wrap the real tools and act only when
 # SLP_SHIM_MODE names their case, so the linker under test is never edited.
@@ -754,9 +776,336 @@ else
 fi
 }
 
+# ─── remote: one repository identity, per-host paths, safe migration ──
+
+t_remote() {
+section "remote — two paths, one repository memory"
+
+new_home; HA=$H
+new_home; HB=$H
+printf 'SYNC_BACKEND=nfs\nSYNC_DIR=%s\n' "$HA/store" > "$HB/.claude/.sync-config"
+git_repo "$HA/projects/Clade"
+git -C "$HA/projects/Clade" remote add origin 'git@GitHub.com:Owner/Repo.git'
+git_repo "$HB/shenxingy-Clade"
+git -C "$HB/shenxingy-Clade" remote add origin 'https://git@github.com/Owner/Repo.git/'
+MA=$(memdir "$HA" "$HA/projects/Clade"); mkdir -p "$MA"
+printf 'written on aries\n' > "$MA/MEMORY.md"
+OUT_A=$(SLP_HOSTNAME=aries run_slp "$HA")
+RK=$(remote_key_of 'github.com/Owner/Repo')
+E="$HA/store/projects-memory/$RK"
+assert_eq "$(cat "$E/.project-remote" 2>/dev/null)" "github.com/Owner/Repo" \
+  "scheme, user, scp colon, .git, slash and host case normalise to one identity"
+assert_eq "$(target_of "$MA")" "$E" "host A adopts into the remote-keyed entry"
+check "a remote-keyed entry has no machine-specific .project-path" test ! -e "$E/.project-path"
+check "host A records its path relative to its HOME" \
+  grep -qFx "$(printf 'aries\tprojects/Clade')" "$E/.project-paths"
+assert_not_contains "$OUT_A" "conflict" "host A's adoption has no conflict"
+MB=$(memdir "$HB" "$HB/shenxingy-Clade"); mkdir -p "${MB%/memory}"
+OUT_B=$(SLP_HOSTNAME=shenxingy run_slp "$HB")
+assert_eq "$(target_of "$MB")" "$E" "host B discovers the same origin at its different path and links it"
+check "host B appends its own path without changing host A's" \
+  grep -qFx "$(printf 'shenxingy\tshenxingy-Clade')" "$E/.project-paths"
+assert_eq "$(grep -cFx "$(printf 'aries\tprojects/Clade')" "$E/.project-paths" 2>/dev/null)" "1" \
+  "host A's line is still there exactly once"
+printf 'visible through the shared identity\n' > "$MA/from-aries.md"
+assert_eq "$(cat "$MB/from-aries.md" 2>/dev/null)" "visible through the shared identity" \
+  "a memory written through host A is readable through host B"
+rm -rf "$HB/shenxingy-Clade"
+git_repo "$HB/moved/Clade"
+git -C "$HB/moved/Clade" remote add origin 'git@github.com:Owner/Repo.git'
+MM=$(memdir "$HB" "$HB/moved/Clade"); mkdir -p "$MM"; printf 'after a move\n' > "$MM/moved.md"
+OUT_MOVE=$(SLP_HOSTNAME=shenxingy run_slp "$HB")
+assert_eq "$(target_of "$MM")" "$E" "adopting after a real move adds the new checkout path"
+assert_eq "$(grep -c '^shenxingy' "$E/.project-paths" 2>/dev/null)" "2" \
+  "the old and new paths both remain: a missing NFS path is not a deleted checkout"
+check "the moved checkout's line is added" \
+  grep -qFx "$(printf 'shenxingy\tmoved/Clade')" "$E/.project-paths"
+check "the stale line is kept after the old directory really was removed" \
+  grep -qFx "$(printf 'shenxingy\tshenxingy-Clade')" "$E/.project-paths"
+assert_eq "$(target_of "$MB")" "$E" "the old memory link remains harmless beside the stale path"
+assert_eq "$(SLP_HOSTNAME=shenxingy run_slp "$HB")" "" "host B's next run is idempotent"
+assert_not_contains "$OUT_B" "conflict" "host B's discovery has no conflict"
+assert_not_contains "$OUT_MOVE" "conflict" "the moved checkout has no conflict"
+
+section "remote migration — both hosts' legacy pairs converge"
+new_home; HA=$H
+new_home; HB=$H
+printf 'SYNC_BACKEND=nfs\nSYNC_DIR=%s\n' "$HA/store" > "$HB/.claude/.sync-config"
+git_repo "$HA/projects/Clade"
+git -C "$HA/projects/Clade" remote add origin 'git@github.com:Owner/Repo.git'
+git_repo "$HB/shenxingy-Clade"
+git -C "$HB/shenxingy-Clade" remote add origin 'https://github.com/Owner/Repo.git'
+PM="$HA/store/projects-memory"; LA="$PM/projects-Clade"; LB="$PM/shenxingy-Clade"; E="$PM/$RK"
+mkdir -p "$LA" "$LB"
+printf 'projects/Clade\n' > "$LA/.project-path"; printf 'from aries\n' > "$LA/aries.md"
+printf 'shenxingy-Clade\n' > "$LB/.project-path"; printf 'from the Mac\n' > "$LB/mac.md"
+MA=$(memdir "$HA" "$HA/projects/Clade"); mkdir -p "${MA%/memory}"; ln -s "$LA" "$MA"
+MB=$(memdir "$HB" "$HB/shenxingy-Clade"); mkdir -p "${MB%/memory}"; ln -s "$LB" "$MB"
+store_commit "$HA"
+SLP_HOSTNAME=aries run_slp "$HA" >/dev/null
+SLP_HOSTNAME=shenxingy run_slp "$HB" >/dev/null
+assert_eq "$(target_of "$MA")" "$E" "host A retires projects-Clade onto the shared entry"
+assert_eq "$(target_of "$MB")" "$E" "host B retires shenxingy-Clade onto that same entry"
+assert_eq "$(cat "$LA/.migrated-to" 2>/dev/null)" "$RK" "host A's legacy entry remains marked"
+assert_eq "$(cat "$LB/.migrated-to" 2>/dev/null)" "$RK" "host B's legacy entry remains marked"
+assert_eq "$(cat "$MB/aries.md" 2>/dev/null)" "from aries" "host A's legacy memory is readable through host B"
+assert_eq "$(cat "$MA/mac.md" 2>/dev/null)" "from the Mac" "and host B's through host A"
+check "host A's legacy path is recorded beside its hostname" \
+  grep -qFx "$(printf 'aries\tprojects/Clade')" "$E/.project-paths"
+assert_eq "$(grep -cFx "$(printf 'shenxingy\tshenxingy-Clade')" "$E/.project-paths" 2>/dev/null)" "1" \
+  "host B's different legacy path is recorded once beside its hostname"
+N=$(find "$PM" -type d -name 'repo-*' -print | grep -c .)
+assert_eq "$N" "1" "the two legacy pairs produce exactly one remote-keyed entry"
+
+section "remote migration — union, marker, relink and preserved original"
+new_home
+PM="$H/store/projects-memory"
+git_repo "$H/projects/Clade"
+git -C "$H/projects/Clade" remote add origin 'git@github.com:Owner/Repo.git'
+L="$PM/projects-Clade"; E="$PM/$RK"
+mkdir -p "$L" "$E"
+printf 'projects/Clade\n' > "$L/.project-path"
+printf 'legacy only\n' > "$L/legacy.md"
+printf 'same\n' > "$L/shared.md"
+printf 'github.com/Owner/Repo\n' > "$E/.project-remote"
+printf 'remote only\n' > "$E/remote.md"
+printf 'same\n' > "$E/shared.md"
+M=$(memdir "$H" "$H/projects/Clade"); mkdir -p "${M%/memory}"; ln -s "$L" "$M"
+store_commit "$H"
+OUT=$(SLP_HOSTNAME=aries run_slp "$H")
+assert_eq "$(cat "$L/.migrated-to" 2>/dev/null)" "$RK" "the legacy entry stays and names its replacement"
+assert_eq "$(cat "$L/legacy.md" 2>/dev/null)" "legacy only" "legacy store content is never deleted"
+assert_eq "$(cat "$E/legacy.md" 2>/dev/null)" "legacy only" "legacy-only content reaches the remote entry"
+assert_eq "$(cat "$E/remote.md" 2>/dev/null)" "remote only" "remote-only content stays: the migration is a union"
+check "the remote entry does not inherit .project-path" test ! -e "$E/.project-path"
+check "migration records this host's path" grep -qFx "$(printf 'aries\tprojects/Clade')" "$E/.project-paths"
+assert_eq "$(target_of "$M")" "$E" "this host's slug is relinked to the remote entry"
+BK=$(ls -d "${M%/memory}"/memory.pre-sync-* 2>/dev/null | head -1)
+assert_eq "$(target_of "$BK")" "$L" "the original link is preserved beside the new one"
+assert_not_contains "$OUT" "claims the same project" "the retired legacy entry does not fight its replacement"
+HEAD1=$(store_head "$H")
+assert_eq "$(SLP_HOSTNAME=aries run_slp "$H")" "" "a migrated pair is quiet on the next run"
+assert_eq "$(store_head "$H")" "$HEAD1" "and makes no new commit"
+git_repo "$H/projects/other"
+MW=$(memdir "$H" "$H/projects/other"); mkdir -p "${MW%/memory}"; ln -s "$E" "$MW"
+SLP_HOSTNAME=aries run_slp "$H" >/dev/null
+check "a remote entry link at another project's slug is pruned" test ! -e "$MW"
+
+section "remote migration — a differing file blocks the whole entry"
+new_home
+PM="$H/store/projects-memory"
+git_repo "$H/projects/Clade"
+git -C "$H/projects/Clade" remote add origin 'git@github.com:Owner/Repo.git'
+L="$PM/projects-Clade"; E="$PM/$RK"
+mkdir -p "$L" "$E"
+printf 'projects/Clade\n' > "$L/.project-path"
+printf 'legacy version\n' > "$L/MEMORY.md"
+printf 'must not move\n' > "$L/legacy.md"
+printf 'github.com/Owner/Repo\n' > "$E/.project-remote"
+printf 'remote version\n' > "$E/MEMORY.md"
+M=$(memdir "$H" "$H/projects/Clade"); mkdir -p "${M%/memory}"; ln -s "$L" "$M"
+store_commit "$H"
+OUT=$(run_slp "$H")
+check "a conflict writes no migration marker" test ! -e "$L/.migrated-to"
+assert_eq "$(cat "$L/MEMORY.md")" "legacy version" "the legacy version is untouched"
+assert_eq "$(cat "$E/MEMORY.md")" "remote version" "the remote version is untouched"
+check "no other file from the conflicted entry moves" test ! -e "$E/legacy.md"
+assert_eq "$(target_of "$M")" "$L" "the old link stays while the migration is blocked"
+assert_contains "$OUT" "projects-memory/projects-Clade is not migrated to projects-memory/$RK" \
+  "the migration conflict names both entries"
+assert_contains "$OUT" "MEMORY.md" "and the differing file"
+check "the migration conflict reaches the state file" \
+  grep -qF "projects-memory/projects-Clade is not migrated to projects-memory/$RK" "$H/.claude/.sync-memory-conflicts"
+check "and the durable conflict log" \
+  grep -qF "projects-memory/projects-Clade is not migrated to projects-memory/$RK" "$H/.claude/.sync-conflicts.log"
+
+section "remote migration — a mismatched or retired destination is not taken over"
+new_home
+PM="$H/store/projects-memory"
+git_repo "$H/projects/Clade"
+git -C "$H/projects/Clade" remote add origin 'git@github.com:Owner/Repo.git'
+L="$PM/projects-Clade"; E="$PM/$RK"
+mkdir -p "$L" "$E"
+printf 'projects/Clade\n' > "$L/.project-path"; printf 'legacy\n' > "$L/legacy.md"
+printf 'github.com/Other/Repo\n' > "$E/.project-remote"
+M=$(memdir "$H" "$H/projects/Clade"); mkdir -p "$M"; printf 'local\n' > "$M/local.md"
+store_commit "$H"
+OUT=$(run_slp "$H")
+check "adoption does not take over a key carrying another origin" real_dir "$M"
+check "migration does not mark its source after the identity mismatch" test ! -e "$L/.migrated-to"
+check "neither local nor legacy content enters the mismatched entry" \
+  test ! -e "$E/local.md" -a ! -e "$E/legacy.md"
+assert_contains "$OUT" "already belongs to origin github.com/Other/Repo" "the adoption identity conflict is named"
+assert_contains "$OUT" "the destination belongs to origin github.com/Other/Repo" "the migration identity conflict is named"
+printf 'github.com/Owner/Repo\n' > "$E/.project-remote"
+printf 'repo-retired-target\n' > "$E/.migrated-to"
+OUT=$(run_slp "$H")
+check "a retired destination does not absorb a local adoption" real_dir "$M"
+check "or a legacy migration" test ! -e "$L/.migrated-to" -a ! -e "$E/legacy.md"
+assert_contains "$OUT" "the destination is not an active entry" "the retired destination conflict is named"
+
+section "remote migration — dry-run changes no byte"
+new_home
+PM="$H/store/projects-memory"
+git_repo "$H/projects/Clade"
+git -C "$H/projects/Clade" remote add origin 'git@github.com:Owner/Repo.git'
+L="$PM/projects-Clade"; E="$PM/$RK"
+mkdir -p "$L"; printf 'projects/Clade\n' > "$L/.project-path"; printf 'legacy\n' > "$L/MEMORY.md"
+M=$(memdir "$H" "$H/projects/Clade"); mkdir -p "${M%/memory}"
+store_commit "$H"
+BEFORE=$(snapshot_with_sums "$H")
+OUT=$(run_slp "$H" --dry-run)
+assert_eq "$(snapshot_with_sums "$H")" "$BEFORE" \
+  "full tree listing, every file cksum, every link target and git state are unchanged"
+assert_contains "$OUT" "would migrate projects-memory/projects-Clade -> projects-memory/$RK" \
+  "dry-run names the migration"
+assert_contains "$OUT" "would link $(slug_of "$H/projects/Clade")/memory -> projects-memory/$RK" \
+  "and the link that would replace the legacy one"
+assert_not_contains "$OUT" "would link $(slug_of "$H/projects/Clade")/memory -> projects-memory/projects-Clade" \
+  "and does not also claim it would link the entry it just retired"
+check "dry-run writes no conflict state or log" \
+  test ! -e "$H/.claude/.sync-memory-conflicts" -a ! -e "$H/.claude/.sync-conflicts.log"
+
+section "remote migration — private projects and no-origin fallback"
+new_home
+PM="$H/store/projects-memory"
+git_repo "$H/projects/diary"
+git -C "$H/projects/diary" remote add origin 'git@github.com:Owner/Private.git'
+RK_PRIVATE=$(remote_key_of 'github.com/Owner/Private')
+L="$PM/projects-diary"
+mkdir -p "$L"; printf 'projects/diary\n' > "$L/.project-path"; printf 'personal\n' > "$L/MEMORY.md"
+M=$(memdir "$H" "$H/projects/diary"); mkdir -p "${M%/memory}"; ln -s "$L" "$M"
+printf '%s\n' "$H/projects/diary" > "$H/.claude/private-projects"
+store_commit "$H"
+run_slp "$H" >/dev/null
+check "a private legacy entry is never migrated" test ! -e "$PM/$RK_PRIVATE"
+check "and gains no migration marker" test ! -e "$L/.migrated-to"
+check "privacy still detaches its existing store link" real_dir "$M"
+assert_eq "$(cat "$M/MEMORY.md")" "personal" "the private memory stays readable locally"
+check "without copying legacy metadata into the detached memory" test ! -e "$M/.project-path"
+
+new_home
+PM="$H/store/projects-memory"
+git_repo "$H/projects/chat"; mkdir -p "$H/projects/chat/.claude"
+: > "$H/projects/chat/.claude/conversation-mode"
+git -C "$H/projects/chat" remote add origin 'git@github.com:Owner/Private.git'
+E="$PM/$RK_PRIVATE"; mkdir -p "$E"
+printf 'github.com/Owner/Private\n' > "$E/.project-remote"; printf 'private remote\n' > "$E/MEMORY.md"
+M=$(memdir "$H" "$H/projects/chat"); mkdir -p "${M%/memory}"; ln -s "$E" "$M"
+store_commit "$H"
+run_slp "$H" >/dev/null
+check "a private project's remote-entry link is detached" real_dir "$M"
+check "remote identity metadata is not copied into private memory" \
+  test ! -e "$M/.project-remote" -a ! -e "$M/.project-paths"
+check "origin discovery does not record a private project's path" test ! -e "$E/.project-paths"
+printf 'test-host\tprojects/chat\n' > "$E/.project-paths"
+mv "$M" "${M%/memory}/memory.local-copy"
+ln -s "$E" "$M"
+run_slp "$H" >/dev/null
+check "a private remote entry with an explicit host path is detached too" real_dir "$M"
+check "and its remote metadata still does not enter the private copy" \
+  test ! -e "$M/.project-remote" -a ! -e "$M/.project-paths"
+
+new_home
+git_repo "$H/projects/no-origin"
+M=$(memdir "$H" "$H/projects/no-origin"); mkdir -p "$M"; printf 'local only\n' > "$M/MEMORY.md"
+run_slp "$H" >/dev/null
+E="$H/store/projects-memory/projects-no-origin"
+assert_eq "$(target_of "$M")" "$E" "no origin keeps today's path-keyed adoption"
+assert_eq "$(cat "$E/.project-path" 2>/dev/null)" "projects/no-origin" "and keeps .project-path"
+check "no-origin writes no remote or per-host metadata" \
+  test ! -e "$E/.project-remote" -a ! -e "$E/.project-paths" -a ! -e "$E/.migrated-to"
+
+section "remote discovery — every match, mismatches and unsafe paths"
+new_home
+PM="$H/store/projects-memory"
+git_repo "$H/projects/one"; git -C "$H/projects/one" remote add origin 'git@github.com:Owner/Repo.git'
+git_repo "$H/code/two"; git -C "$H/code/two" remote add origin 'git@github.com:Owner/Repo.git'
+E="$PM/$RK"; mkdir -p "$E"; printf 'github.com/Owner/Repo\n' > "$E/.project-remote"
+M1=$(memdir "$H" "$H/projects/one"); M2=$(memdir "$H" "$H/code/two")
+mkdir -p "${M1%/memory}" "${M2%/memory}"
+store_commit "$H"
+OUT=$(run_slp "$H" --verbose)
+check "the first local checkout is recorded" \
+  grep -qFx "$(printf 'test-host\tprojects/one')" "$E/.project-paths"
+assert_eq "$(grep -cFx "$(printf 'test-host\tcode/two')" "$E/.project-paths" 2>/dev/null)" "1" \
+  "the second local checkout is recorded too"
+assert_eq "$(target_of "$M1")" "$E" "the first checkout is linked"
+assert_eq "$(target_of "$M2")" "$E" "the second checkout of the same origin is linked too"
+assert_not_contains "$OUT" "conflict" "multiple checkouts of one origin are not a conflict"
+
+new_home
+PM="$H/store/projects-memory"
+git_repo "$H/projects/other"; git -C "$H/projects/other" remote add origin 'git@github.com:Other/Repo.git'
+RK_WANTED=$(remote_key_of 'github.com/Owner/Wanted')
+E="$PM/$RK_WANTED"; mkdir -p "$E"; printf 'github.com/Owner/Wanted\n' > "$E/.project-remote"
+M=$(memdir "$H" "$H/projects/other"); mkdir -p "${M%/memory}"
+store_commit "$H"
+OUT=$(run_slp "$H" --verbose)
+check "a different origin is not recorded or linked" test ! -e "$E/.project-paths" -a ! -e "$M"
+assert_contains "$OUT" "no local project with origin" "the mismatch is explained"
+
+new_home
+PM="$H/store/projects-memory"; E="$PM/$RK_WANTED"
+mkdir -p "$SANDBOX/outside-$NHOME" "$E"
+printf 'github.com/Owner/Wanted\n' > "$E/.project-remote"
+printf 'test-host\t../outside-%s\n' "$NHOME" > "$E/.project-paths"
+store_commit "$H"
+run_slp "$H" >/dev/null
+WHY="links: $(find "$H/.claude/projects" -type l | tr '\n' ' ')"
+check "a per-host path climbing out of HOME is not linked" \
+  test -z "$(find "$H/.claude/projects" -type l)"
+
+new_home
+PM="$H/store/projects-memory"; L="$PM/projects-Clade"
+git_repo "$H/projects/Clade"
+mkdir -p "$L" "$H/store/outside"
+printf 'projects/Clade\n' > "$L/.project-path"
+printf '../outside\n' > "$L/.migrated-to"
+M=$(memdir "$H" "$H/projects/Clade"); mkdir -p "${M%/memory}"; ln -s "$L" "$M"
+store_commit "$H"
+run_slp "$H" >/dev/null
+assert_eq "$(target_of "$M")" "$L" "a traversal in .migrated-to cannot retire a link"
+
+section "remote migration — copy verification and the time budget"
+new_home
+PM="$H/store/projects-memory"
+git_repo "$H/projects/Clade"; git -C "$H/projects/Clade" remote add origin 'git@github.com:Owner/Repo.git'
+L="$PM/projects-Clade"; mkdir -p "$L"
+printf 'projects/Clade\n' > "$L/.project-path"; printf 'original\n' > "$L/MEMORY.md"
+M=$(memdir "$H" "$H/projects/Clade"); mkdir -p "${M%/memory}"; ln -s "$L" "$M"
+store_commit "$H"
+OUT=$(SLP_PATH="$SHIMBIN:$PATH" SLP_SHIM_MODE=corrupt run_slp "$H")
+check "a migration copy that does not verify gets no marker" test ! -e "$L/.migrated-to"
+assert_eq "$(target_of "$M")" "$L" "and the legacy link is not retired"
+assert_contains "$OUT" "migration copy of projects-memory/projects-Clade does not match" \
+  "the failed verification is reported"
+
+new_home
+PM="$H/store/projects-memory"
+for name in a1 a2; do
+  git_repo "$H/projects/$name"
+  git -C "$H/projects/$name" remote add origin "git@github.com:Owner/$name.git"
+  mkdir -p "$PM/projects-$name"
+  printf 'projects/%s\n' "$name" > "$PM/projects-$name/.project-path"
+  printf '%s memory\n' "$name" > "$PM/projects-$name/MEMORY.md"
+done
+store_commit "$H"
+OUT=$(SLP_BUDGET=1 SLP_PATH="$SHIMBIN:$PATH" SLP_SHIM_MODE=slow run_slp "$H")
+N=$(find "$PM" -name .migrated-to -print | grep -c .)
+assert_eq "$N" "1" "after the budget only one verified migration has happened"
+assert_contains "$OUT" "deferred: 1 memory directories" "the other migration waits for the next run"
+run_slp "$H" >/dev/null
+N=$(find "$PM" -name .migrated-to -print | grep -c .)
+assert_eq "$N" "2" "the next run finishes the deferred migration"
+}
+
 # ─── Run the sections ────────────────────────────────────────────────
 
-ALL_SECTIONS="adopt link legacy prune conflict private dryrun wiring ambiguous store profiles commit budget races lock limits"
+# The remote-regression suite reuses these hermetic fixtures and assertions.
+if [[ "${SLP_LIBRARY:-0}" -eq 1 ]]; then return 0; fi
+
+ALL_SECTIONS="adopt link legacy prune conflict private dryrun wiring ambiguous store profiles commit budget races lock limits remote"
 for _s in ${SLP_ONLY:-$ALL_SECTIONS}; do
   "t_$_s"
 done
@@ -820,9 +1169,9 @@ mutation red "privacy in the adopt pass" $L "private" \
       note' '    if false; then
       note'
 mutation red "privacy in the link pass" $L "private" \
-  '  if is_private "$proj"; then
-    note "projects-memory/$key: $proj is a private project, not linked"; continue
-  fi' ''
+  '    if is_private "$proj"; then
+      note "projects-memory/$key: $proj is a private project, not linked"; continue
+    fi' ''
 mutation red "privacy in the prune pass (.project-path entries)" $L "private" \
   '        is_private "$proj" || continue
         private=1' '        continue'
@@ -867,21 +1216,21 @@ mutation red "the dangling-link skip" $L "prune" \
 mutation red "the pass-3 memory-root check" $L "legacy" \
   '      is_memory_root "$phys" || continue' '      :'
 mutation red "the pass-3 existing-directory skip" $L "conflict" \
-  '    if [[ -e "$mem" ]]; then
-      note "projects-memory/$key: $where/memory is a local directory (see the adopt pass)"; continue
-    fi' ''
+  '      if [[ -e "$mem" ]]; then
+        note "projects-memory/$key: $where/memory is a local directory (see the adopt pass)"; continue
+      fi' ''
 mutation red "never replacing an existing link" $L "prune" \
-  '    if [[ -L "$mem" ]]; then
-      # Followed' '    if [[ -L "$mem" ]]; then rm -f "$mem"; fi
-    if false; then
-      # Followed'
+  '      if [[ -L "$mem" ]]; then
+        # Followed' '      if [[ -L "$mem" ]]; then rm -f "$mem"; fi
+      if false; then
+        # Followed'
 mutation red "following a chained link to its end (one hop instead)" $L "profiles" \
   'cur=$(cd "$mem" 2>/dev/null && pwd -P) || cur=""' 'cur=$(link_target_phys "$mem") || cur=""'
 mutation red "the profile projects dirs" $L "profiles" \
   '          "$HOME"/.claude-profiles/*/projects; do' '          ; do'
 mutation red "\$CLAUDE_CONFIG_DIR" $L "profiles" \
   '${CLAUDE_CONFIG_DIR:+"$CLAUDE_CONFIG_DIR/projects"}' ''
-mutation red "the time budget" $L "budget" \
+mutation red "the time budget" $L "budget remote" \
   '"$examined" -gt 0 && "$SECONDS" -ge "$BUDGET" ]]' '"$examined" -gt 0 && "$SECONDS" -lt 0 ]]'
 mutation red "keeping conflicts across a deferred run" $L "budget" \
   'if [[ "$deferred" -gt 0 && -f "$CONFLICT_STATE" ]]; then' 'if false; then'
@@ -893,8 +1242,81 @@ mutation red "the conflict log" $L "conflict" \
   '  log_once_today conflict "$1"' '  :'
 mutation red "the conflict log's once-a-day dedup" $L "conflict" \
   '  if grep -F "[$TODAY " "$CONFLICT_LOG" 2>/dev/null | grep -qF -- "] $line"; then' '  if false; then'
-mutation red "the .project-path traversal guard" $L "limits" \
-  '  case "/$line/" in */../*) return 0 ;; esac' '  :'
+mutation red "the .project-path and .project-paths traversal guard" $L "limits remote" \
+  '  case "/$line/" in */../*) return 1 ;; esac' '  :'
+mutation red "remote scheme stripping" $L "remote" \
+  '  case "$url" in *://*) has_scheme=1; url=${url#*://} ;; esac' \
+  '  case "$url" in *://*) has_scheme=1 ;; esac'
+mutation red "remote user stripping" $L "remote" \
+  '  if [[ "$prefix" == *@* ]]; then url="${prefix#*@}$suffix"; fi' \
+  '  if false; then url="${prefix#*@}$suffix"; fi'
+mutation red "remote trailing-slash stripping" $L "remote" \
+  '  while [[ "$url" == */ ]]; do url=${url%/}; done' '  :'
+mutation red "remote .git stripping" $L "remote" \
+  '  if [[ "$url" == *.git ]]; then url=${url%.git}; fi' \
+  '  if false; then url=${url%.git}; fi'
+mutation red "scp-style remote colon conversion" $L "remote" \
+  '    if [[ "$prefix" == *:* ]]; then url="${prefix%%:*}/${prefix#*:}$suffix"; fi' \
+  '    if false; then url="${prefix%%:*}/${prefix#*:}$suffix"; fi'
+mutation red "remote host lowercasing" $L "remote" \
+  '  lower=$(printf '"'"'%s'"'"' "$host" | tr '"'"'A-Z'"'"' '"'"'a-z'"'"')' '  lower=$host'
+mutation red "repository identity in adoption" $L "remote" \
+  '    remote=$(project_remote "$proj")' '    remote=""'
+mutation red "privacy during origin discovery" $L "remote" \
+  '      if printf '"'"'%s\n'"'"' "$dec" | any_private; then continue; fi' \
+  '      if false; then continue; fi'
+mutation red "privacy in migration" $L "remote" \
+  '  if is_private "$proj"; then
+    note "projects-memory/$key: $proj is a private project, not migrated"' \
+  '  if false; then
+    note "projects-memory/$key: $proj is a private project, not migrated"'
+mutation red "remote-origin ownership in adoption" $L "remote" \
+  '        if [[ "$owner_remote" != "$remote" ]]; then' '        if false; then'
+mutation red "the retired-destination adoption guard" $L "remote" \
+  '      if [[ -f "$dst/.migrated-to" ]]; then' '      if false; then'
+mutation red "remote-origin ownership in migration" $L "remote" \
+  '    if [[ "$dest_remote" != "$remote" ]]; then' '    if false; then'
+mutation red "the active-destination migration guard" $L "remote" \
+  '    if [[ ! -d "$dst" || -f "$dst/.migrated-to" ]]; then' '    if false; then'
+mutation red "the migration clash check" $L "remote" \
+  '    if [[ -n "$clash" ]]; then
+      conflict "projects-memory/$key is not migrated' \
+  '    if false; then
+      conflict "projects-memory/$key is not migrated'
+mutation red "migration copy verification" $L "remote" \
+  '  if [[ -n "$bad" ]]; then
+    echo "  error: migration copy' \
+  '  if false; then
+    echo "  error: migration copy'
+mutation red "the dry-run guard on migration" $L "remote" \
+  '  if [[ "$DRY_RUN" -eq 1 ]]; then
+    say "migrate' \
+  '  if false; then
+    say "migrate'
+mutation red "preserving a migrated link" $L "remote" \
+  '    if [[ "$retire" -eq 1 ]]; then' '    if false; then'
+mutation red "privacy in remote-entry pruning" $L "remote" \
+  '        if is_private "$proj"; then private=1; fi' \
+  '        if false; then private=1; fi'
+mutation red "remote-entry matching-slug retention" $L "remote" \
+  '      if [[ "$matched" -eq 1 && "$private" -eq 0 ]]; then continue; fi' \
+  '      if false; then continue; fi'
+mutation red "skipping migrated entries in the link pass" $L "remote" \
+  '  if [[ -f "$entry/.migrated-to" ]] || planned_migration "$key"; then
+    note "projects-memory/$key: retired by .migrated-to, not linked"' \
+  '  if false || planned_migration "$key"; then
+    note "projects-memory/$key: retired by .migrated-to, not linked"'
+mutation red "dry-run suppression of retired entries" $L "remote" \
+  '  if [[ -f "$entry/.migrated-to" ]] || planned_migration "$key"; then' \
+  '  if [[ -f "$entry/.migrated-to" ]]; then'
+mutation red "excluding remote metadata from private copies" $L "remote" \
+  "    -e './\\.project-remote' -e './\\.migrated-to' || true" \
+  "    -e './\\.migrated-to' || true"
+mutation red "the .migrated-to key guard" $L "remote" \
+  '  case "$key" in '"'"''"'"'|*[!A-Za-z0-9-]*) return 0 ;; esac' '  :'
+mutation red "the invalid migration-target guard" $L "remote" \
+  '      if [[ -z "$migrated" || ! -d "$PROJECTS_MEMORY_DIR/$migrated" ]]; then' \
+  '      if false; then'
 mutation red "sync-health.sh's conflict notice" hooks/sync-health.sh "conflict" \
   'if [[ -s "$MEM_CONFLICTS" ]]; then' 'if false; then'
 if command -v flock >/dev/null 2>&1; then

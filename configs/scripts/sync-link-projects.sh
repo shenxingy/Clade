@@ -36,34 +36,56 @@
 # already has into the store is replaced by a local copy. When a slug decodes to
 # several directories and any of them is private, the slug counts as private.
 #
-# Three passes, in this order:
+# Four passes, in this order:
 #   adopt  A real (not symlinked) local memory directory is copied into the store
-#          as projects-memory/<key>/ with a .project-path file holding the
-#          project's path relative to $HOME. The copy is checked file by file
-#          (cksum: CRC and size), then the directory is replaced by a symlink to
-#          it. The original stays beside it as memory.pre-sync-<timestamp>. If
-#          the store entry already holds a DIFFERENT version of a file, or the
-#          name belongs to another project, nothing moves and the conflict is
-#          recorded (below).
+#          as projects-memory/<key>/. With an origin, <key> is repo- plus the
+#          encoded normalised origin (scheme, user@, trailing .git and slash
+#          removed; scp's host:owner becomes host/owner; only the host lowercased).
+#          Only a physical repository root that is not a linked worktree uses
+#          that identity; a subdirectory or worktree keeps the path key. Without
+#          an origin the old path key and .project-path are unchanged.
+#          .project-remote holds the identity and .project-paths holds one
+#          "<hostname><TAB>path relative to HOME" line per checkout. Deviation
+#          from the original one-path-per-host design: lines are ADDED, never
+#          replaced, so every checkout on a host keeps its memory. A stale line
+#          is kept too: an unmounted NFS path looks missing and is not deletion
+#          evidence. Remote entries do not write .project-path: only this script
+#          read it, and one path cannot describe every checkout. Copies are
+#          cksum-verified, then replaced by links; originals stay beside them as
+#          memory.pre-sync-<timestamp>. A different file version or owner blocks
+#          the move and is recorded as a conflict (below).
+#   migrate
+#          A path-keyed entry whose project exists here, is not private and has
+#          an origin is union-copied into its remote-keyed entry with the same
+#          cksum verification. Any differing same-name file blocks the whole
+#          entry. The legacy entry is never deleted: .migrated-to names the new
+#          key, and prune/link retire it. Its link on this host is moved to a
+#          fresh memory.pre-sync-<timestamp> name before the new link is made.
 #   prune  A memory symlink into the store that is provably wrong is removed (the
-#          link only, never store content): one into an entry whose
-#          .project-path names a different project, or, for a legacy entry, one
-#          at a slug no memory root on this machine produces: no leading "-",
-#          or only a path inside .git, a repository subdirectory or a linked
-#          worktree, or no existing directory at all. A private project's link
-#          is detached instead: a verified local copy replaces it.
-#   link   An entry with .project-path is linked to the slug of $HOME/<path> when
-#          that directory exists here, in every projects directory. A legacy
-#          entry (no .project-path, named by basename) is linked only to a
-#          directory of exactly that name directly under one search root. Links
-#          are only ever CREATED: an existing link or directory is never
-#          replaced, only reported.
+#          link only, never store content): one into an entry with no matching
+#          checkout on this host, a migrated entry, or, for a legacy entry, one
+#          at a slug no memory root on this machine produces. ANY of this host's
+#          recorded checkout slugs keeps a remote link; an unrecorded slug whose
+#          actual origin matches is recorded and kept too. A private project's
+#          link is detached instead: a verified local copy replaces it, without
+#          any of the linker's metadata files.
+#   link   A path-keyed entry links to $HOME/<.project-path>. A remote-keyed entry
+#          links EVERY existing checkout recorded for this host. If it has no
+#          line, one lazily built origin -> candidate-roots index supplies every
+#          matching checkout. Each distinct slug is decoded at most once per run,
+#          and every remote entry reuses that index. A legacy basename entry is
+#          linked only to a directory of exactly that name directly under one
+#          search root. Links are only ever CREATED: an existing link or directory
+#          is never replaced, except for the preserved migration relink above.
 #
 # Bounded, because sync-pull.sh runs this inside an async SessionStart hook with
 # a 30 s timeout: once CLADE_SYNC_LINK_BUDGET seconds (default 10; 0 = no limit)
-# have passed, the remaining memory directories are left for the next run and
-# counted as deferred. At least one directory is examined per run. The first run
-# on a host with a long backlog can be run by hand without the limit:
+# have passed, remaining adoptions and migrations are deferred, and discovery
+# stops BETWEEN slugs. One eligible slug may finish after the budget; the next
+# is not decoded. The partial index is marked incomplete: matches still link,
+# but an entry with no match is deferred rather than called absent. At least one
+# eligible slug (not the whole index) is examined per run. The first run on a
+# host with a long backlog can be run by hand without the limit:
 #   CLADE_SYNC_LINK_BUDGET=0 bash ~/.claude/scripts/sync-link-projects.sh
 #
 # Committed from the store's own state: whenever projects-memory/ has anything
@@ -86,14 +108,20 @@
 #
 # Limits: a slug past 200 characters is skipped (Claude Code's hash suffix is
 # not reproduced here). A path holding non-ASCII characters matches only under
-# a UTF-8 locale. A project path differing in case between machines
-# (`projects/Clade` vs `projects/clade`) gets one store entry per spelling. A run
-# killed in the middle of a copy leaves a partial store entry and an intact local
+# a UTF-8 locale. Without an origin, a project path differing in case between
+# machines (`projects/Clade` vs `projects/clade`) gets one store entry per spelling.
+# Origin discovery needs an existing memory slug; it does not walk the filesystem.
+# .project-paths is not in the store's union-merge list: concurrent hosts can lose
+# one line to sync-push's -X ours resolution. The next run heals it through
+# rediscovery, now one shared index per run rather than one walk per entry.
+# HOSTNAME can change on a Mac when its network changes, so one Mac may acquire
+# checkout lines under more than one hostname; old names are harmless.
+# A run killed in the middle of a copy leaves a partial store entry and an intact local
 # directory. The next run completes the entry, except that a file cut short
 # differs from the local one and is reported as a conflict, not overwritten.
 # Until then any sync-push.sh (they all `git add -A`) may commit the partial
-# entry. The copy is one tar pipe per directory, and no directory starts after
-# the budget, so this needs a kill inside that pipe.
+# entry. The copy is one tar pipe per directory, and discovery stops before the
+# next slug after the budget, so a timeout can land inside that pipe or one slug.
 #
 # No `set -e`, on purpose: its interaction with arithmetic is the third defect
 # above. Every fallible step is checked where it happens instead.
@@ -158,6 +186,12 @@ HOME_PHYS=$(cd "$HOME" && pwd -P) || exit 0
 PRIVATE_PROJECTS_FILE="${CLADE_PRIVATE_PROJECTS:-$CLAUDE_DIR/private-projects}"
 STAMP=$(date +%Y%m%d%H%M%S)
 TODAY=$(date +%Y-%m-%d)
+HOST_NAME=${HOSTNAME:-}
+[[ -n "$HOST_NAME" ]] || HOST_NAME=$(hostname 2>/dev/null)
+HOST_NAME=${HOST_NAME//$'\t'/-}
+HOST_NAME=${HOST_NAME//$'\r'/-}
+HOST_NAME=${HOST_NAME//$'\n'/-}
+[[ -n "$HOST_NAME" ]] || HOST_NAME=unknown-host
 BUDGET="${CLADE_SYNC_LINK_BUDGET:-10}"
 [[ "$BUDGET" =~ ^[0-9]+$ ]] || BUDGET=10
 
@@ -243,15 +277,98 @@ key_of_rel() {     # projects/Clade -> projects-Clade; never empty, never "-..."
   printf '%s' "$k"
 }
 
+clean_project_rel() {   # a relative path this script may safely resolve under HOME
+  local line=${1%$'\r'}
+  # A path that climbs out of $HOME or is absolute is not one this script wrote.
+  case "/$line/" in */../*) return 1 ;; esac
+  case "$line" in ''|/*) return 1 ;; esac
+  printf '%s' "$line"
+}
+
 read_project_path() {   # an entry's .project-path, or nothing for a legacy entry
   local f="$1/.project-path" line=""
   [[ -f "$f" ]] || return 0
   IFS= read -r line < "$f" || true
-  line=${line%$'\r'}
-  # A path that climbs out of $HOME or is absolute is not one this script wrote.
-  case "/$line/" in */../*) return 0 ;; esac
-  case "$line" in ''|/*) return 0 ;; esac
-  printf '%s' "$line"
+  clean_project_rel "$line" || return 0
+}
+
+normalise_remote() {   # origin URL -> host/owner/repo, with only the host lowercased
+  local url=$1 has_scheme=0 prefix suffix host lower
+  url=${url%$'\r'}
+  case "$url" in ''|*$'\n'*|*$'\t'*) return 0 ;; esac
+  case "$url" in *://*) has_scheme=1; url=${url#*://} ;; esac
+  prefix=${url%%/*}; suffix=${url#"$prefix"}
+  if [[ "$prefix" == *@* ]]; then url="${prefix#*@}$suffix"; fi
+  while [[ "$url" == */ ]]; do url=${url%/}; done
+  if [[ "$url" == *.git ]]; then url=${url%.git}; fi
+  if [[ "$has_scheme" -eq 0 ]]; then
+    prefix=${url%%/*}; suffix=${url#"$prefix"}
+    if [[ "$prefix" == *:* ]]; then url="${prefix%%:*}/${prefix#*:}$suffix"; fi
+  fi
+  host=${url%%/*}; suffix=${url#"$host"}
+  lower=$(printf '%s' "$host" | tr 'A-Z' 'a-z')
+  printf '%s%s' "$lower" "$suffix"
+}
+
+project_remote() {   # a repository root's normalised origin, or nothing
+  local url
+  is_memory_root "$1" || return 0
+  url=$(git -C "$1" remote get-url origin 2>/dev/null) || return 0
+  normalise_remote "$url"
+}
+
+key_of_remote() { printf 'repo-%s' "$(enc "$1")"; }
+
+read_project_remote() {   # an entry's normalised repository identity
+  local f="$1/.project-remote" remote=""
+  [[ -f "$f" ]] || return 0
+  IFS= read -r remote < "$f" || true
+  remote=${remote%$'\r'}
+  case "$remote" in ''|*$'\t'*) return 0 ;; esac
+  printf '%s' "$remote"
+}
+
+read_host_paths() {   # ENTRY -> every safe relative path recorded for this host
+  local f="$1/.project-paths" host="" rel="" extra="" safe seen=$'\n'
+  [[ -f "$f" ]] || return 0
+  while IFS=$'\t' read -r host rel extra || [[ -n "$host$rel$extra" ]]; do
+    [[ "$host" == "$HOST_NAME" && -z "$extra" ]] || continue
+    safe=$(clean_project_rel "$rel") || continue
+    case "$seen" in *$'\n'"$safe"$'\n'*) continue ;; esac
+    seen="$seen$safe"$'\n'
+    printf '%s\n' "$safe"
+  done < "$f"
+  return 0
+}
+
+record_host_path() {   # ENTRY REL — add this host/path if absent; never replace a line
+  local entry=$1 rel=$2 current
+  current=$(read_host_paths "$entry")
+  if printf '%s\n' "$current" | grep -Fx -- "$rel" >/dev/null 2>&1; then return 0; fi
+  if [[ "$DRY_RUN" -eq 1 ]]; then
+    say "record projects-memory/${entry##*/}: $HOST_NAME -> ~/$rel"
+    return 0
+  fi
+  if [[ -s "$entry/.project-paths" && -n "$(tail -c 1 "$entry/.project-paths")" ]]; then
+    if ! printf '\n' >> "$entry/.project-paths"; then
+      echo "  error: cannot terminate projects-memory/${entry##*/}/.project-paths" >&2
+      return 1
+    fi
+  fi
+  if ! printf '%s\t%s\n' "$HOST_NAME" "$rel" >> "$entry/.project-paths"; then
+    echo "  error: cannot write projects-memory/${entry##*/}/.project-paths" >&2
+    return 1
+  fi
+  echo "  recorded projects-memory/${entry##*/}: $HOST_NAME -> ~/$rel"
+}
+
+read_migrated_to() {   # a safe store key, never a path supplied by the marker
+  local f="$1/.migrated-to" key=""
+  [[ -f "$f" ]] || return 0
+  IFS= read -r key < "$f" || true
+  key=${key%$'\r'}
+  case "$key" in ''|*[!A-Za-z0-9-]*) return 0 ;; esac
+  printf '%s' "$key"
 }
 
 # decode_slug SLUG — every existing directory whose slug is SLUG. The encoding
@@ -427,6 +544,21 @@ link_target_phys() {   # where a symlink points, as a physical path (best effort
 
 oneline() { tr '\n' ' ' | sed 's/ $//'; }
 
+memory_files() {   # user memory only; linker metadata never becomes a private copy
+  regular_files "$1" | grep -vx \
+    -e './\.project-path' -e './\.project-paths' \
+    -e './\.project-remote' -e './\.migrated-to' || true
+}
+
+next_memory_backup() {   # SLUGDIR — an unused pre-sync name, including same-run adoptions
+  local slugdir=$1 base candidate n=0
+  base="$slugdir/memory.pre-sync-$STAMP"; candidate=$base
+  while [[ -e "$candidate" || -L "$candidate" ]]; do
+    n=$((n + 1)); candidate="$base-$n"
+  done
+  printf '%s' "$candidate"
+}
+
 # detach MEM ENTRY WHERE KEY — a private project's link into the store becomes a
 # verified local copy of the entry. The store entry, and whatever history it
 # already has, is left alone: removing it is a decision for a human.
@@ -437,7 +569,7 @@ detach() {
     return 0
   fi
   tmp="${mem%/memory}/memory.detach-$STAMP"
-  files=$(regular_files "$entry" | grep -vx './\.project-path')
+  files=$(memory_files "$entry")
   if ! mkdir "$tmp" || ! copy_files "$entry" "$tmp" "$files"; then
     echo "  error: could not copy projects-memory/$key for private $where; the link stays" >&2
     return 0
@@ -457,6 +589,10 @@ detach() {
 
 # ─── Pass 1: adopt local memory into the store ───────────────────────────────
 
+budget_exhausted() {
+  [[ "$DRY_RUN" -eq 0 && "$BUDGET" -gt 0 && "$examined" -gt 0 && "$SECONDS" -ge "$BUDGET" ]]
+}
+
 examined=0
 deferred=0
 for pd in "${PROJECTS_DIRS[@]}"; do
@@ -469,7 +605,7 @@ for pd in "${PROJECTS_DIRS[@]}"; do
     if [[ -z "$(ls -A "$mem" 2>/dev/null)" ]]; then
       note "$where: memory directory is empty"; continue
     fi
-    if [[ "$DRY_RUN" -eq 0 && "$BUDGET" -gt 0 && "$examined" -gt 0 && "$SECONDS" -ge "$BUDGET" ]]; then
+    if budget_exhausted; then
       deferred=$((deferred + 1)); continue
     fi
     examined=$((examined + 1))
@@ -494,18 +630,30 @@ for pd in "${PROJECTS_DIRS[@]}"; do
       *) note "$where: $proj is outside \$HOME, so it has no portable name"; continue ;;
     esac
     if [[ "$proj" == "$HOME_PHYS" ]]; then rel="."; else rel=${proj#"$HOME_PHYS"/}; fi
-    key=$(key_of_rel "$rel")
+    remote=$(project_remote "$proj")
+    if [[ -n "$remote" ]]; then key=$(key_of_remote "$remote"); else key=$(key_of_rel "$rel"); fi
     if [[ ${#key} -gt 200 ]]; then
       note "$where: store key would exceed 200 characters"; continue
     fi
     dst="$PROJECTS_MEMORY_DIR/$key"
-    files=$(regular_files "$mem")
+    files=$(memory_files "$mem")
 
     if [[ -e "$dst" || -L "$dst" ]]; then
-      owner=$(read_project_path "$dst")
-      if [[ "$owner" != "$rel" ]]; then
-        conflict "$where is not adopted — projects-memory/$key already belongs to ${owner:+~/}${owner:-a legacy entry with no .project-path}"
-        continue
+      if [[ -f "$dst/.migrated-to" ]]; then
+        note "$where: projects-memory/$key is retired by .migrated-to"; continue
+      fi
+      if [[ -n "$remote" ]]; then
+        owner_remote=$(read_project_remote "$dst")
+        if [[ "$owner_remote" != "$remote" ]]; then
+          conflict "$where is not adopted — projects-memory/$key already belongs to origin ${owner_remote:-an entry with no .project-remote}"
+          continue
+        fi
+      else
+        owner=$(read_project_path "$dst")
+        if [[ "$owner" != "$rel" ]]; then
+          conflict "$where is not adopted — projects-memory/$key already belongs to ${owner:+~/}${owner:-a legacy entry with no .project-path}"
+          continue
+        fi
       fi
       clash=$(differing_files conflicting "$mem" "$dst" "$files" | oneline)
       if [[ -n "$clash" ]]; then
@@ -528,7 +676,18 @@ for pd in "${PROJECTS_DIRS[@]}"; do
     fi
 
     mkdir -p "$dst" || { echo "  error: cannot create $dst" >&2; continue; }
-    [[ -f "$dst/.project-path" ]] || printf '%s\n' "$rel" > "$dst/.project-path"
+    if [[ -n "$remote" ]]; then
+      if [[ ! -f "$dst/.project-remote" ]] && ! printf '%s\n' "$remote" > "$dst/.project-remote"; then
+        echo "  error: cannot write $dst/.project-remote; the local directory is untouched" >&2
+        continue
+      fi
+      if ! record_host_path "$dst" "$rel"; then
+        echo "  error: cannot record $where in $dst; the local directory is untouched" >&2
+        continue
+      fi
+    else
+      [[ -f "$dst/.project-path" ]] || printf '%s\n' "$rel" > "$dst/.project-path"
+    fi
     if ! copy_files "$mem" "$dst" "$files"; then
       echo "  error: copying $where into the store failed; the local directory is untouched" >&2
       continue
@@ -559,9 +718,115 @@ for pd in "${PROJECTS_DIRS[@]}"; do
     say "adopted $where -> projects-memory/$key ($nfiles files; original kept as ${backup##*/}$extra)"
   done
 done
-if [[ "$deferred" -gt 0 ]]; then
-  echo "  deferred: $deferred memory directories to the next run (time budget ${BUDGET}s; CLADE_SYNC_LINK_BUDGET=0 lifts it)"
-fi
+# ─── Pass 1b: retire this host's path-keyed entries into repository identity ──
+
+DRY_MIGRATED_KEYS=$'\n'
+planned_migration() {
+  [[ "$DRY_RUN" -eq 1 ]] || return 1
+  case "$DRY_MIGRATED_KEYS" in *$'\n'"$1"$'\n'*) return 0 ;; esac
+  return 1
+}
+
+migrate_legacy_entry() {   # ENTRY KEY REL PROJECT — never deletes the legacy entry
+  local src=$1 key=$2 rel=$3 proj=$4 remote newkey dst dest_remote files clash nfiles bad
+  local slug pd where mem target
+  if is_private "$proj"; then
+    note "projects-memory/$key: $proj is a private project, not migrated"
+    return 0
+  fi
+  remote=$(project_remote "$proj")
+  [[ -n "$remote" ]] || return 0
+  newkey=$(key_of_remote "$remote")
+  if [[ ${#newkey} -gt 200 ]]; then
+    note "projects-memory/$key: remote store key would exceed 200 characters"; return 0
+  fi
+  dst="$PROJECTS_MEMORY_DIR/$newkey"
+  if [[ -e "$dst" || -L "$dst" ]]; then
+    if [[ ! -d "$dst" || -f "$dst/.migrated-to" ]]; then
+      conflict "projects-memory/$key is not migrated to projects-memory/$newkey — the destination is not an active entry"
+      return 0
+    fi
+    dest_remote=$(read_project_remote "$dst")
+    if [[ "$dest_remote" != "$remote" ]]; then
+      conflict "projects-memory/$key is not migrated to projects-memory/$newkey — the destination belongs to origin ${dest_remote:-an entry with no .project-remote}"
+      return 0
+    fi
+  fi
+  files=$(memory_files "$src")
+  if [[ -d "$dst" ]]; then
+    clash=$(differing_files conflicting "$src" "$dst" "$files" | oneline)
+    if [[ -n "$clash" ]]; then
+      conflict "projects-memory/$key is not migrated to projects-memory/$newkey — these files differ: $clash (merge by hand: diff -r '$src' '$dst')"
+      return 0
+    fi
+  fi
+  nfiles=$(printf '%s\n' "$files" | grep -c .)
+  if [[ "$DRY_RUN" -eq 1 ]]; then
+    say "migrate projects-memory/$key -> projects-memory/$newkey ($nfiles files, ~/$rel; legacy entry kept with .migrated-to)"
+    DRY_MIGRATED_KEYS="$DRY_MIGRATED_KEYS$key"$'\n'
+    record_host_path "$dst" "$rel"
+    slug=$(slug_of_path "$proj")
+    if [[ ${#slug} -le 200 ]]; then
+      for pd in "${PROJECTS_DIRS[@]}"; do
+        where="$(label_of "$pd")$slug"; mem="$pd/$slug/memory"
+        if [[ -L "$mem" ]]; then
+          target=$(link_target_phys "$mem") || target=""
+          [[ "$target" == "$src" ]] || continue
+          say "prune $where/memory -> projects-memory/$key (migrated to projects-memory/$newkey; original kept beside it)"
+        elif [[ -e "$mem" ]]; then
+          continue
+        fi
+        say "link $where/memory -> projects-memory/$newkey"
+      done
+    fi
+    return 0
+  fi
+
+  mkdir -p "$dst" || { echo "  error: cannot create $dst; projects-memory/$key is untouched" >&2; return 0; }
+  if [[ ! -f "$dst/.project-remote" ]] && ! printf '%s\n' "$remote" > "$dst/.project-remote"; then
+    echo "  error: cannot write $dst/.project-remote; projects-memory/$key is untouched" >&2
+    return 0
+  fi
+  if ! record_host_path "$dst" "$rel"; then
+    echo "  error: cannot record projects-memory/$key at its destination; its links are untouched" >&2
+    return 0
+  fi
+  if ! copy_files "$src" "$dst" "$files"; then
+    echo "  error: migration copy of projects-memory/$key failed; its links are untouched" >&2
+    return 0
+  fi
+  bad=$(differing_files missing-or-different "$src" "$dst" "$files" | oneline)
+  if [[ -n "$bad" ]]; then
+    echo "  error: migration copy of projects-memory/$key does not match ($bad); the legacy entry and its links are untouched" >&2
+    return 0
+  fi
+  if ! printf '%s\n' "$newkey" > "$src/.migrated-to.$$" || ! mv "$src/.migrated-to.$$" "$src/.migrated-to"; then
+    rm -f "$src/.migrated-to.$$"
+    echo "  error: cannot mark projects-memory/$key as migrated; its links are untouched" >&2
+    return 0
+  fi
+  say "migrated projects-memory/$key -> projects-memory/$newkey ($nfiles files; legacy entry kept with .migrated-to)"
+}
+
+for entry in "$PROJECTS_MEMORY_DIR"/*/; do
+  entry=${entry%/}
+  [[ -d "$entry" && ! -f "$entry/.migrated-to" ]] || continue
+  owner=$(read_project_path "$entry")
+  [[ -n "$owner" ]] || continue
+  proj=$(project_path "$owner")
+  [[ -d "$proj" ]] || continue
+  if is_private "$proj"; then
+    migrate_legacy_entry "$entry" "${entry##*/}" "$owner" "$proj"
+    continue
+  fi
+  remote=$(project_remote "$proj")
+  [[ -n "$remote" ]] || continue
+  if budget_exhausted; then
+    deferred=$((deferred + 1)); continue
+  fi
+  examined=$((examined + 1))
+  migrate_legacy_entry "$entry" "${entry##*/}" "$owner" "$proj"
+done
 
 # ─── Pass 2: prune memory links that are provably wrong ──────────────────────
 
@@ -581,9 +846,57 @@ for pd in "${PROJECTS_DIRS[@]}"; do
     fi
 
     owner=$(read_project_path "$entry")
+    remote=$(read_project_remote "$entry")
+    migrated=$(read_migrated_to "$entry")
     reason=""
     private=0
-    if [[ -n "$owner" ]]; then
+    retire=0
+    if [[ -n "$remote" && "$key" != "$(key_of_remote "$remote")" ]]; then
+      note "$where/memory: projects-memory/$key has a mismatched .project-remote, left for a human"; continue
+    fi
+    if [[ -n "$remote" ]]; then
+      owners=$(read_host_paths "$entry")
+      matched=0
+      while IFS= read -r owner; do
+        [[ -n "$owner" ]] || continue
+        proj=$(project_path "$owner")
+        [[ "$slug" == "$(slug_of_path "$proj")" ]] || continue
+        matched=1
+        if is_private "$proj"; then private=1; fi
+      done <<< "$owners"
+      if [[ "$matched" -eq 1 && "$private" -eq 0 ]]; then continue; fi
+      if [[ "$matched" -eq 0 ]]; then
+        dec=$(decode_slug "$slug")
+        if printf '%s\n' "$dec" | any_private; then
+          private=1
+        else
+          while IFS= read -r proj; do
+            [[ -n "$proj" ]] || continue
+            case "$proj/" in "$HOME_PHYS"/*) ;; *) continue ;; esac
+            [[ "$(project_remote "$proj")" == "$remote" ]] || continue
+            if [[ "$proj" == "$HOME_PHYS" ]]; then owner="."; else owner=${proj#"$HOME_PHYS"/}; fi
+            record_host_path "$entry" "$owner" || true
+            matched=1
+          done < <(printf '%s\n' "$dec" | filter_paths roots)
+          if [[ "$matched" -eq 1 ]]; then continue; fi
+          reason="projects-memory/$key has no checkout with origin $remote at this slug on $HOST_NAME"
+        fi
+      fi
+    elif [[ -f "$entry/.migrated-to" ]]; then
+      if [[ -z "$migrated" || ! -d "$PROJECTS_MEMORY_DIR/$migrated" ]]; then
+        note "$where/memory: projects-memory/$key has an invalid migration target, left for a human"; continue
+      fi
+      if [[ -n "$owner" ]]; then
+        proj=$(project_path "$owner")
+        if [[ "$slug" == "$(slug_of_path "$proj")" ]] && is_private "$proj"; then
+          private=1
+        else
+          reason="migrated to projects-memory/$migrated"; retire=1
+        fi
+      else
+        reason="migrated to projects-memory/$migrated"; retire=1
+      fi
+    elif [[ -n "$owner" ]]; then
       proj=$(project_path "$owner")
       if [[ "$slug" == "$(slug_of_path "$proj")" ]]; then
         is_private "$proj" || continue
@@ -613,27 +926,115 @@ for pd in "${PROJECTS_DIRS[@]}"; do
       continue
     fi
     if [[ "$DRY_RUN" -eq 1 ]]; then
-      say "prune $where/memory -> projects-memory/$key ($reason)"
+      extra=""; [[ "$retire" -eq 1 ]] && extra="; original kept beside it"
+      say "prune $where/memory -> projects-memory/$key ($reason$extra)"
       continue
     fi
-    rm -f "$mem" && say "pruned $where/memory -> projects-memory/$key ($reason)"
+    if [[ "$retire" -eq 1 ]]; then
+      backup=$(next_memory_backup "$slugdir")
+      if mv "$mem" "$backup"; then
+        say "pruned $where/memory -> projects-memory/$key ($reason; original kept as ${backup##*/})"
+      else
+        echo "  error: could not preserve $where/memory before relinking; the old link stays" >&2
+      fi
+    else
+      rm -f "$mem" && say "pruned $where/memory -> projects-memory/$key ($reason)"
+    fi
     rmdir "$slugdir" 2>/dev/null || true   # only if nothing else lives there
   done
 done
 
 # ─── Pass 3: link store entries to this machine's projects ───────────────────
 
+DISCOVERY_INDEX=$'\n'
+DISCOVERY_BUILT=0
+DISCOVERY_COMPLETE=0
+build_discovery_index() {   # one origin -> all candidate roots index per run
+  [[ "$DISCOVERY_BUILT" -eq 0 ]] || return 0
+  DISCOVERY_BUILT=1
+  local home_slug pd slugdir slug dec p phys remote seen_slugs=$'\n' seen_paths=$'\n'
+  home_slug=$(slug_of_path "$HOME_PHYS")
+  for pd in "${PROJECTS_DIRS[@]}"; do
+    for slugdir in "$pd"/*; do
+      [[ -d "$slugdir" ]] || continue
+      slug=${slugdir##*/}
+      case "$slug" in "$home_slug"|"$home_slug"-*) ;; *) continue ;; esac
+      case "$seen_slugs" in *$'\n'"$slug"$'\n'*) continue ;; esac
+      seen_slugs="$seen_slugs$slug"$'\n'
+      if budget_exhausted; then return 0; fi
+      examined=$((examined + 1))
+      dec=$(decode_slug "$slug")
+      [[ -n "$dec" ]] || continue
+      if printf '%s\n' "$dec" | any_private; then continue; fi
+      while IFS= read -r p; do
+        [[ -n "$p" ]] || continue
+        case "$p/" in "$HOME_PHYS"/*) ;; *) continue ;; esac
+        phys=$(cd "$p" 2>/dev/null && pwd -P) || continue
+        case "$seen_paths" in *$'\n'"$phys"$'\n'*) continue ;; esac
+        seen_paths="$seen_paths$phys"$'\n'
+        remote=$(project_remote "$p")
+        [[ -n "$remote" ]] || continue
+        DISCOVERY_INDEX="$DISCOVERY_INDEX$remote"$'\t'"$p"$'\n'
+      done < <(printf '%s\n' "$dec" | filter_paths roots)
+    done
+  done
+  DISCOVERY_COMPLETE=1
+}
+
+find_remote_project() {   # REMOTE — every indexed checkout of this origin
+  local wanted=$1
+  build_discovery_index
+  printf '%s' "$DISCOVERY_INDEX" | awk -F '\t' -v wanted="$wanted" \
+    '$1 == wanted { sub(/^[^\t]*\t/, ""); print }'
+}
+
 for entry in "$PROJECTS_MEMORY_DIR"/*/; do
   entry=${entry%/}
   [[ -d "$entry" ]] || continue
   key=${entry##*/}
+  if [[ -f "$entry/.migrated-to" ]] || planned_migration "$key"; then
+    note "projects-memory/$key: retired by .migrated-to, not linked"; continue
+  fi
+  remote=$(read_project_remote "$entry")
   owner=$(read_project_path "$entry")
+  projects=""
+  named=0
 
-  if [[ -n "$owner" ]]; then
-    proj=$(project_path "$owner")
-    if [[ ! -d "$proj" ]]; then
-      note "projects-memory/$key: ~/$owner is not on this machine"; continue
+  if [[ -n "$remote" ]]; then
+    if [[ "$key" != "$(key_of_remote "$remote")" ]]; then
+      note "projects-memory/$key: .project-remote does not match its key"; continue
     fi
+    named=1
+    owners=$(read_host_paths "$entry")
+    if [[ -z "$owners" ]]; then
+      build_discovery_index
+      found=$(find_remote_project "$remote")
+      if [[ -z "$found" ]]; then
+        if [[ "$DISCOVERY_COMPLETE" -eq 0 ]]; then
+          deferred=$((deferred + 1))
+        else
+          note "projects-memory/$key: no local project with origin '$remote' has a memory slug here"
+        fi
+        continue
+      fi
+      while IFS= read -r proj; do
+        [[ -n "$proj" ]] || continue
+        if [[ "$proj" == "$HOME_PHYS" ]]; then owner="."; else owner=${proj#"$HOME_PHYS"/}; fi
+        if ! record_host_path "$entry" "$owner"; then
+          echo "  error: cannot record projects-memory/$key for $HOST_NAME; it is not linked" >&2
+          continue
+        fi
+        projects="$projects$proj"$'\n'
+      done <<< "$found"
+    else
+      while IFS= read -r owner; do
+        [[ -n "$owner" ]] || continue
+        projects="$projects$(project_path "$owner")"$'\n'
+      done <<< "$owners"
+    fi
+  elif [[ -n "$owner" ]]; then
+    named=1
+    projects="$(project_path "$owner")"$'\n'
   else
     # Legacy entry, named by basename: exactly one directory of that name
     # directly under a search root, and one Claude Code could key memory by.
@@ -653,42 +1054,53 @@ for entry in "$PROJECTS_MEMORY_DIR"/*/; do
     if [[ "$(printf '%s\n' "$found" | wc -l | tr -d ' ')" -gt 1 ]]; then
       note "projects-memory/$key: several projects are named '$key': $(printf '%s\n' "$found" | oneline)"; continue
     fi
-    proj=$found
-  fi
-  if is_private "$proj"; then
-    note "projects-memory/$key: $proj is a private project, not linked"; continue
-  fi
-  slug=$(slug_of_path "$proj")
-  if [[ ${#slug} -gt 200 ]]; then
-    note "projects-memory/$key: slug past 200 characters (Claude Code hashes it)"; continue
+    projects="$found"$'\n'
   fi
 
-  for pd in "${PROJECTS_DIRS[@]}"; do
-    where="$(label_of "$pd")$slug"
-    mem="$pd/$slug/memory"
-    if [[ -L "$mem" ]]; then
-      # Followed to the end: a profile's link to ~/.claude/projects/<slug>/memory,
-      # itself a link to this entry, is already right.
-      cur=$(cd "$mem" 2>/dev/null && pwd -P) || cur=""
-      [[ "$cur" == "$PM_PHYS/$key" ]] && continue
-      if [[ -n "$owner" ]]; then
-        conflict "$where/memory -> $(readlink "$mem") is kept; projects-memory/$key claims the same project (merge by hand)"
-      else
-        note "projects-memory/$key: $where/memory already links to $(readlink "$mem")"
+  while IFS= read -r proj; do
+    [[ -n "$proj" ]] || continue
+    if [[ ! -d "$proj" ]]; then
+      note "projects-memory/$key: $proj is not on this machine for $HOST_NAME"; continue
+    fi
+    if is_private "$proj"; then
+      note "projects-memory/$key: $proj is a private project, not linked"; continue
+    fi
+    slug=$(slug_of_path "$proj")
+    if [[ ${#slug} -gt 200 ]]; then
+      note "projects-memory/$key: slug past 200 characters (Claude Code hashes it)"; continue
+    fi
+
+    for pd in "${PROJECTS_DIRS[@]}"; do
+      where="$(label_of "$pd")$slug"
+      mem="$pd/$slug/memory"
+      if [[ -L "$mem" ]]; then
+        # Followed to the end: a profile's link to ~/.claude/projects/<slug>/memory,
+        # itself a link to this entry, is already right.
+        cur=$(cd "$mem" 2>/dev/null && pwd -P) || cur=""
+        [[ "$cur" == "$PM_PHYS/$key" ]] && continue
+        if [[ "$named" -eq 1 ]]; then
+          conflict "$where/memory -> $(readlink "$mem") is kept; projects-memory/$key claims the same project (merge by hand)"
+        else
+          note "projects-memory/$key: $where/memory already links to $(readlink "$mem")"
+        fi
+        continue
       fi
-      continue
-    fi
-    if [[ -e "$mem" ]]; then
-      note "projects-memory/$key: $where/memory is a local directory (see the adopt pass)"; continue
-    fi
-    if [[ "$DRY_RUN" -eq 1 ]]; then
-      say "link $where/memory -> projects-memory/$key"
-      continue
-    fi
-    mkdir -p "$pd/$slug" && ln -s "$entry" "$mem" \
-      && say "linked $where/memory -> projects-memory/$key"
-  done
+      if [[ -e "$mem" ]]; then
+        note "projects-memory/$key: $where/memory is a local directory (see the adopt pass)"; continue
+      fi
+      if [[ "$DRY_RUN" -eq 1 ]]; then
+        say "link $where/memory -> projects-memory/$key"
+        continue
+      fi
+      mkdir -p "$pd/$slug" && ln -s "$entry" "$mem" \
+        && say "linked $where/memory -> projects-memory/$key"
+    done
+  done <<< "$projects"
 done
+
+if [[ "$deferred" -gt 0 ]]; then
+  echo "  deferred: $deferred memory directories to the next run (time budget ${BUDGET}s; CLADE_SYNC_LINK_BUDGET=0 lifts it)"
+fi
 
 [[ "$DRY_RUN" -eq 1 ]] && exit 0
 

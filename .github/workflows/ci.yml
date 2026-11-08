@@ -473,6 +473,11 @@ jobs:
       - name: Run sync-link-projects tests
         run: bash tests/test-sync-link-projects.sh
 
+      # Multiple checkouts of one origin on one host, one cached discovery index
+      # per run, discovery budget, existing-entry dry-runs and remote/root guards.
+      - name: Run sync-link-projects remote regression tests
+        run: bash tests/test-sync-link-projects-remote.sh
+
       # post-edit-check: exit-2 asyncRewake findings vs silent success, the per-file mypy scope, errors already
       # in the file's HEAD version, a crashed checker, nested worktrees
       # (split out of test-hooks.sh when it crossed the 1500-line rule again)
