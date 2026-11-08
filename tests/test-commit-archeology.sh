@@ -270,6 +270,38 @@ assert_eq "$(scan_count)" '1' 'two concurrent injections launch exactly one scan
 assert_contains "$(< "$SANDBOX/concurrent-1.out")" 'wiring-gap' 'first concurrent caller gets cached lessons'
 assert_contains "$(< "$SANDBOX/concurrent-2.out")" 'wiring-gap' 'second concurrent caller gets cached lessons'
 
+printf '# slow refresher start: the lock never names a dead holder during the hand-off\n'
+# The first caller exits long before its refresher records itself (4 s start
+# delay); a second caller arriving in between must see a live holder. Before the
+# fix the lock held the exited caller's PID, the second caller reclaimed it and
+# launched another scan - the hosted-CI flake on #209 and #211.
+seed_cache
+age_cache
+move_head
+NEW_HEAD=$(git -C "$PROJ" rev-parse HEAD)
+COMMIT_ARCH_TEST_REFRESH_START_DELAY=4 COMMIT_ARCH_TEST_SCAN_DELAY=1 run_arch --inject > "$SANDBOX/slow-1.out"
+RC1=$?
+sleep 1
+COMMIT_ARCH_TEST_SCAN_DELAY=1 run_arch --inject > "$SANDBOX/slow-2.out"
+RC2=$?
+assert_eq "$RC1|$RC2" '0|0' 'both callers around a slow refresher start exit zero'
+assert_eq "$(scan_count)" '0' 'no scan has started while the first refresher is still starting'
+wait_for_scan_count 1
+wait_for_head "$NEW_HEAD"
+wait_for_lock_release
+sleep 1
+assert_eq "$(scan_count)" '1' 'a caller arriving during a slow hand-off launches no second scan'
+
+printf '# late refresher: a HEAD already scanned is not scanned again\n'
+seed_cache
+age_cache
+mkdir -p "$(lock_dir)"
+COMMIT_ARCH_TEST_SCAN_DELAY=0 run_arch --refresh "$(lock_dir)" >/dev/null 2>&1
+RC=$?
+assert_eq "$RC" '0' 'a refresh with nothing to do exits zero'
+assert_eq "$(scan_count)" '0' 'a refresh whose HEAD the cache already holds skips the scan'
+assert_eq "$([[ -d "$(lock_dir)" ]] && echo held || echo released)" 'released' 'a skipped refresh still releases the lock'
+
 printf '# stale lock: a paused reclaimer cannot delete a fresh PID\n'
 seed_cache
 age_cache
