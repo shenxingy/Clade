@@ -23,6 +23,8 @@ NOW=$(date +%s)
 
 unset CLAUDE_CONFIG_DIR CLADE_SYNC_STALE_DAYS CLADE_SYNC_GIT_TIMEOUT CLADE_SYNC_HEALTH_BUDGET
 unset CLADE_SYNC_MEMORY_LINE_CAP CLADE_SYNC_MEMORY_BYTE_CAP CLADE_SYNC_MEMORY_WARN_PERCENT
+unset CLADE_SYNC_PUSH_BACKOFF_FILE CLADE_SYNC_PUSH_BACKOFF_NOW
+unset CLADE_SYNC_PUSH_BACKOFF_BASE_SECONDS CLADE_SYNC_PUSH_BACKOFF_MAX_SECONDS
 export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 GIT_TERMINAL_PROMPT=0 LC_ALL=C
 
 UTF8_LOCALE=""
@@ -164,6 +166,164 @@ t_healthy() {
   else
     fail "healthy store appends no health log" "$(cat "$H/.claude/.sync-health.log")"
   fi
+}
+
+t_backoff() {
+  section "backoff — paused pushes, probe expiry, malformed state, and recovery hints"
+  local now expected bad rc
+  local -a bad_states
+
+  new_store
+  OUT=$(run_health "$H" CLADE_SYNC_PUSH_BACKOFF_NOW=1000 \
+    CLADE_SYNC_PUSH_BACKOFF_BASE_SECONDS=1800 CLADE_SYNC_PUSH_BACKOFF_MAX_SECONDS=86400)
+  assert_eq "$?" "0" "no backoff file leaves the hook successful"
+  assert_not_contains "$OUT" "sync-push backoff" "no backoff file produces no backoff line"
+
+  new_store
+  printf '1000 1 unmerged-paths\n' > "$H/.claude/.sync-push-backoff"
+  now=1001
+  expected=$(python3 -c 'from datetime import datetime; import sys; print(datetime.fromtimestamp(int(sys.argv[1])).astimezone().strftime("%Y-%m-%d %H:%M:%S %Z"))' 2800)
+  OUT=$(run_health "$H" CLADE_SYNC_PUSH_BACKOFF_NOW="$now" \
+    CLADE_SYNC_PUSH_BACKOFF_BASE_SECONDS=1800 CLADE_SYNC_PUSH_BACKOFF_MAX_SECONDS=86400)
+  rc=$?
+  assert_eq "$rc" "0" "an active backoff leaves the hook successful"
+  assert_contains "$OUT" "sync-push backoff: reason=unmerged-paths consecutive-failures=1" "the paused line names the reason and failure count"
+  assert_contains "$OUT" "pushes paused until $expected" "count one pauses for one 1800-second window in local time"
+  assert_contains "$OUT" "resolve unmerged-paths in $STORE" "the unmerged-paths hint names the store to repair"
+  assert_contains "$OUT" "run ~/.claude/scripts/sync-push.sh by hand" "the recovery hint names the manual push"
+  assert_contains "$OUT" "manual pushes always run and clear the backoff file on success" "the hint promises manual recovery and successful cleanup"
+  assert_eq "$(grep -c 'sync-push backoff' <<< "$OUT")" "1" "an active backoff produces exactly one stdout line"
+  assert_contains "$(health_log)" "reason=unmerged-paths consecutive-failures=1" "the paused line reaches the health log"
+
+  new_store
+  printf '2000 2 conflict-markers\n' > "$H/.claude/.sync-push-backoff"
+  expected=$(python3 -c 'from datetime import datetime; import sys; print(datetime.fromtimestamp(int(sys.argv[1])).astimezone().strftime("%Y-%m-%d %H:%M:%S %Z"))' 5600)
+  OUT=$(run_health "$H" CLADE_SYNC_PUSH_BACKOFF_NOW=2001 \
+    CLADE_SYNC_PUSH_BACKOFF_BASE_SECONDS=1800 CLADE_SYNC_PUSH_BACKOFF_MAX_SECONDS=86400)
+  assert_contains "$OUT" "reason=conflict-markers consecutive-failures=2" "the second failure keeps its reason and count"
+  assert_contains "$OUT" "pushes paused until $expected" "count two pauses for a doubled 3600-second window"
+  assert_contains "$OUT" "resolve conflict-markers in $STORE" "the conflict-marker hint names the store to repair"
+
+  new_store
+  printf '3000 7 push-failed\n' > "$H/.claude/.sync-push-backoff"
+  expected=$(python3 -c 'from datetime import datetime; import sys; print(datetime.fromtimestamp(int(sys.argv[1])).astimezone().strftime("%Y-%m-%d %H:%M:%S %Z"))' 89400)
+  OUT=$(run_health "$H" CLADE_SYNC_PUSH_BACKOFF_NOW=3001 \
+    CLADE_SYNC_PUSH_BACKOFF_BASE_SECONDS=1800 CLADE_SYNC_PUSH_BACKOFF_MAX_SECONDS=86400)
+  assert_contains "$OUT" "reason=push-failed consecutive-failures=7" "the capped line retains the full consecutive-failure count"
+  assert_contains "$OUT" "pushes paused until $expected" "count seven uses the 86400-second cap, not 115200 seconds"
+  assert_contains "$OUT" "run ~/.claude/scripts/sync-push.sh by hand" "other failure reasons still get the manual recovery hint"
+  assert_contains "$OUT" "inspect $H/.claude/.sync-conflicts.log and $STORE" "the generic hint names the real conflict log and store paths"
+
+  new_store
+  printf '1000 1 push-failed\n' > "$H/.claude/.sync-push-backoff"
+  BIN="$H/bsd-date-bin"
+  mkdir -p "$BIN"
+  REAL_DATE=$(command -v date)
+  cat > "$BIN/python3" <<'EOF'
+#!/usr/bin/env bash
+exit 1
+EOF
+  cat > "$BIN/date" <<EOF
+#!/usr/bin/env bash
+if [[ "\${1:-}" == "-r" ]]; then
+  printf 'fallback-local-time\n'
+  exit 0
+fi
+exec '$REAL_DATE' "\$@"
+EOF
+  chmod +x "$BIN/python3" "$BIN/date"
+  OUT=$(run_health "$H" PATH="$BIN:$PATH" CLADE_SYNC_PUSH_BACKOFF_NOW=1001 \
+    CLADE_SYNC_PUSH_BACKOFF_BASE_SECONDS=1800 CLADE_SYNC_PUSH_BACKOFF_MAX_SECONDS=86400)
+  rc=$?
+  assert_eq "$rc" "0" "the BSD date fallback leaves the hook successful without Python"
+  assert_contains "$OUT" "pushes paused until fallback-local-time" "BSD date -r formats the until-time when Python is unavailable"
+
+  new_store
+  printf '1000 1 conflict-markers\n' > "$H/.claude/.sync-push-backoff"
+  BIN="$H/no-python-real-date-bin"
+  mkdir -p "$BIN"
+  for cmd in bash date dirname awk sed grep head wc stat tr hostname git sleep cat; do
+    ln -s "$(command -v "$cmd")" "$BIN/$cmd"
+  done
+  OUT=$(run_health "$H" PATH="$BIN" CLADE_SYNC_PUSH_BACKOFF_NOW=1001 \
+    CLADE_SYNC_PUSH_BACKOFF_BASE_SECONDS=1800 CLADE_SYNC_PUSH_BACKOFF_MAX_SECONDS=86400)
+  rc=$?
+  assert_eq "$rc" "0" "real date without Python cannot abort the hook"
+  assert_contains "$OUT" "pushes paused until " "real date without Python prints the paused line on every platform"
+  assert_eq "$(grep -c 'sync-push backoff' <<< "$OUT")" "1" "real date without Python still produces exactly one backoff line"
+  assert_empty "$(cat "$H/.claude/stderr")" "real date and missing Python errors stay out of stderr"
+
+  new_store
+  printf '1000 1 conflict-markers\n' > "$H/.claude/.sync-push-backoff"
+  BIN="$H/forced-last-resort-bin"
+  mkdir -p "$BIN"
+  REAL_DATE=$(command -v date)
+  cat > "$BIN/python3" <<'EOF'
+#!/usr/bin/env bash
+exit 1
+EOF
+  cat > "$BIN/date" <<EOF
+#!/usr/bin/env bash
+if [[ "\${1:-}" == "-r" ]]; then
+  exit 1
+fi
+exec '$REAL_DATE' "\$@"
+EOF
+  chmod +x "$BIN/python3" "$BIN/date"
+  OUT=$(run_health "$H" PATH="$BIN:$PATH" CLADE_SYNC_PUSH_BACKOFF_NOW=1001 \
+    CLADE_SYNC_PUSH_BACKOFF_BASE_SECONDS=1800 CLADE_SYNC_PUSH_BACKOFF_MAX_SECONDS=86400)
+  rc=$?
+  assert_eq "$rc" "0" "forced formatter failures cannot abort the hook"
+  assert_contains "$OUT" "pushes paused until epoch 2800" "forced formatter failures always reach the pure-Bash last resort"
+  assert_eq "$(grep -c 'sync-push backoff' <<< "$OUT")" "1" "the forced last resort produces exactly one backoff line"
+  assert_empty "$(cat "$H/.claude/stderr")" "forced formatter failures stay out of stderr"
+
+  new_store
+  printf '99999999999999 1 conflict-markers\n' > "$H/.claude/.sync-push-backoff"
+  OUT=$(run_health "$H" CLADE_SYNC_PUSH_BACKOFF_NOW=1001 \
+    CLADE_SYNC_PUSH_BACKOFF_BASE_SECONDS=1800 CLADE_SYNC_PUSH_BACKOFF_MAX_SECONDS=86400)
+  rc=$?
+  assert_eq "$rc" "0" "an out-of-range until-time cannot abort the hook"
+  assert_contains "$OUT" "pushes paused until " "an out-of-range until-time prints the paused line on every platform"
+  assert_eq "$(grep -c 'sync-push backoff' <<< "$OUT")" "1" "an out-of-range until-time still produces exactly one backoff line"
+  assert_empty "$(cat "$H/.claude/stderr")" "out-of-range formatter errors stay out of stderr"
+
+  new_store
+  printf '4000 2 conflict-markers\n' > "$H/.claude/.sync-push-backoff"
+  OUT=$(run_health "$H" CLADE_SYNC_PUSH_BACKOFF_NOW=7600 \
+    CLADE_SYNC_PUSH_BACKOFF_BASE_SECONDS=1800 CLADE_SYNC_PUSH_BACKOFF_MAX_SECONDS=86400)
+  rc=$?
+  assert_eq "$rc" "0" "an expired backoff leaves the hook successful"
+  assert_contains "$OUT" "reason=conflict-markers consecutive-failures=2" "the probe line retains the reason and failure count"
+  assert_contains "$OUT" "window expired, next write probes" "the exact window boundary permits the next write to probe"
+  assert_eq "$(grep -c 'sync-push backoff' <<< "$OUT")" "1" "an expired backoff produces exactly one stdout line"
+  assert_contains "$(health_log)" "window expired, next write probes" "the probe line reaches the health log"
+
+  bad_states=("" "not-a-time 1 push-failed" "5000 nope push-failed")
+  for bad in "${bad_states[@]}"; do
+    new_store
+    printf '%s' "$bad" > "$H/.claude/.sync-push-backoff"
+    OUT=$(run_health "$H" CLADE_SYNC_PUSH_BACKOFF_NOW=5001 \
+      CLADE_SYNC_PUSH_BACKOFF_BASE_SECONDS=1800 CLADE_SYNC_PUSH_BACKOFF_MAX_SECONDS=86400)
+    rc=$?
+    assert_eq "$rc" "0" "malformed backoff state '${bad:-empty}' does not crash the hook"
+    assert_contains "$OUT" "sync-push backoff file is unreadable" "malformed backoff state '${bad:-empty}' is reported as unreadable"
+    assert_eq "$(grep -c 'sync-push backoff' <<< "$OUT")" "1" "malformed backoff state '${bad:-empty}' produces one stdout line"
+    assert_contains "$(health_log)" "sync-push backoff file is unreadable" "the unreadable line reaches the health log"
+  done
+
+  new_store
+  make_unmerged "$STORE" missing-lib.txt
+  mkdir -p "$H/hook-without-lib"
+  cp "$HOOK" "$H/hook-without-lib/sync-health.sh"
+  SAVED_HOOK="$HOOK"
+  HOOK="$H/hook-without-lib/sync-health.sh"
+  OUT=$(run_health "$H")
+  rc=$?
+  HOOK="$SAVED_HOOK"
+  assert_eq "$rc" "0" "a missing backoff library cannot abort the other health checks"
+  assert_contains "$OUT" "1 unmerged paths" "a missing backoff library still reports an unmerged store"
+  assert_empty "$(cat "$H/.claude/stderr")" "a missing backoff library stays silent"
 }
 
 t_unmerged() {
@@ -429,6 +589,20 @@ t_index() {
   else
     fail "no-config index warnings never create the Case-1 health-log heuristic" "log exists: $(cat "$H/.claude/.sync-health.log")"
   fi
+
+  new_store
+  rm "$H/.claude/.sync-config"
+  mkdir -p "$H/.claude/skills/demo" "$H/.claude/hooks"
+  OUT=$(run_health "$H")
+  rc=$?
+  assert_eq "$rc" "0" "real synced-directory names without config leave the hook successful"
+  assert_not_contains "$OUT" "Sync configured" "no-config real directories produce no stdout sync-config warning"
+  assert_not_contains "$(cat "$H/.claude/stderr")" "Sync configured" "no-config real directories produce no stderr sync-config warning"
+  if [[ ! -f "$H/.claude/.sync-health.log" ]]; then
+    pass "no-config real directories never arm the Case-1 health-log heuristic"
+  else
+    fail "no-config real directories never arm the Case-1 health-log heuristic" "log exists: $(cat "$H/.claude/.sync-health.log")"
+  fi
 }
 
 t_robustness() {
@@ -478,7 +652,7 @@ EOF
   make_unmerged "$STORE" a b
   BIN="$H/no-timeout-bin"
   mkdir -p "$BIN"
-  for cmd in bash awk date grep head hostname sed stat wc git sleep tr; do
+  for cmd in bash awk date dirname grep head hostname sed stat wc git sleep tr; do
     ln -s "$(command -v "$cmd")" "$BIN/$cmd"
   done
   START=$SECONDS
@@ -496,7 +670,7 @@ EOF
   new_store
   BIN="$H/no-timeout-slow-bin"
   mkdir -p "$BIN"
-  for cmd in bash awk date grep head hostname sed stat wc sleep tr; do
+  for cmd in bash awk date dirname grep head hostname sed stat wc sleep tr; do
     ln -s "$(command -v "$cmd")" "$BIN/$cmd"
   done
   cat > "$BIN/git" <<'EOF'
@@ -539,7 +713,7 @@ EOF
   assert_contains "$OUT" "store checks cut short" "the whole-hook deadline reports that later probes were skipped"
 }
 
-ALL_SECTIONS="healthy unmerged autostash stale refused remote rebase index robustness"
+ALL_SECTIONS="healthy backoff unmerged autostash stale refused remote rebase index robustness"
 for NAME in ${SH_ONLY:-$ALL_SECTIONS}; do
   "t_$NAME"
 done
@@ -567,12 +741,37 @@ if [[ -z "${SH_SKIP_MUTATIONS:-}" ]]; then
       fail "mutation '$name': its anchor no longer matches exactly once"
       return 0
     fi
+    mkdir -p "$dir/lib"
+    mv "$dir.sh" "$dir/sync-health.sh"
+    cp "$REPO_ROOT/configs/hooks/lib/sync-push-backoff.sh" "$dir/lib/sync-push-backoff.sh"
     MUT_NAMES[NMUT]=$name; MUT_EXPECT[NMUT]=$expect; MUT_ONLY[NMUT]=$only
     NMUT=$((NMUT + 1))
   }
 
   mutation green "no-op control (a comment reworded)" "$ALL_SECTIONS" \
     '# Case 5: ls-files -u' '# Case 5 (control): ls-files -u'
+  mutation red "the missing backoff library source guard" backoff \
+    'source "$HOOK_LIBDIR/sync-push-backoff.sh" 2>/dev/null || true' \
+    'source "$HOOK_LIBDIR/sync-push-backoff.sh"'
+  mutation red "the missing backoff library function guard" backoff \
+    'if declare -F sync_push_backoff_active >/dev/null 2>&1; then
+  sync_push_backoff_active || true
+fi' 'sync_push_backoff_active || true'
+  mutation red "the backoff call's set-e guard" backoff \
+    'sync_push_backoff_active || true' 'sync_push_backoff_active'
+  mutation red "the reason-specific recovery hint" backoff \
+    '  unmerged-paths|conflict-markers)' '  never-a-conflict)'
+  mutation red "the active-backoff notice" backoff \
+    '  active)' '  not-active)'
+  mutation red "the expired-backoff notice" backoff \
+    '  expired)' '  not-expired)'
+  mutation red "the unreadable-backoff notice" backoff \
+    '  unreadable)' '  not-unreadable)'
+  mutation red "the BSD local-time fallback" backoff \
+    "    date -r \"\$1\" '+%Y-%m-%d %H:%M:%S %Z' 2>/dev/null ||" \
+    "    false ||"
+  mutation red "the pure-Bash local-time last resort" backoff \
+    "    printf 'epoch %s\\n' \"\$1\"" "    false"
   mutation red "the unmerged-path guard" unmerged \
     'if [[ -n "$UNMERGED" ]]; then' 'if false; then'
   mutation red "unique unmerged paths" unmerged \
@@ -619,12 +818,20 @@ if [[ -z "${SH_SKIP_MUTATIONS:-}" ]]; then
   esac" '  :'
   mutation red "the symlinked-file exclusion" index \
     '[[ -f "$MEMORY_FILE" && ! -L "$MEMORY_FILE" ]] || continue' '[[ -f "$MEMORY_FILE" ]] || continue'
-  mutation red "the configured-store guard" index \
+  mutation red "the config-load guard" index \
     'if [[ -f "$SYNC_CONFIG" ]]; then
 # shellcheck source=/dev/null
-source "$SYNC_CONFIG"' 'if true; then
+source "$SYNC_CONFIG"
+else' 'if true; then
 # shellcheck source=/dev/null
-source "$SYNC_CONFIG"'
+source "$SYNC_CONFIG"
+else'
+  mutation red "the configured-store guard" index \
+    'if [[ -f "$SYNC_CONFIG" ]]; then
+
+# Case 2: config present, but synced paths are real dirs (symlinks broken).' 'if true; then
+
+# Case 2: config present, but synced paths are real dirs (symlinks broken).'
   mutation red "the no-config index log guard" index \
     '    if [[ -f "$SYNC_CONFIG" ]]; then
       notice "MEMORY.md index cap:' '    if true; then
@@ -657,7 +864,7 @@ source "$SYNC_CONFIG"'
 
   I=0
   while [[ "$I" -lt "$NMUT" ]]; do
-    SH_HOOK="$MUT_DIR/m$I.sh" SH_ONLY="${MUT_ONLY[$I]}" SH_SKIP_MUTATIONS=1 SH_MUTANT=1 \
+    SH_HOOK="$MUT_DIR/m$I/sync-health.sh" SH_ONLY="${MUT_ONLY[$I]}" SH_SKIP_MUTATIONS=1 SH_MUTANT=1 \
       bash "$REPO_ROOT/tests/test-sync-health.sh" > "$MUT_DIR/m$I.log" 2>&1
     RC=$?
     FIRST=$(grep -m1 '✗' "$MUT_DIR/m$I.log" 2>/dev/null | sed 's/\x1b\[[0-9;]*m//g; s/^ *✗ *//')
