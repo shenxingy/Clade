@@ -13,8 +13,8 @@
 #
 # The mutation suite removes recorded and unrecorded checkout retention, the
 # shared discovery index, HOME-prefix filter, per-slug budget, final-newline
-# guard, record_host_path dry-run guard, link and prune remote/key checks, and
-# the repository-root identity guard.
+# guard, planned-destination conflict check, record_host_path dry-run guard,
+# link and prune remote/key checks, and the repository-root identity guard.
 # Each must make its section fail. A no-op control must stay green. Every
 # fixture uses a temporary HOME and git store.
 #
@@ -48,6 +48,23 @@ assert_both_linked() {
   local entry=$1 first=$2 second=$3 run=$4
   assert_eq "$(target_of "$first")" "$entry" "first checkout stays linked ($run)"
   assert_eq "$(target_of "$second")" "$entry" "second checkout stays linked ($run)"
+}
+
+two_legacy_entries() {
+  new_home
+  PM="$H/store/projects-memory"; RK=$(remote_key_of 'github.com/scamai/internal'); E="$PM/$RK"
+  L1="$PM/projects-internal"; L2="$PM/shared-nfs-internal"
+  for p in projects/internal shared-nfs/internal; do
+    git_repo "$H/$p"; git -C "$H/$p" remote add origin git@github.com:scamai/internal.git
+    k=$(slug_of "$p"); mkdir -p "$PM/$k"; printf '%s\n' "$p" > "$PM/$k/.project-path"
+    m=$(memdir "$H" "$H/$p"); mkdir -p "${m%/memory}"; ln -s "$PM/$k" "$m"
+  done
+  M1=$(memdir "$H" "$H/projects/internal"); M2=$(memdir "$H" "$H/shared-nfs/internal")
+}
+
+migration_keys() {
+  sed -n -e 's/^  would migrate projects-memory\/\([^ ]*\) -> .*/\1/p' \
+    -e 's/^  migrated projects-memory\/\([^ ]*\) -> .*/\1/p' | LC_ALL=C sort
 }
 
 t_checkouts() {
@@ -220,6 +237,76 @@ BEFORE=$(snapshot_with_sums "$H")
 OUT=$(run_slp "$H" --dry-run)
 assert_eq "$(snapshot_with_sums "$H")" "$BEFORE" "existing-entry migration leaves every byte and link unchanged"
 assert_contains "$OUT" "would record projects-memory/$RK" "the migration write is previewed"
+
+section "dry-run — a later planned migration conflicts exactly as the real run"
+two_legacy_entries
+printf 'projects version\n' > "$L1/MEMORY.md"
+printf 'shared version\n' > "$L2/MEMORY.md"
+store_commit "$H"
+DRY=$(run_slp "$H" --dry-run)
+assert_contains "$DRY" "would migrate projects-memory/projects-internal" "the first migration is still previewed"
+assert_not_contains "$DRY" "would migrate projects-memory/shared-nfs-internal" \
+  "the conflicting second migration is not previewed"
+assert_not_contains "$DRY" "would prune $(slug_of "$H/shared-nfs/internal")" \
+  "the conflicting checkout has no would-prune line"
+assert_not_contains "$DRY" "would link $(slug_of "$H/shared-nfs/internal")" \
+  "the conflicting checkout has no would-link line"
+REAL=$(run_slp "$H")
+DRY_CONFLICT=$(grep '^  conflict: projects-memory/shared-nfs-internal' <<< "$DRY")
+REAL_CONFLICT=$(grep '^  conflict: projects-memory/shared-nfs-internal' <<< "$REAL")
+assert_eq "$DRY_CONFLICT" "$REAL_CONFLICT" "dry and real print the identical conflict"
+check "the real run leaves the second legacy entry unmigrated" test ! -e "$L2/.migrated-to"
+assert_eq "$(migration_keys <<< "$DRY")" "$(migration_keys <<< "$REAL")" \
+  "dry and real agree on the migrated key set"
+assert_eq "$(migration_keys <<< "$REAL")" "projects-internal" "only the first legacy key migrates"
+assert_eq "$(target_of "$M2")" "$L2" "the second checkout keeps its legacy memory link"
+
+section "dry-run — a planned migration into an EXISTING entry still counts"
+# The destination already exists (another host migrated first and the store
+# synced). A real run copies the first legacy entry into it before checking the
+# second; a dry run must compare the second with that planned entry too.
+two_legacy_entries
+mkdir -p "$E"; printf 'github.com/scamai/internal\n' > "$E/.project-remote"
+printf 'from another host\n' > "$E/other-host.md"
+printf 'projects version\n' > "$L1/MEMORY.md"
+printf 'shared version\n' > "$L2/MEMORY.md"
+store_commit "$H"
+DRY=$(run_slp "$H" --dry-run)
+assert_contains "$DRY" "would migrate projects-memory/projects-internal" \
+  "the first migration into the existing entry is previewed"
+assert_not_contains "$DRY" "would migrate projects-memory/shared-nfs-internal" \
+  "the second is not previewed when it clashes with the first, though the entry exists"
+REAL=$(run_slp "$H")
+assert_eq "$(migration_keys <<< "$DRY")" "$(migration_keys <<< "$REAL")" \
+  "dry and real agree on the migrated key set into an existing entry"
+check "the real run leaves the clashing legacy entry unmigrated" test ! -e "$L2/.migrated-to"
+
+section "dry-run — disjoint planned migrations both proceed"
+two_legacy_entries
+printf 'only projects\n' > "$L1/projects.md"
+printf 'only shared\n' > "$L2/shared.md"
+store_commit "$H"
+DRY=$(run_slp "$H" --dry-run)
+EXPECTED_KEYS=$(printf 'projects-internal\nshared-nfs-internal')
+assert_eq "$(migration_keys <<< "$DRY")" "$EXPECTED_KEYS" "dry-run previews both disjoint migrations"
+REAL=$(run_slp "$H")
+assert_eq "$(migration_keys <<< "$REAL")" "$EXPECTED_KEYS" "the real run migrates both disjoint entries"
+check "both disjoint legacy entries gain markers" \
+  test -f "$L1/.migrated-to" -a -f "$L2/.migrated-to"
+
+section "dry-run — an identical subset also proceeds"
+two_legacy_entries
+printf 'shared memory\n' > "$L1/MEMORY.md"
+printf 'first-only extra\n' > "$L1/first.md"
+printf 'shared memory\n' > "$L2/MEMORY.md"
+store_commit "$H"
+DRY=$(run_slp "$H" --dry-run)
+EXPECTED_KEYS=$(printf 'projects-internal\nshared-nfs-internal')
+assert_eq "$(migration_keys <<< "$DRY")" "$EXPECTED_KEYS" "dry-run previews the identical subset too"
+REAL=$(run_slp "$H")
+assert_eq "$(migration_keys <<< "$REAL")" "$EXPECTED_KEYS" "the real run also migrates the identical subset"
+check "both identical-subset legacy entries gain markers" \
+  test -f "$L1/.migrated-to" -a -f "$L2/.migrated-to"
 }
 
 t_identity() {
@@ -315,6 +402,16 @@ mutation "the per-slug discovery budget" "discovery" \
 mutation "the final-newline append guard" "checkouts" \
   '  if [[ -s "$entry/.project-paths" && -n "$(tail -c 1 "$entry/.project-paths")" ]]; then' \
   '  if false; then'
+mutation "the planned-destination conflict check" "dryrun" \
+  '  if [[ "$DRY_RUN" -eq 1 ]]; then
+    planned=$(planned_migration_sources' \
+  '  if false; then
+    planned=$(planned_migration_sources'
+mutation "the planned-destination check on an existing entry" "dryrun" \
+  '  if [[ "$DRY_RUN" -eq 1 ]]; then
+    planned=$(planned_migration_sources' \
+  '  if [[ "$DRY_RUN" -eq 1 && ! -d "$dst" ]]; then
+    planned=$(planned_migration_sources'
 mutation "the record_host_path dry-run guard" "dryrun" \
   '  if [[ "$DRY_RUN" -eq 1 ]]; then
     say "record' \

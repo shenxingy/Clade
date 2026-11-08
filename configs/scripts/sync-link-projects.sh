@@ -721,6 +721,15 @@ done
 # ─── Pass 1b: retire this host's path-keyed entries into repository identity ──
 
 DRY_MIGRATED_KEYS=$'\n'
+DRY_MIGRATION_SOURCES=$'\n'
+planned_migration_sources() {   # NEWKEY -> source entries already planned into it
+  printf '%s' "$DRY_MIGRATION_SOURCES" | awk -F '\t' -v dst="$1" \
+    '$1 == dst { sub(/^[^\t]*\t/, ""); print }'
+}
+remember_planned_migration() {   # NEWKEY SRC — a successful dry-run preview only
+  DRY_MIGRATION_SOURCES="$DRY_MIGRATION_SOURCES$1"$'\t'"$2"$'\n'
+}
+
 planned_migration() {
   [[ "$DRY_RUN" -eq 1 ]] || return 1
   case "$DRY_MIGRATED_KEYS" in *$'\n'"$1"$'\n'*) return 0 ;; esac
@@ -729,7 +738,7 @@ planned_migration() {
 
 migrate_legacy_entry() {   # ENTRY KEY REL PROJECT — never deletes the legacy entry
   local src=$1 key=$2 rel=$3 proj=$4 remote newkey dst dest_remote files clash nfiles bad
-  local slug pd where mem target
+  local slug pd where mem target planned planned_src
   if is_private "$proj"; then
     note "projects-memory/$key: $proj is a private project, not migrated"
     return 0
@@ -760,9 +769,23 @@ migrate_legacy_entry() {   # ENTRY KEY REL PROJECT — never deletes the legacy 
       return 0
     fi
   fi
+  # A dry run creates nothing, so entries planned into this destination earlier in
+  # the run stand in for the files a real run would already have copied there.
+  if [[ "$DRY_RUN" -eq 1 ]]; then
+    planned=$(planned_migration_sources "$newkey")
+    while IFS= read -r planned_src; do
+      [[ -n "$planned_src" && -d "$planned_src" ]] || continue
+      clash=$(differing_files conflicting "$src" "$planned_src" "$files" | oneline)
+      if [[ -n "$clash" ]]; then
+        conflict "projects-memory/$key is not migrated to projects-memory/$newkey — these files differ: $clash (merge by hand: diff -r '$src' '$dst')"
+        return 0
+      fi
+    done <<< "$planned"
+  fi
   nfiles=$(printf '%s\n' "$files" | grep -c .)
   if [[ "$DRY_RUN" -eq 1 ]]; then
     say "migrate projects-memory/$key -> projects-memory/$newkey ($nfiles files, ~/$rel; legacy entry kept with .migrated-to)"
+    remember_planned_migration "$newkey" "$src"
     DRY_MIGRATED_KEYS="$DRY_MIGRATED_KEYS$key"$'\n'
     record_host_path "$dst" "$rel"
     slug=$(slug_of_path "$proj")

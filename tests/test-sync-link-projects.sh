@@ -1157,7 +1157,9 @@ mutation red "committing from the store's status (this run's work decides instea
   '[[ -n "$(git -C "$SYNC_DIR" status --porcelain -- projects-memory 2>/dev/null)" ]]' \
   '[[ "$examined" -gt 0 ]]'
 mutation red "the clash check" $L "conflict" \
-  '      if [[ -n "$clash" ]]; then' '      if false; then'
+  '      if [[ -n "$clash" ]]; then
+        conflict "$where is not adopted' '      if false; then
+        conflict "$where is not adopted'
 mutation red "the owner != rel check" $L "conflict" \
   '      if [[ "$owner" != "$rel" ]]; then' '      if false; then'
 mutation red "the several-candidates check" $L "ambiguous" \
