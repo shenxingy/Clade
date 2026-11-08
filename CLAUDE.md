@@ -478,20 +478,34 @@ Code's slugs carry, died under `set -e` after its first entry, and never moved a
 local memory directory into the store. On the author's main host that left 24
 non-empty memory directories, including the one this repository's sessions
 load, with no git history. It now scans `~/.claude/projects`,
-`$CLAUDE_CONFIG_DIR/projects` and every `~/.claude-profiles/*/projects`, adopts
-a real memory directory into `projects-memory/<key>/` with a `.project-path`
-(verified by cksum, original kept as `memory.pre-sync-<stamp>`), links each
-entry at the slug Claude Code reads, and prunes links that are provably wrong.
-A private project is skipped in every pass, and a link it already has is
-replaced by a local copy. It commits whenever `projects-memory/` has anything
+`$CLAUDE_CONFIG_DIR/projects` and every `~/.claude-profiles/*/projects`, and
+adopts a real memory directory into `projects-memory/<key>/` (verified by cksum,
+original kept as `memory.pre-sync-<stamp>`). A normalised `origin` at a physical
+repository root (not a subdirectory or linked worktree) makes the key `repo-…`:
+`.project-remote` holds the identity and `.project-paths` appends one relative
+path per hostname and checkout, so every checkout on every machine keeps a link
+to the shared memory; stale lines stay because a missing NFS path is not proof
+of deletion. Without an origin the old path key and `.project-path` remain.
+A local path-keyed entry with an origin is union-copied to the remote entry;
+a differing same-name file blocks it, and success leaves the old entry with
+`.migrated-to`, preserves its old link beside the new one, and never deletes
+store content. The linker prunes wrong links and links each active entry at every
+matching slug Claude Code reads. Origin discovery builds one deduplicated index
+of candidate roots per run, skipping non-HOME slugs before decoding and checking
+the budget between slugs. A partial index still supplies matches; an entry with
+no match in an incomplete index is deferred, not called absent. A private project
+is skipped in every pass, and a link it already has is replaced by a local copy
+without linker metadata. It commits whenever `projects-memory/` has anything
 uncommitted, so a commit lost to a killed run or a held lock is made next time.
 A store copy that differs is a conflict: written to
 `~/.claude/.sync-memory-conflicts`, which `sync-health.sh` prints at session
 start, and once a day to `~/.claude/.sync-conflicts.log`. The hook it runs in
-times out at 30 s, so adoption stops starting directories after
-`CLADE_SYNC_LINK_BUDGET` seconds (default 10) and the next session resumes.
+times out at 30 s, so adoption and migration defer after
+`CLADE_SYNC_LINK_BUDGET` seconds (default 10), discovery stops between slugs,
+and the next session resumes.
 Run `bash configs/scripts/sync-link-projects.sh --dry-run` to see what it would
-do on a machine. Pinned by `tests/test-sync-link-projects.sh`.
+do on a machine. Pinned by `tests/test-sync-link-projects.sh` and
+`tests/test-sync-link-projects-remote.sh`.
 
 **When asked whether things are synced, check all three.** A clean `git status`
 here says nothing about the other two.
@@ -925,13 +939,14 @@ python3 configs/scripts/check-sibling-facts.py
 #     did not run at all.
 bash configs/scripts/checks.sh shellcheck configs/hooks/*.sh configs/hooks/lib/*.sh configs/scripts/*.sh install.sh
 
-# 12. Every suite the `shell-tests` job runs — all 34, not a convenient subset
+# 12. Every suite the `shell-tests` job runs — all 35, not a convenient subset
 #     (`loop` also runs test-loop-holdout.sh, and sources test-loop-env.sh, through
 #     tests/lib/loop-fixture.sh — neither has a step of its own)
 for t in loop checks commit-archeology skill-routing pr-scope-policy audit worktree-env \
          rule-injector mailbox-drain correction-pairing sync-store hooks hook-provenance \
-         sync-link-projects sync-health memory-sync-breaker post-edit-check \
-         session-context session-scorecard post-compact-reinject memory-staleness \
+         sync-link-projects sync-link-projects-remote sync-health memory-sync-breaker \
+         post-edit-check session-context session-scorecard post-compact-reinject \
+         memory-staleness \
          context-warning-drain ensure-dev-server quiet-run scan-health \
          pre-tool-guardian ask-while-live loop-args memory-watchdog ci-local \
          seo-geo radar-cron workflow-preflight \
@@ -993,7 +1008,7 @@ commit too.**
 On push/PR to `main`, four workflow files fire:
 
 - `ci.yml` — `syntax-check` (28 gates), `pytest` (suite + 2 offline evals),
-  `shell-tests` (34 suites), `install-test`. `run_hack_eval.py` scores
+  `shell-tests` (35 suites), `install-test`. `run_hack_eval.py` scores
   `judge_diversity.test_integrity` against the labelled reward-hack corpus in
   `evals/hack_cases/` — read its README before changing either, because that
   gate's floor and ceiling are measured, not chosen.

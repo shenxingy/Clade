@@ -107,6 +107,8 @@ else
 fi
 assert_eq "$SETUP_IGNORE" "$DEFAULT_IGNORE" \
   "the generated .gitignore contains exactly the default lines and group comments"
+assert_eq "$(grep -xcF 'projects-memory/*/.project-paths merge=union' "$SETUP_STORE/.gitattributes" 2>/dev/null)" "1" \
+  "sync-setup marks per-host project paths for union merge"
 assert_ignored "$SETUP_STORE" "corrections/history.jsonl"
 assert_ignored "$SETUP_STORE" "rules.md.bak-20261107"
 assert_ignored "$SETUP_STORE" ".backups/local/rules.md"
@@ -181,6 +183,10 @@ assert_eq "$(grep -cF 'sync_store_heal_gitignore' "$SYNC_SETUP")" "1" \
   "sync-setup has no separate inline ignore loop"
 assert_eq "$(grep -cF 'sync_store_heal_gitignore' "$SYNC_PUSH")" "1" \
   "sync-push has no separate inline ignore loop"
+assert_eq "$(grep -cF 'projects-memory/*/.project-paths merge=union' "$SYNC_SETUP")" "1" \
+  "setup carries the project-paths attribute"
+assert_eq "$(grep -cF 'projects-memory/*/.project-paths merge=union' "$SYNC_PUSH")" "1" \
+  "push carries the same attribute for existing stores"
 
 section "sync-store-heal — generic line appends have a checked failure contract"
 HELPER_ROOT="$TMP_ROOT/helper"
@@ -292,6 +298,10 @@ assert_eq "$(grep -xcF '*.corrupt.*' "$PUSH_STORE/.gitignore")" "1" "the corrupt
 assert_eq "$(grep -xcF 'skills/.trash/' "$PUSH_STORE/.gitignore")" "1" "the trash pattern stays singular"
 assert_eq "$(grep -xcF 'corrections/history.jsonl' "$PUSH_STORE/.gitignore")" "1" \
   "the private history pattern stays singular"
+assert_eq "$(grep -xcF 'projects-memory/*/.project-paths merge=union' "$PUSH_STORE/.gitattributes" 2>/dev/null)" "1" \
+  "the existing store heals exactly one project-paths attribute"
+assert_eq "$(git -C "$PUSH_STORE" show HEAD:.gitattributes 2>/dev/null)" "projects-memory/*/.project-paths merge=union" \
+  "the healed attribute is committed for other hosts"
 
 section "sync-push — a #205 store gains only incomplete groups"
 UPGRADE_ROOT="$TMP_ROOT/upgrade-205"
@@ -665,6 +675,55 @@ if git -C "$SETUP_MISSING_STORE" rev-parse --verify HEAD >/dev/null 2>&1; then
 else
   pass "the missing-helper setup makes no initial commit"
 fi
+
+section "sync-push — concurrent project-paths lines union-merge"
+UNION_ROOT="$TMP_ROOT/project-paths-union"
+UNION_BARE="$UNION_ROOT/bare.git"
+UNION_A="$UNION_ROOT/clone-a"
+UNION_B="$UNION_ROOT/clone-b"
+UNION_A_HOME="$UNION_ROOT/home-a"
+UNION_B_HOME="$UNION_ROOT/home-b"
+UNION_PATHS="projects-memory/repo-github-com-Owner-Repo/.project-paths"
+mkdir -p "$UNION_A_HOME/.claude" "$UNION_B_HOME/.claude" "$UNION_ROOT"
+git init -q --bare "$UNION_BARE"
+# The bare store is empty until the first push; git warns about that on stderr.
+git clone -q "$UNION_BARE" "$UNION_A" 2>/dev/null
+mkdir -p "$UNION_A/projects-memory/repo-github-com-Owner-Repo"
+printf 'seed-host\tprojects/seed\n' > "$UNION_A/$UNION_PATHS"
+git -C "$UNION_A" config user.email test@clade.local
+git -C "$UNION_A" config user.name clade-test
+git -C "$UNION_A" config core.hooksPath /dev/null
+git -C "$UNION_A" add -A
+git -C "$UNION_A" commit -qm base
+git -C "$UNION_A" push -qu origin HEAD >/dev/null 2>&1
+git clone -q "$UNION_BARE" "$UNION_B"
+for clone in "$UNION_A" "$UNION_B"; do
+  git -C "$clone" config user.email test@clade.local
+  git -C "$clone" config user.name clade-test
+  git -C "$clone" config core.hooksPath /dev/null
+done
+printf 'SYNC_BACKEND=nfs\nSYNC_DIR=%s\n' "$UNION_A" > "$UNION_A_HOME/.claude/.sync-config"
+printf 'SYNC_BACKEND=nfs\nSYNC_DIR=%s\n' "$UNION_B" > "$UNION_B_HOME/.claude/.sync-config"
+printf 'host-a\tprojects/repo\n' >> "$UNION_A/$UNION_PATHS"
+HOME="$UNION_A_HOME" CLADE_RUNTIME_DIR="$UNION_ROOT/runtime-a" bash "$SYNC_PUSH_RUN" > "$UNION_ROOT/output-a" 2>&1
+assert_eq "$?" "0" "the first host pushes its appended line"
+printf 'host-b\tshared/repo\n' >> "$UNION_B/$UNION_PATHS"
+HOME="$UNION_B_HOME" CLADE_RUNTIME_DIR="$UNION_ROOT/runtime-b" bash "$SYNC_PUSH_RUN" > "$UNION_ROOT/output-b" 2>&1
+assert_eq "$?" "0" "the second host pulls, merges and pushes through sync-push"
+EXPECTED_PATHS=$(printf 'seed-host\tprojects/seed\nhost-a\tprojects/repo\nhost-b\tshared/repo')
+assert_eq "$(cat "$UNION_B/$UNION_PATHS")" "$EXPECTED_PATHS" \
+  "both hosts' lines survive the real merge path"
+printf 'trigger the pull\n' > "$UNION_A/projects-memory/repo-github-com-Owner-Repo/trigger.md"
+HOME="$UNION_A_HOME" CLADE_RUNTIME_DIR="$UNION_ROOT/runtime-a" bash "$SYNC_PUSH_RUN" >/dev/null 2>&1
+assert_eq "$(cat "$UNION_A/$UNION_PATHS")" "$EXPECTED_PATHS" \
+  "the first host receives the other line on its next pull"
+assert_eq "$(git --git-dir="$UNION_BARE" show "HEAD:$UNION_PATHS")" \
+  "$EXPECTED_PATHS" "the bare store contains every host line"
+assert_eq "$(grep -xcF 'projects-memory/*/.project-paths merge=union' "$UNION_B/.gitattributes" 2>/dev/null)" "1" \
+  "healing stays idempotent through the merge"
+UNION_HEAD=$(git -C "$UNION_B" rev-parse HEAD)
+HOME="$UNION_B_HOME" CLADE_RUNTIME_DIR="$UNION_ROOT/runtime-b" bash "$SYNC_PUSH_RUN" >/dev/null 2>&1
+assert_eq "$(git -C "$UNION_B" rev-parse HEAD)" "$UNION_HEAD" "a further push changes no commit"
 
 section "Summary"
 echo -e "  Ran: $TESTS_RUN  ${GREEN}Passed: $TESTS_PASSED${NC}  ${RED}Failed: $TESTS_FAILED${NC}"

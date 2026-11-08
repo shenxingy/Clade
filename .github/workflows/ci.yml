@@ -483,6 +483,11 @@ jobs:
       - name: Run sync-link-projects tests
         run: bash tests/test-sync-link-projects.sh
 
+      # Multiple checkouts of one origin on one host, one cached discovery index
+      # per run, discovery budget, existing-entry dry-runs and remote/root guards.
+      - name: Run sync-link-projects remote regression tests
+        run: bash tests/test-sync-link-projects-remote.sh
+
       # sync-health sees a wedged store: unmerged index paths, leftover
       # autostash, stale/never-synced host commits, trailing REFUSED runs and
       # fetched upstream divergence; MEMORY.md at 79% vs 80% of either native

@@ -79,13 +79,16 @@ if [[ -n "$(git ls-files -u 2>/dev/null)" ]]; then
   exit 1
 fi
 
-# Heal before the marker scan so ignored recovery files stay out of that scan.
-# A read or append failure leaves the old scan to decide the push; it must not
-# abort this async job under set -e.
+# Heal before the marker scan so ignored recovery files stay out of that scan,
+# and before any merge so project paths from two hosts union before a pull can
+# conflict. A read or append failure leaves the old scan and merge behavior to
+# decide the push; it must not abort this async job under set -e.
 _SYNC_STORE_HEAL="$(cd "$(dirname "$0")" 2>/dev/null && pwd)/sync-store-heal.sh"
 # shellcheck source=/dev/null
 if source "$_SYNC_STORE_HEAL" 2>/dev/null; then
   sync_store_heal_gitignore "$SYNC_DIR/.gitignore" || true
+  printf '%s\n' 'projects-memory/*/.project-paths merge=union' \
+    | sync_store_append_missing_lines "$SYNC_DIR/.gitattributes" || true
 fi
 unset _SYNC_STORE_HEAL
 

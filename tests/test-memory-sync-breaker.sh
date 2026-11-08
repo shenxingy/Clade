@@ -70,8 +70,9 @@ new_store() {
   printf 'SYNC_BACKEND=nfs\nSYNC_DIR=%s\n' "$STORE" > "$H/.claude/.sync-config"
   printf -- '- rule one\n' > "$STORE/corrections/rules.md"
   printf 'base\n' > "$STORE/notes.txt"
-  # All default patterns are present without the helper's comments, so a no-op
-  # store stays byte-identical and a no-op run stays offline.
+  # All default patterns and the project-paths union attribute are present
+  # without the helper's comments, so a no-op store stays byte-identical and a
+  # no-op run stays offline.
   printf '%s\n' \
     'corrections/history.jsonl' \
     '*.bak-*' \
@@ -81,6 +82,7 @@ new_store() {
     '*.py[cod]' \
     '*.corrupt.*' \
     'skills/.trash/' > "$STORE/.gitignore"
+  printf 'projects-memory/*/.project-paths merge=union\n' > "$STORE/.gitattributes"
   git init -q "$STORE"
   git -C "$STORE" config user.email test@example.com
   git -C "$STORE" config user.name test
