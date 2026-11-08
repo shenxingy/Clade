@@ -12,13 +12,14 @@
 4. [Control-plane authentication](#control-plane-authentication)
 5. [Standing multi-agent orchestration](#standing-multi-agent-orchestration)
 6. [Context window policy](#context-window-policy)
-7. [Add a correction rule manually](#add-a-correction-rule-manually)
-8. [Keep corrected sessions](#keep-corrected-sessions)
-9. [Conversation-mode projects](#conversation-mode-projects)
-10. [Adjust quality gate thresholds](#adjust-quality-gate-thresholds)
-11. [Add a new hook](#add-a-new-hook)
-12. [Add a new agent](#add-a-new-agent)
-13. [Add a new skill](#add-a-new-skill)
+7. [Memory staleness anchors](#memory-staleness-anchors)
+8. [Add a correction rule manually](#add-a-correction-rule-manually)
+9. [Keep corrected sessions](#keep-corrected-sessions)
+10. [Conversation-mode projects](#conversation-mode-projects)
+11. [Adjust quality gate thresholds](#adjust-quality-gate-thresholds)
+12. [Add a new hook](#add-a-new-hook)
+13. [Add a new agent](#add-a-new-agent)
+14. [Add a new skill](#add-a-new-skill)
 
 ---
 
@@ -473,6 +474,64 @@ compacts, and writes nothing to either.
 
   Never use the global `compaction_trigger_ratio` or `reserved_context_size`:
   they hit every model, and the ratio's floor of 0.5 cannot reach 350K.
+
+## Memory staleness anchors
+
+Claude Code auto-memory stores one fact per `.md` file beside the `MEMORY.md`
+index. Add an optional `anchors:` list to a fact file when that fact depends on
+specific repository files or on the repository state at a particular commit:
+
+```yaml
+---
+name: worker-routing
+description: How this project selects an execution route
+modified: 2026-11-07T12:00:00Z
+metadata:
+  type: project
+anchors:
+  - orchestrator/worker_routing.py
+  - orchestrator/routes/*.py
+  - commit: e97312e
+---
+```
+
+Paths and globs are repository-relative (a leading `./` is accepted), and `**`
+matches zero or more directories, so `**/package.json` also covers the root
+file. Literal paths take precedence over glob interpretation, so an anchor such
+as `app/[id]/page.tsx` names that exact dynamic-route file. A directory matched by a glob also covers files below it.
+Without a `commit:` anchor, a memory is reported as `⚠STALE` when an anchored
+path's latest commit is newer than the memory's `modified:` time (file mtime
+when `modified:` is absent or invalid), or when an anchored path or glob no
+longer has an existing match. A `commit: X` anchor is instead the baseline for
+that memory's path anchors: a path is stale when `git log X..HEAD -- <path>` is
+non-empty, regardless of the memory timestamp. An unknown baseline produces
+`⚠STALE <file>: anchor commit <X> not in this repository`. A commit anchor with
+no path anchors is never STALE and appears in `--review` as `commit anchor
+without paths`. Replace the example SHA with `git rev-parse HEAD` when writing
+the memory. Unknown frontmatter shapes are skipped.
+
+At SessionStart, `memory-staleness.sh` prints a short header and at most 10
+stale memories, plus the number omitted. It prints nothing when there is no
+memory directory, a completed scan finds nothing, or there is no git repository.
+The pass never rewrites `MEMORY.md`: that index lives in the multi-host sync
+store, so automatic writes would race other machines.
+
+If the budget expires, the scanner prints one `⚠STALE-CHECK incomplete` line
+with a `--budget 30` retry command instead of a partial list of `⚠STALE`
+findings; the hook passes that line through under the same header. A failed
+`git log` remains silent. An incomplete check is never presented as a clean one.
+
+For a monthly review of unanchored memories older than 60 days, run:
+
+```bash
+python3 ~/.claude/scripts/memory-staleness.py \
+  /path/to/transcript-dir/memory /path/to/project --review --days 60
+```
+
+This prints one `⚠REVIEW` line per old unanchored memory. `--days` changes the
+threshold. Review mode is deliberately not part of every SessionStart; invoke
+it from a monthly review routine. Both modes are read-only. The scanner's
+2-second default budget covers git calls and recursive directory walks.
 
 ## Add a correction rule manually
 

@@ -21,7 +21,7 @@
     },
     {
       "name": "hooks",
-      "value": 35,
+      "value": 36,
       "derive": {
         "type": "count_glob",
         "pattern": "configs/hooks/*.sh"
@@ -83,7 +83,7 @@
     },
     {
       "name": "python_scripts",
-      "value": 55,
+      "value": 56,
       "derive": {
         "type": "count_glob",
         "pattern": "configs/scripts/*.py"
