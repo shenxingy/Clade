@@ -79,25 +79,31 @@ if [[ -n "$(git ls-files -u 2>/dev/null)" ]]; then
   exit 1
 fi
 
-# Heal the quarantine ignores on stores created before sync-setup wrote them.
-# This must precede the marker scan: these files contain markers by construction,
-# and --exclude-standard can omit them only after the patterns are present. The
-# heal is best-effort: a read or append failure leaves the old marker scan to
-# decide the push, and must not abort this async job under set -e.
-_SYNC_GITIGNORE="$SYNC_DIR/.gitignore"
-for _sync_ignore in '*.corrupt.*' 'skills/.trash/'; do
-  if grep -qxF "$_sync_ignore" "$_SYNC_GITIGNORE" 2>/dev/null; then
-    continue
-  fi
-  if [[ -s "$_SYNC_GITIGNORE" ]]; then
-    _sync_last_char=$(tail -c 1 "$_SYNC_GITIGNORE" 2>/dev/null) || break
-    if [[ -n "$_sync_last_char" ]]; then
-      printf '\n' 2>/dev/null >> "$_SYNC_GITIGNORE" || break
+# Heal quarantine ignores and append-only metadata on stores created before
+# sync-setup wrote them. This must precede the marker scan and any merge: the
+# quarantine files contain markers by construction, and project paths from two
+# hosts must union before a pull can conflict. Healing is best-effort: a read or
+# append failure leaves the old marker scan and merge behavior in place, and must
+# not abort this async job under set -e.
+sync_push_append_missing() {
+  local file=$1 line last_char
+  shift
+  for line in "$@"; do
+    if grep -qxF "$line" "$file" 2>/dev/null; then
+      continue
     fi
-  fi
-  printf '%s\n' "$_sync_ignore" 2>/dev/null >> "$_SYNC_GITIGNORE" || break
-done
-unset _sync_ignore _sync_last_char _SYNC_GITIGNORE
+    if [[ -s "$file" ]]; then
+      last_char=$(tail -c 1 "$file" 2>/dev/null) || break
+      if [[ -n "$last_char" ]]; then
+        printf '\n' 2>/dev/null >> "$file" || break
+      fi
+    fi
+    printf '%s\n' "$line" 2>/dev/null >> "$file" || break
+  done
+  return 0
+}
+sync_push_append_missing "$SYNC_DIR/.gitignore" '*.corrupt.*' 'skills/.trash/'
+sync_push_append_missing "$SYNC_DIR/.gitattributes" 'projects-memory/*/.project-paths merge=union'
 
 # NEVER stage a file carrying conflict markers. This is not hygiene — it is the
 # bug that ate the correction log. `git pull --rebase --autostash` leaves marker

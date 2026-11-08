@@ -131,6 +131,7 @@ corrections/rules-archive.md          merge=union
 corrections/promoted-archive.md       merge=union
 memory/*.md                           merge=union
 projects-memory/**/MEMORY.md          merge=union
+projects-memory/*/.project-paths merge=union
 ATTRS
 
 # Quarantine files are local recovery state, not dotfiles to replicate. Preserve

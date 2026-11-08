@@ -111,9 +111,9 @@
 # a UTF-8 locale. Without an origin, a project path differing in case between
 # machines (`projects/Clade` vs `projects/clade`) gets one store entry per spelling.
 # Origin discovery needs an existing memory slug; it does not walk the filesystem.
-# .project-paths is not in the store's union-merge list: concurrent hosts can lose
-# one line to sync-push's -X ours resolution. The next run heals it through
-# rediscovery, now one shared index per run rather than one walk per entry.
+# .project-paths is marked merge=union by sync-setup, and sync-push heals that
+# attribute into older stores before merging. Concurrent host lines therefore
+# survive; a conflict from before that upgrade can still need one rediscovery.
 # HOSTNAME can change on a Mac when its network changes, so one Mac may acquire
 # checkout lines under more than one hostname; old names are harmless.
 # A run killed in the middle of a copy leaves a partial store entry and an intact local

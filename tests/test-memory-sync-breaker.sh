@@ -70,10 +70,11 @@ new_store() {
   printf 'SYNC_BACKEND=nfs\nSYNC_DIR=%s\n' "$STORE" > "$H/.claude/.sync-config"
   printf -- '- rule one\n' > "$STORE/corrections/rules.md"
   printf 'base\n' > "$STORE/notes.txt"
-  # A store as current sync-setup.sh creates it: the quarantine ignores are
-  # already present, so sync-push.sh's heal writes nothing and a no-op run
-  # stays a no-op.
+  # A store as current sync-setup.sh creates it: the quarantine ignores and the
+  # project-paths union attribute are already present, so sync-push.sh's heal
+  # writes nothing and a no-op run stays a no-op.
   printf '*.corrupt.*\nskills/.trash/\n' > "$STORE/.gitignore"
+  printf 'projects-memory/*/.project-paths merge=union\n' > "$STORE/.gitattributes"
   git init -q "$STORE"
   git -C "$STORE" config user.email test@example.com
   git -C "$STORE" config user.name test
