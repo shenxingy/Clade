@@ -2,16 +2,16 @@
 # commit-archeology.sh — Mine git history for recurring correction patterns.
 #
 # Universal capability: works on any git repo Claude Code is run in.
-# Output:  ~/.claude/commit-lessons/<flat-cwd-slug>.jsonl
+# Output:  ~/.claude/commit-lessons/<flat-cwd-slug>.jsonl (+ .head sidecar)
 # Modes:
 #   --scan        Refresh lessons.jsonl from current repo's git log.
-#   --inject      Print formatted top patterns to stdout (for hook injection).
-#                 Auto-runs --scan if cache older than COMMIT_ARCH_CACHE_HOURS.
-#   --force       With --scan or --inject, ignore cache age.
+#   --inject      Print cached patterns; refresh a missing/stale cache in the
+#                 background. Age alone never rescans an unchanged HEAD.
+#   --force       With --scan or --inject, ignore cache age and scan inline.
 #
 # Tunable env vars:
 #   COMMIT_ARCH_WINDOW=60        scan window (days)
-#   COMMIT_ARCH_CACHE_HOURS=24   skip rescan if jsonl newer than this
+#   COMMIT_ARCH_CACHE_HOURS=24   refresh a moved HEAD only once cache is older
 #   COMMIT_ARCH_TOP_N=4          how many patterns to inject
 #   COMMIT_ARCH_MIN=3            minimum occurrences to register a pattern
 #
@@ -25,7 +25,8 @@
 #                         (agent = X-Clade-Task or Co-Authored-By: Claude trailer)
 #   mass-fix-day-YYYY-MM-DD  any single day with ≥10 fix(*) commits
 #
-# Safe to run anywhere: no-ops outside git repos, on small repos, or first-run.
+# Safe to run anywhere: no-ops outside git repos or on small repos; a first-run
+# injection stays silent while its background scan populates the cache.
 
 set -uo pipefail
 
@@ -86,29 +87,40 @@ _AGENT_TRAILER_FMT='%(trailers:key=X-Clade-Task,valueonly,separator=;)%x09%(trai
 
 # Detector: Claude-authored commit whose files later get a non-Claude fix
 detect_claude_overridden() {
-  local claude_shas hits=0 last_sha="" last_msg="" last_date="" sha_list=""
+  local claude_shas file_rows file_lists csha files next_row
+  local next_sha next_date next_msg
+  local hits=0 last_sha="" last_msg="" last_date="" sha_list=""
   claude_shas=$(git log --since="${WINDOW_DAYS}.days.ago" \
                   --pretty=format:"%H%x09${_AGENT_TRAILER_FMT}" 2>/dev/null \
                 | awk -F'\t' '$2 != "" || tolower($3) ~ /claude/ {print $1}')
   [[ -z "$claude_shas" ]] && return 0
-  while IFS= read -r csha; do
-    [[ -z "$csha" ]] && continue
-    local files next_sha next_is_agent
-    files=$(git diff-tree --no-commit-id --name-only -r "$csha" 2>/dev/null)
-    [[ -z "$files" ]] && continue
-    # next commit on those files (oldest in csha..HEAD range)
-    next_sha=$(git log "${csha}..HEAD" --pretty=format:'%H' -- $files 2>/dev/null | tail -1)
-    [[ -z "$next_sha" ]] && continue
-    next_is_agent=$(git log -1 --pretty=format:"${_AGENT_TRAILER_FMT}" "$next_sha" 2>/dev/null \
-                    | awk -F'\t' '{ print ($1 != "" || tolower($2) ~ /claude/) ? "yes" : "no" }')
-    if [[ "$next_is_agent" != "yes" ]]; then
-      hits=$((hits+1))
-      sha_list+="${csha:0:7},"
-      last_sha="${next_sha:0:7}"
-      last_msg=$(git log -1 --pretty=format:'%s' "$next_sha")
-      last_date=$(git log -1 --pretty=format:'%ad' --date=short "$next_sha")
-    fi
-  done <<< "$claude_shas"
+  file_rows=$(printf '%s\n' "$claude_shas" | git diff-tree --name-only -r --stdin 2>/dev/null)
+  file_lists=$(awk '
+    NR == FNR { known[$0] = 1; next }
+    $0 in known {
+      if (current != "") print current "\t" files
+      current = $0; files = ""; next
+    }
+    current != "" { files = (files == "") ? $0 : files " " $0 }
+    END { if (current != "") print current "\t" files }
+  ' <(printf '%s\n' "$claude_shas") <(printf '%s\n' "$file_rows"))
+  while IFS=$'\t' read -r csha files; do
+    [[ -z "$csha" || -z "$files" ]] && continue
+    next_row=$(git log "${csha}..HEAD" \
+                 --pretty=format:"%H%x09%ad%x09${_AGENT_TRAILER_FMT}%x09%s" \
+                 --date=short -- $files 2>/dev/null | tail -1 \
+               | awk -F'\t' '$3 == "" && tolower($4) !~ /claude/ {
+                   msg = $5; for (i = 6; i <= NF; i++) msg = msg "\t" $i
+                   printf "%s\t%s\t%s", $1, $2, msg
+                 }')
+    [[ -z "$next_row" ]] && continue
+    IFS=$'\t' read -r next_sha next_date next_msg <<< "$next_row"
+    hits=$((hits+1))
+    sha_list+="${csha:0:7},"
+    last_sha="${next_sha:0:7}"
+    last_msg="$next_msg"
+    last_date="$next_date"
+  done <<< "$file_lists"
   [[ "$hits" -lt "$MIN_OCCURRENCES" ]] && return 0
   printf 'claude-overridden\t%s\t%s\t%s\t%s\t%s\n' "$hits" "$last_sha" "$last_msg" "$last_date" "${sha_list%,}"
 }
@@ -180,9 +192,10 @@ detect_mass_fix_spree() {
 # ─── Scan ─────────────────────────────────────────────────────────────
 scan() {
   is_git_repo || return 0
-  local total
+  local total head_sha
   total=$(git log --since="${WINDOW_DAYS}.days.ago" --oneline 2>/dev/null | wc -l | tr -d ' ')
   [[ "${total:-0}" -lt 5 ]] && return 0  # not enough history
+  head_sha=$(git rev-parse HEAD 2>/dev/null)
 
   local rows
   rows=$( (
@@ -196,13 +209,12 @@ scan() {
     detect_mass_fix_spree
   ) 2>/dev/null )
 
-  [[ -z "$rows" ]] && return 0
-
-  local cwd lessons_file now tmp
+  local cwd lessons_file now tmp head_tmp
   cwd="$(pwd)"
   lessons_file="$(lessons_path)"
   now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   tmp="$lessons_file.tmp.$$"
+  head_tmp="$lessons_file.head.tmp.$$"
 
   : > "$tmp"
   while IFS=$'\t' read -r pattern count last_sha last_msg last_date sha_list; do
@@ -229,11 +241,80 @@ scan() {
     fi
   done <<< "$rows"
 
-  if [[ -s "$tmp" ]]; then
-    mv "$tmp" "$lessons_file"
+  mv "$tmp" "$lessons_file"
+  printf '%s\n' "$head_sha" > "$head_tmp"
+  mv "$head_tmp" "$lessons_file.head"
+}
+
+# ─── Background refresh ───────────────────────────────────────────────
+start_refresh() {
+  local script_dir runtime_lib state lock pid recorded="" waited=0
+  local reclaim current_pid mtime now
+  script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)
+  runtime_lib="$script_dir/../hooks/lib/runtime-dir.sh"
+  # shellcheck source=/dev/null
+  . "$runtime_lib" 2>/dev/null || return 0
+  state=$(clade_state_dir commit-archeology 2>/dev/null) || return 0
+  lock="$state/$(slug "$(pwd)").lock"
+
+  if ! mkdir "$lock" 2>/dev/null; then
+    pid=$(head -1 "$lock/pid" 2>/dev/null)
+    [[ "$pid" =~ ^[0-9]+$ ]] || return 0
+    kill -0 "$pid" 2>/dev/null && return 0
+
+    reclaim="$lock.reclaim"
+    if ! mkdir "$reclaim" 2>/dev/null; then
+      if mtime=$(stat -c %Y "$reclaim" 2>/dev/null); then :
+      elif mtime=$(stat -f %m "$reclaim" 2>/dev/null); then :
+      else return 0
+      fi
+      now=$(date +%s)
+      [[ "$((now - mtime))" -lt 30 ]] && return 0
+      rmdir "$reclaim" 2>/dev/null || return 0
+      mkdir "$reclaim" 2>/dev/null || return 0
+    fi
+    current_pid=$(head -1 "$lock/pid" 2>/dev/null)
+    if [[ "$current_pid" != "$pid" ]] || kill -0 "$current_pid" 2>/dev/null; then
+      rmdir "$reclaim" 2>/dev/null
+      return 0
+    fi
+    rm -f "$lock/pid"
+    rmdir "$lock" 2>/dev/null
+    if ! mkdir "$lock" 2>/dev/null; then
+      rmdir "$reclaim" 2>/dev/null
+      return 0
+    fi
+    printf '%s\n' "$$" > "$lock/pid"
+    rmdir "$reclaim" 2>/dev/null
   else
-    rm -f "$tmp"
+    printf '%s\n' "$$" > "$lock/pid"
   fi
+
+  if command -v setsid >/dev/null 2>&1; then
+    setsid bash "$script_dir/$(basename "${BASH_SOURCE[0]}")" --refresh "$lock" \
+      </dev/null >/dev/null 2>&1 &
+  else
+    nohup bash "$script_dir/$(basename "${BASH_SOURCE[0]}")" --refresh "$lock" \
+      </dev/null >/dev/null 2>&1 &
+  fi
+  while [[ -d "$lock" && "$waited" -lt 10 ]]; do
+    recorded=""
+    IFS= read -r recorded 2>/dev/null < "$lock/pid" || true
+    if [[ "$recorded" =~ ^[0-9]+$ && "$recorded" != "$$" ]]; then
+      break
+    fi
+    sleep 0.1
+    waited=$((waited + 1))
+  done
+  disown %% 2>/dev/null || true
+}
+
+run_refresh() {
+  REFRESH_LOCK_DIR="${1:-}"
+  [[ -n "$REFRESH_LOCK_DIR" && -d "$REFRESH_LOCK_DIR" ]] || return 0
+  trap 'rm -f "$REFRESH_LOCK_DIR/pid"; rmdir "$REFRESH_LOCK_DIR" 2>/dev/null' EXIT
+  printf '%s\n' "$$" > "$REFRESH_LOCK_DIR/pid"
+  scan
 }
 
 # ─── Inject ───────────────────────────────────────────────────────────
@@ -283,12 +364,26 @@ main() {
       scan
       ;;
     --inject)
-      local age
-      age=$(cache_age_hours "$lessons_file")
-      if [[ "$force" -eq 1 || "$age" -gt "$CACHE_HOURS" ]]; then
+      if [[ "$force" -eq 1 ]]; then
         scan
+        inject
+      else
+        local age current_head cached_head
+        age=$(cache_age_hours "$lessons_file")
+        if [[ -f "$lessons_file" && "$age" -le "$CACHE_HOURS" ]]; then
+          inject
+        else
+          current_head=$(git rev-parse HEAD 2>/dev/null)
+          cached_head=$(head -1 "$lessons_file.head" 2>/dev/null)
+          inject
+          if [[ "$cached_head" != "$current_head" ]]; then
+            start_refresh
+          fi
+        fi
       fi
-      inject
+      ;;
+    --refresh)
+      run_refresh "${2:-}"
       ;;
     --force)
       scan

@@ -44,7 +44,7 @@
           },
           {
             "id": "sync-health",
-            "description": "Detect dotfiles sync drift (missing config, broken symlinks, unreachable SYNC_DIR)",
+            "description": "Detect dotfiles sync drift, wedged store state (unmerged paths, autostash, stale or refused sync, upstream divergence), and MEMORY.md index-cap pressure",
             "type": "command",
             "command": "~/.claude/hooks/sync-health.sh",
             "timeout": 5

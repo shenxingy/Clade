@@ -370,10 +370,18 @@ fi
 # the author's machine held two nested sets of unresolved `<<<<<<< Updated
 # upstream` / `>>>>>>> Stashed changes` conflict markers, so every increment had
 # been a no-op for an unknown length of time and nobody could tell, because a
-# counter that stops counting looks exactly like a quiet week.
+# counter that stops counting looks exactly like a quiet week. Keep the backup
+# out of corrections/, which may be a sync store: its conflict markers otherwise
+# refuse every later push. No private runtime root means no backup, never a
+# fallback into the synced directory. Resolve it only on this rare corrupt path.
 if [[ -f "$STATS_FILE" ]] && command -v jq &>/dev/null \
    && ! jq -e . "$STATS_FILE" >/dev/null 2>&1; then
-  cp -f "$STATS_FILE" "$STATS_FILE.corrupt.$(date -u +%Y%m%dT%H%M%SZ)" 2>/dev/null || true
+  if source "$LIBDIR/runtime-dir.sh" 2>/dev/null \
+     && _CD_CORRUPT_DIR=$(clade_state_dir corrupt-backups 2>/dev/null); then
+    cp -f "$STATS_FILE" \
+      "$_CD_CORRUPT_DIR/${STATS_FILE##*/}.corrupt.$(date -u +%Y%m%dT%H%M%SZ)" 2>/dev/null || true
+  fi
+  unset _CD_CORRUPT_DIR
   printf '%s\n' "$_STATS_SEED" > "$STATS_FILE"
 fi
 if [[ -f "$STATS_FILE" ]] && command -v jq &>/dev/null; then

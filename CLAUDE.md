@@ -458,6 +458,18 @@ Fixed by `.gitattributes merge=union` on the append-only files (verified to keep
 both sides where `-X ours` dropped one), plus a guard that refuses to commit any
 file carrying conflict markers. Both pinned by `tests/test-hooks.sh`.
 
+**A per-host circuit breaker stops a wedged store from spawning endless pushes.**
+`sync-push.sh` records conflict, staging, commit and push failures as one
+`<epoch> <count> <reason>` line in `~/.claude/.sync-push-backoff` (outside every
+synced directory). `memory-sync.sh` checks it before all topic gates: the window
+starts at 30 minutes, doubles per failure to 24 hours, then admits one claimed
+probe; the claim timestamp is the last probe time. Success clears it, and a manual
+`sync-push.sh` always runs. An empty-index run stays offline unless HEAD is ahead
+of its upstream or backoff exists. Tests override the window and clock with
+`CLADE_SYNC_PUSH_BACKOFF_BASE_SECONDS`, `CLADE_SYNC_PUSH_BACKOFF_MAX_SECONDS` and
+`CLADE_SYNC_PUSH_BACKOFF_NOW`. `tests/test-memory-sync-breaker.sh` uses temporary
+stores and remotes, and mutates every breaker guard.
+
 **Project auto-memory reaches the store only through `sync-link-projects.sh`**
 (run by `sync-pull.sh` at every session start). Until 2026-11-06 it never did:
 the linker matched projects by basename with `find -name` (so `clade` resolved
@@ -913,16 +925,17 @@ python3 configs/scripts/check-sibling-facts.py
 #     did not run at all.
 bash configs/scripts/checks.sh shellcheck configs/hooks/*.sh configs/hooks/lib/*.sh configs/scripts/*.sh install.sh
 
-# 12. Every suite the `shell-tests` job runs — all 30, not a convenient subset
+# 12. Every suite the `shell-tests` job runs — all 34, not a convenient subset
 #     (`loop` also runs test-loop-holdout.sh, and sources test-loop-env.sh, through
 #     tests/lib/loop-fixture.sh — neither has a step of its own)
-for t in loop checks skill-routing pr-scope-policy audit worktree-env \
-         rule-injector mailbox-drain correction-pairing hooks hook-provenance \
-         sync-link-projects post-edit-check session-context session-scorecard \
-         post-compact-reinject memory-staleness context-warning-drain \
-         ensure-dev-server quiet-run scan-health pre-tool-guardian \
-         ask-while-live loop-args memory-watchdog ci-local seo-geo radar-cron \
-         workflow-preflight wf-reader-guard; do
+for t in loop checks commit-archeology skill-routing pr-scope-policy audit worktree-env \
+         rule-injector mailbox-drain correction-pairing sync-store hooks hook-provenance \
+         sync-link-projects sync-health memory-sync-breaker post-edit-check \
+         session-context session-scorecard post-compact-reinject memory-staleness \
+         context-warning-drain ensure-dev-server quiet-run scan-health \
+         pre-tool-guardian ask-while-live loop-args memory-watchdog ci-local \
+         seo-geo radar-cron workflow-preflight \
+         wf-reader-guard; do
   bash "tests/test-$t.sh" >/dev/null || echo "FAILED: $t"
 done
 
@@ -980,7 +993,7 @@ commit too.**
 On push/PR to `main`, four workflow files fire:
 
 - `ci.yml` — `syntax-check` (28 gates), `pytest` (suite + 2 offline evals),
-  `shell-tests` (30 suites), `install-test`. `run_hack_eval.py` scores
+  `shell-tests` (34 suites), `install-test`. `run_hack_eval.py` scores
   `judge_diversity.test_integrity` against the labelled reward-hack corpus in
   `evals/hack_cases/` — read its README before changing either, because that
   gate's floor and ceiling are measured, not chosen.
