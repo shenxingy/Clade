@@ -356,6 +356,10 @@ def _anchor_exists(root: Path, anchor: Anchor, deadline: Deadline) -> bool:
     pattern = tuple(anchor.value.split("/"))
     prefix = _literal_prefix(anchor.value)
     base = root.joinpath(*prefix)
+    # os.path.isdir, not Path.is_dir: below an unreadable directory Path.is_dir
+    # raises PermissionError (Python 3.12), and one such anchor emptied the report.
+    if not os.path.isdir(base):
+        return False
     pending = [(base, len(prefix))]
     while pending:
         current, pattern_index = pending.pop()

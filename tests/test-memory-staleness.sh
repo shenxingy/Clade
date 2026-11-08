@@ -63,7 +63,8 @@ assert_incomplete() {
 command -v python3 >/dev/null 2>&1 || { echo "FATAL: python3 is required"; exit 1; }
 command -v git >/dev/null 2>&1 || { echo "FATAL: git is required"; exit 1; }
 REAL_GIT="$(command -v git)"
-export REAL_GIT
+REAL_PYTHON="$(command -v python3)"
+export REAL_GIT REAL_PYTHON
 
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
@@ -75,6 +76,61 @@ mkdir -p "$HOME"
 
 run_script() {
   OUT=$(python3 "$SCRIPT" "$@" 2>"$TMP/script-stderr")
+  RC=$?
+}
+
+run_scan_harness() {  # run_scan_harness <record|walk-timeout|git-timeout> <mem> <repo> <log> [budget]
+  local mode="$1" memory_dir="$2" project_dir="$3" log="$4" budget="${5:-30}"
+  OUT=$(python3 - "$SCRIPT" "$mode" "$memory_dir" "$project_dir" "$log" "$budget" 2>"$TMP/script-stderr" <<'PY'
+import os
+import runpy
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+script, mode, memory_dir, project_dir, log, budget = sys.argv[1:]
+sys.argv = [script, memory_dir, project_dir, "--budget", budget]
+calls = []
+real_scandir = os.scandir
+
+
+class FakeTime:
+    now = 0.0
+
+    @classmethod
+    def monotonic(cls):
+        return cls.now
+
+
+def recording_scandir(path):
+    path_string = os.fspath(path)
+    if path_string.startswith(project_dir):
+        calls.append(path_string)
+        if mode == "walk-timeout":
+            FakeTime.now += 1.0
+    return real_scandir(path)
+
+
+if mode == "walk-timeout":
+    time.monotonic = FakeTime.monotonic
+os.scandir = recording_scandir
+if mode == "git-timeout":
+    real_run = subprocess.run
+
+    def fake_run(command, *args, **kwargs):
+        calls.append("timeout=%r" % (kwargs.get("timeout"),))
+        if "log" in command[1:] and kwargs.get("timeout") is not None:
+            raise subprocess.TimeoutExpired(command, kwargs.get("timeout", 0))
+        return real_run(command, *args, **kwargs)
+
+    subprocess.run = fake_run
+try:
+    runpy.run_path(script, run_name="__main__")
+finally:
+    Path(log).write_text("\n".join(calls) + ("\n" if calls else ""), encoding="utf-8")
+PY
+)
   RC=$?
 }
 
@@ -306,32 +362,23 @@ EOF
 
   mkdir -p "$TMP/slow-memory"
   cp "$MEM/stale.md" "$TMP/slow-memory/stale.md"
-  cat > "$TMP/git-bin/git" <<'EOF'
-#!/bin/sh
-if [ "${3:-}" = log ]; then sleep 1; fi
-exec "$REAL_GIT" "$@"
-EOF
-  chmod +x "$TMP/git-bin/git"
-  START=$(python3 -c 'import time; print(time.monotonic())')
-  OUT=$(PATH="$TMP/git-bin:$PATH" python3 "$SCRIPT" "$TMP/slow-memory" "$REPO" --budget 30 2>/dev/null)
-  SLOW_CONTROL=$(python3 -c 'import sys,time; print(time.monotonic()-float(sys.argv[1]))' "$START")
+  run_script "$TMP/slow-memory" "$REPO" --budget 30
   assert_contains "$OUT" '⚠STALE stale.md:' "the unbounded slow-git control completes"
-  START=$(python3 -c 'import time; print(time.monotonic())')
-  OUT=$(PATH="$TMP/git-bin:$PATH" python3 "$SCRIPT" "$TMP/slow-memory" "$REPO" --budget 0.05 2>/dev/null)
-  RC=$?
-  SLOW_BOUNDED=$(python3 -c 'import sys,time; print(time.monotonic()-float(sys.argv[1]))' "$START")
-  assert_eq 0 "$RC" "a slow git log is bounded without a hook error"
-  assert_incomplete "a timed-out scan"
-  if python3 - "$SLOW_CONTROL" "$SLOW_BOUNDED" <<'PY'
+  run_scan_harness git-timeout "$TMP/slow-memory" "$REPO" "$TMP/git-timeout-scans" 0.05
+  assert_eq 0 "$RC" "a deterministic git timeout exits 0"
+  assert_incomplete "a deterministic git timeout"
+  if python3 - "$TMP/git-timeout-scans" 0.05 <<'PY'
 import sys
-control, bounded = map(float, sys.argv[1:])
-sys.exit(0 if bounded < control * 0.75 else 1)
+budget = float(sys.argv[2])
+values = [line.split("=", 1)[1].strip() for line in open(sys.argv[1], encoding="utf-8")
+          if line.startswith("timeout=")]
+sys.exit(0 if values and all(v != "None" and float(v) <= budget for v in values) else 1)
 PY
   then
-    pass "the internal budget is at least 25% faster than its slow-git control (${SLOW_BOUNDED}s vs ${SLOW_CONTROL}s)"
+    pass "every git call is given at most the remaining budget as its timeout"
   else
-    fail "the internal budget is at least 25% faster than its slow-git control" \
-      "bounded ${SLOW_BOUNDED}s, control ${SLOW_CONTROL}s"
+    fail "every git call is given at most the remaining budget as its timeout" \
+      "$(grep '^timeout=' "$TMP/git-timeout-scans" | tr '\n' ' ')"
   fi
 
   cat > "$TMP/git-bin/git" <<'EOF'
@@ -455,10 +502,10 @@ printf 'initial nested source\n' > "$WALK_REPO/sdk/a/x.py"
 commit_all "$WALK_REPO" initial 2026-01-02T00:00:00Z || exit 1
 python3 - "$WALK_REPO" <<'PY'
 import os, sys
-for index in range(10000):
+for index in range(40):
     os.mkdir(os.path.join(sys.argv[1], "aaa-empty-%05d" % index))
 os.mkdir(os.path.join(sys.argv[1], "src", "aaa-noise"))
-for index in range(4000):
+for index in range(20):
     os.mkdir(os.path.join(sys.argv[1], "src", "aaa-noise", "empty-%05d" % index))
 PY
 printf 'later nested source\n' > "$WALK_REPO/sdk/a/x.py"
@@ -522,6 +569,14 @@ anchors:
 ---
 An unreadable directory must not hide other memories.
 EOF
+cat > "$UNREADABLE_MEM/unreadable-prefix.md" <<'EOF'
+---
+modified: 2026-01-15T00:00:00Z
+anchors:
+  - unreadable/sub/*.py
+---
+A literal prefix below an unreadable directory cannot be checked.
+EOF
 cat > "$UNREADABLE_MEM/sdk-stale.md" <<'EOF'
 ---
 modified: 2026-01-15T00:00:00Z
@@ -573,46 +628,43 @@ edge_guard_cases() {
   assert_contains "$(cat "$TMP/script-stderr")" 'non-negative' "negative --budget explains the error"
 
   section "A recursive glob walk observes its deadline"
-  START=$(python3 -c 'import time; print(time.monotonic())')
   run_script "$WALK_MEM" "$WALK_REPO" --budget 30
-  UNBOUNDED=$(python3 -c 'import sys,time; print(time.monotonic()-float(sys.argv[1]))' "$START")
   assert_eq 0 "$RC" "the unbounded non-matching walk exits 0"
   assert_contains "$OUT" '⚠STALE walk.md:' "the unbounded walk completes and reports the missing anchor"
-  START=$(python3 -c 'import time; print(time.monotonic())')
-  run_script "$WALK_MEM" "$WALK_REPO" --budget 0.05
-  BOUNDED=$(python3 -c 'import sys,time; print(time.monotonic()-float(sys.argv[1]))' "$START")
-  assert_eq 0 "$RC" "the bounded non-matching walk exits 0"
-  assert_incomplete "a deadline during the walk"
-  if python3 - "$UNBOUNDED" "$BOUNDED" <<'PY'
-import sys
-unbounded, bounded = map(float, sys.argv[1:])
-sys.exit(0 if bounded < unbounded * 0.75 else 1)
-PY
-  then
-    pass "the bounded walk is at least 25% faster than its unbounded control (${BOUNDED}s vs ${UNBOUNDED}s)"
-  else
-    fail "the bounded walk is at least 25% faster than its unbounded control" \
-      "bounded ${BOUNDED}s, unbounded ${UNBOUNDED}s"
-  fi
+  run_scan_harness walk-timeout "$WALK_MEM" "$WALK_REPO" "$TMP/walk-timeout-scans" 0.05
+  assert_eq 0 "$RC" "a deterministic directory deadline exits 0"
+  assert_incomplete "a deterministic directory deadline"
+  assert_contains "$(cat "$TMP/walk-timeout-scans")" "$WALK_REPO" \
+    "the deadline is forced inside the repository walk"
 }
 
 edge_guard_cases
 
 final_edge_guard_cases() {
   section "Literal prefixes and pruned directory walks"
-  run_script "$PRUNE_MEM" "$WALK_REPO" --budget 0.05
-  assert_eq 0 "$RC" "a fixed-prefix glob with a small budget exits 0"
+  run_scan_harness record "$PRUNE_MEM" "$WALK_REPO" "$TMP/fixed-prefix-scans" 30
+  assert_eq 0 "$RC" "a fixed-prefix glob exits 0 with a large budget"
   assert_contains "$OUT" '⚠STALE fixed-prefix.md: sdk changed 2026-02-02 (memory 2026-01-15)' \
     "a fixed-prefix glob does not hide another anchor's finding"
-  assert_not_contains "$OUT" '⚠STALE-CHECK incomplete' "a fixed-prefix match needs no unrelated-tree walk"
-  run_script "$PRUNED_MEM" "$WALK_REPO" --budget 0.05
-  assert_eq 0 "$RC" "a segment-pruned glob with a small budget exits 0"
+  assert_eq 1 "$(wc -l < "$TMP/fixed-prefix-scans" | tr -d ' ')" \
+    "a fixed-prefix match opens exactly one directory"
+  assert_eq "$WALK_REPO/src" "$(cat "$TMP/fixed-prefix-scans")" \
+    "a fixed-prefix match never opens the unrelated tree"
+  run_scan_harness record "$PRUNED_MEM" "$WALK_REPO" "$TMP/pruned-scans" 30
+  assert_eq 0 "$RC" "a segment-pruned glob exits 0 with a large budget"
   assert_contains "$OUT" '⚠STALE pruned.md: src/*/*.py changed 2026-02-02 (memory 2026-01-15)' \
     "segment pruning avoids unrelated nested directories"
-  run_script "$MISSING_MEM" "$WALK_REPO" --budget 0.05
-  assert_eq 0 "$RC" "a missing literal prefix with a small budget exits 0"
+  assert_contains "$(cat "$TMP/pruned-scans")" "$WALK_REPO/src/aaa-noise" \
+    "the pruned walk may open a first-level directory matched by the star"
+  assert_not_contains "$(cat "$TMP/pruned-scans")" '/aaa-empty-' \
+    "the segment-pruned walk never opens the unrelated root tree"
+  assert_not_contains "$(cat "$TMP/pruned-scans")" '/src/aaa-noise/empty-' \
+    "the segment-pruned walk never opens a directory the next segment cannot match"
+  run_scan_harness record "$MISSING_MEM" "$WALK_REPO" "$TMP/missing-prefix-scans" 30
+  assert_eq 0 "$RC" "a missing literal prefix exits 0 with a large budget"
   assert_contains "$OUT" '⚠STALE missing-prefix.md: zz-missing/*.py changed unknown (memory 2026-01-15)' \
     "a missing literal prefix reports STALE without walking"
+  assert_empty "$(cat "$TMP/missing-prefix-scans")" "a missing literal prefix opens no directory"
   assert_not_contains "$OUT" '⚠STALE-CHECK incomplete' "a missing prefix does not exhaust the budget"
 
   section "Git metadata and directory-covering globs"
@@ -634,6 +686,8 @@ final_edge_guard_cases() {
     assert_eq 0 "$RC" "an unreadable directory does not fail the scan"
     assert_contains "$OUT" '⚠STALE sdk-stale.md: sdk changed 2026-02-02 (memory 2026-01-15)' \
       "an unreadable directory does not hide another memory's finding"
+    assert_contains "$OUT" '⚠STALE unreadable-prefix.md: unreadable/sub/*.py' \
+      "a glob prefix below an unreadable directory reports as missing"
   fi
 }
 
@@ -872,16 +926,34 @@ hook_guard_cases
 
 hook_timeout_case() {
   section "SessionStart hook reports an incomplete check"
-  mkdir -p "$TMP/slow-hook-git"
-  cat > "$TMP/slow-hook-git/git" <<'EOF'
-#!/bin/sh
-if [ "${3:-}" = log ]; then sleep 3; fi
-exec "$REAL_GIT" "$@"
-EOF
-  chmod +x "$TMP/slow-hook-git/git"
+  mkdir -p "$TMP/timeout-hook-python"
+  printf '#!%s\n' "$REAL_PYTHON" > "$TMP/timeout-hook-python/python3"
+  cat >> "$TMP/timeout-hook-python/python3" <<'PY'
+import os
+import runpy
+import subprocess
+import sys
+
+if sys.argv[1] == "-c":
+    os.execv(os.environ["REAL_PYTHON"], [os.environ["REAL_PYTHON"], *sys.argv[1:]])
+real_run = subprocess.run
+
+
+def fake_run(command, *args, **kwargs):
+    if "log" in command[1:] and kwargs.get("timeout") is not None:
+        raise subprocess.TimeoutExpired(command, kwargs.get("timeout", 0))
+    return real_run(command, *args, **kwargs)
+
+
+subprocess.run = fake_run
+script = sys.argv[1]
+sys.argv = sys.argv[1:]
+runpy.run_path(script, run_name="__main__")
+PY
+  chmod +x "$TMP/timeout-hook-python/python3"
   local payload
   payload=$(hook_payload "$HOOK_TRANSCRIPT" "$HOOK_PROJECT")
-  OUT=$(printf '%s' "$payload" | PATH="$TMP/slow-hook-git:$PATH" bash "$HOOK" 2>/dev/null)
+  OUT=$(printf '%s' "$payload" | PATH="$TMP/timeout-hook-python:$PATH" bash "$HOOK" 2>/dev/null)
   RC=$?
   assert_eq 0 "$RC" "a timed-out hook exits 0"
   assert_contains "$OUT" '## Memory staleness' "a timed-out hook still prints its header"
@@ -1030,6 +1102,8 @@ python_mutation red "recursive double-star depth" '    if "**" in pattern[:index
 if [[ "$(id -u)" -eq 0 ]]; then
   printf '  SKIP: unreadable-directory mutation (root ignores chmod 000)\n'
 else
+  python_mutation red "an error-proof literal-prefix check" '    if not os.path.isdir(base):' \
+    '    if not (os.stat(base).st_mode & 0o040000):' final_edge_guard_cases
   python_mutation red "per-directory scandir errors" '        try:
             with os.scandir(current) as scanner:
                 entries = list(scanner)
@@ -1066,6 +1140,8 @@ python_mutation red "the literal-prefix walk root" '    base = root.joinpath(*pr
   '    base = root' final_edge_guard_cases
 python_mutation red "segment-by-segment descent pruning" \
   '    return fnmatch.fnmatchcase(name, pattern[index])' '    return True' final_edge_guard_cases
+python_mutation red "the missing-prefix short-circuit" '    if not os.path.isdir(base):' \
+  '    if False:' final_edge_guard_cases
 python_mutation red "the .git exclusion" '            if ".git" in relative.split("/"):' \
   '            if False:' final_edge_guard_cases
 python_mutation red "directory-covering glob history" \
