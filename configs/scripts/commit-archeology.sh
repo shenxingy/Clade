@@ -248,7 +248,7 @@ scan() {
 
 # ─── Background refresh ───────────────────────────────────────────────
 start_refresh() {
-  local script_dir runtime_lib state lock pid recorded="" waited=0
+  local script_dir runtime_lib state lock pid
   local reclaim current_pid mtime now
   script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)
   runtime_lib="$script_dir/../hooks/lib/runtime-dir.sh"
@@ -297,15 +297,13 @@ start_refresh() {
     nohup bash "$script_dir/$(basename "${BASH_SOURCE[0]}")" --refresh "$lock" \
       </dev/null >/dev/null 2>&1 &
   fi
-  while [[ -d "$lock" && "$waited" -lt 10 ]]; do
-    recorded=""
-    IFS= read -r recorded 2>/dev/null < "$lock/pid" || true
-    if [[ "$recorded" =~ ^[0-9]+$ && "$recorded" != "$$" ]]; then
-      break
-    fi
-    sleep 0.1
-    waited=$((waited + 1))
-  done
+  # Hand the lock to the child at once: it records its own $$ only after bash has
+  # started, and this process exits first. Leaving our PID there let a second
+  # caller see a dead holder and reclaim the lock under a live refresh (two scans;
+  # #210 waited 1 s for the hand-off, which a loaded CI runner outlasted).
+  # Neither setsid (a background child of a non-interactive shell leads no
+  # process group, so it does not fork) nor nohup forks, so $! is the refresher.
+  printf '%s\n' "$!" > "$lock/pid" 2>/dev/null
   disown %% 2>/dev/null || true
 }
 
@@ -314,6 +312,9 @@ run_refresh() {
   [[ -n "$REFRESH_LOCK_DIR" && -d "$REFRESH_LOCK_DIR" ]] || return 0
   trap 'rm -f "$REFRESH_LOCK_DIR/pid"; rmdir "$REFRESH_LOCK_DIR" 2>/dev/null' EXIT
   printf '%s\n' "$$" > "$REFRESH_LOCK_DIR/pid"
+  # A caller that judged the cache stale just before another refresh finished and
+  # released the lock arrives here with nothing left to do.
+  [[ "$(head -1 "$(lessons_path).head" 2>/dev/null)" == "$(git rev-parse HEAD 2>/dev/null)" ]] && return 0
   scan
 }
 
