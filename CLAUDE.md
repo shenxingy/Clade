@@ -942,7 +942,7 @@ bash configs/scripts/checks.sh shellcheck configs/hooks/*.sh configs/hooks/lib/*
 # 12. Every suite the `shell-tests` job runs — all 33, not a convenient subset
 #     (`loop` also runs test-loop-holdout.sh, and sources test-loop-env.sh, through
 #     tests/lib/loop-fixture.sh — neither has a step of its own)
-for t in loop checks skill-routing pr-scope-policy audit worktree-env \
+for t in loop checks commit-archeology skill-routing pr-scope-policy audit worktree-env \
          rule-injector mailbox-drain correction-pairing sync-store hooks hook-provenance \
          sync-link-projects sync-link-projects-remote sync-health memory-sync-breaker \
          post-edit-check session-context session-scorecard post-compact-reinject \
