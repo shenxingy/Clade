@@ -52,6 +52,26 @@ fi
 
 cd "$SYNC_DIR"
 
+# Heal the quarantine ignores on stores created before sync-setup wrote them.
+# This must precede the marker scan: these files contain markers by construction,
+# and --exclude-standard can omit them only after the patterns are present. The
+# heal is best-effort: a read or append failure leaves the old marker scan to
+# decide the push, and must not abort this async job under set -e.
+_SYNC_GITIGNORE="$SYNC_DIR/.gitignore"
+for _sync_ignore in '*.corrupt.*' 'skills/.trash/'; do
+  if grep -qxF "$_sync_ignore" "$_SYNC_GITIGNORE" 2>/dev/null; then
+    continue
+  fi
+  if [[ -s "$_SYNC_GITIGNORE" ]]; then
+    _sync_last_char=$(tail -c 1 "$_SYNC_GITIGNORE" 2>/dev/null) || break
+    if [[ -n "$_sync_last_char" ]]; then
+      printf '\n' 2>/dev/null >> "$_SYNC_GITIGNORE" || break
+    fi
+  fi
+  printf '%s\n' "$_sync_ignore" 2>/dev/null >> "$_SYNC_GITIGNORE" || break
+done
+unset _sync_ignore _sync_last_char _SYNC_GITIGNORE
+
 # NEVER stage a file carrying conflict markers. This is not hygiene — it is the
 # bug that ate the correction log. `git pull --rebase --autostash` leaves marker
 # text in the working tree when the AUTOSTASH POP conflicts (not the rebase), and
