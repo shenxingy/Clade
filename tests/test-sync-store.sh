@@ -5,14 +5,15 @@
 # fake gh and a stub project linker, so it cannot reach the network or another
 # checkout. The push fixture has no remote.
 #
-# Internal: CLADE_TEST_SYNC_SETUP and CLADE_TEST_SYNC_PUSH may name scratch
-# copies of the scripts, used to prove these cases fail against older code.
+# Internal: CLADE_TEST_SYNC_SETUP, CLADE_TEST_SYNC_PUSH and CLADE_TEST_SYNC_HEAL
+# may name scratch copies, used to prove these cases fail against older code.
 
 set -uo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SYNC_SETUP="${CLADE_TEST_SYNC_SETUP:-$REPO_ROOT/configs/scripts/sync-setup.sh}"
 SYNC_PUSH="${CLADE_TEST_SYNC_PUSH:-$REPO_ROOT/configs/scripts/sync-push.sh}"
+SYNC_HEAL="${CLADE_TEST_SYNC_HEAL:-$REPO_ROOT/configs/scripts/sync-store-heal.sh}"
 
 TESTS_RUN=0; TESTS_PASSED=0; TESTS_FAILED=0
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[0;33m'; NC='\033[0m'
@@ -30,6 +31,20 @@ assert_eq() {
 assert_not_contains() {
   if grep -qF -- "$2" <<< "$1"; then fail "$3" "output unexpectedly contains '$2'"; else pass "$3"; fi
 }
+assert_ignored() {
+  if git -C "$1" check-ignore -q -- "$2"; then
+    pass "$2 is ignored"
+  else
+    fail "$2 is ignored" "git check-ignore rejected the default pattern"
+  fi
+}
+assert_same_file() {
+  if cmp -s "$1" "$2"; then
+    pass "$3"
+  else
+    fail "$3" "$1 differs from $2"
+  fi
+}
 
 TMP_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/clade-sync-store.XXXXXX")"
 trap 'rm -rf "$TMP_ROOT"' EXIT
@@ -40,12 +55,43 @@ export GIT_AUTHOR_NAME=clade-test GIT_AUTHOR_EMAIL=test@clade.local
 export GIT_COMMITTER_NAME=clade-test GIT_COMMITTER_EMAIL=test@clade.local
 unset CLAUDE_CONFIG_DIR CLADE_PRIVATE_PROJECTS CLADE_PRIVATE_KEYWORDS CLADE_SYNC_PUSH_LOCK
 
-section "sync-setup — a fresh store ignores quarantined files"
+# Run both scripts from a sibling-file layout identical to ~/.claude/scripts.
+# The conditional keeps this suite runnable against pre-helper HEAD copies.
+mkdir -p "$TMP_ROOT/push-bin"
+cp "$SYNC_PUSH" "$TMP_ROOT/push-bin/sync-push.sh"
+if [[ -f "$SYNC_HEAL" ]]; then
+  cp "$SYNC_HEAL" "$TMP_ROOT/push-bin/sync-store-heal.sh"
+fi
+SYNC_PUSH_RUN="$TMP_ROOT/push-bin/sync-push.sh"
+
+DEFAULT_IGNORE=$(cat <<'EOF'
+# Raw correction events are private; keep them local.
+corrections/history.jsonl
+# Local safety backups.
+*.bak-*
+.backups/
+# Claude Code's regenerated skill cache stays local.
+skills/synced/
+# Byte-compiled Python caches cause cross-machine conflicts.
+__pycache__/
+*.py[cod]
+# Self-heal forensic backups stay local.
+*.corrupt.*
+# Claude Code's removed-skill trash stays local.
+skills/.trash/
+EOF
+)
+
+section "sync-setup — a fresh store ignores every default local-only path"
 SETUP_ROOT="$TMP_ROOT/setup"
 SETUP_HOME="$SETUP_ROOT/home"
 SETUP_NFS="$SETUP_ROOT/nfs"
-mkdir -p "$SETUP_HOME/.claude" "$SETUP_NFS" "$SETUP_ROOT/bin"
+mkdir -p "$SETUP_HOME/.claude/corrections" "$SETUP_NFS" "$SETUP_ROOT/bin"
+printf '{"event":"private"}\n' > "$SETUP_HOME/.claude/corrections/history.jsonl"
 cp "$SYNC_SETUP" "$SETUP_ROOT/bin/sync-setup.sh"
+if [[ -f "$SYNC_HEAL" ]]; then
+  cp "$SYNC_HEAL" "$SETUP_ROOT/bin/sync-store-heal.sh"
+fi
 printf '#!/bin/sh\nexit 1\n' > "$SETUP_ROOT/bin/gh"
 printf '#!/bin/sh\nexit 0\n' > "$SETUP_ROOT/bin/sync-link-projects.sh"
 chmod +x "$SETUP_ROOT/bin/gh" "$SETUP_ROOT/bin/sync-link-projects.sh"
@@ -59,21 +105,31 @@ if [[ -f "$SETUP_STORE/.gitignore" ]]; then
 else
   SETUP_IGNORE=""
 fi
-assert_eq "$SETUP_IGNORE" "$(printf '*.corrupt.*\nskills/.trash/')" \
-  "the generated .gitignore contains exactly the quarantine patterns"
-assert_eq "$(grep -xcF '*.corrupt.*' "$SETUP_STORE/.gitignore" 2>/dev/null)" "1" \
-  "sync-setup writes the corrupt-backup pattern once"
-assert_eq "$(grep -xcF 'skills/.trash/' "$SETUP_STORE/.gitignore" 2>/dev/null)" "1" \
-  "sync-setup writes the skills trash pattern once"
+assert_eq "$SETUP_IGNORE" "$DEFAULT_IGNORE" \
+  "the generated .gitignore contains exactly the default lines and group comments"
+assert_ignored "$SETUP_STORE" "corrections/history.jsonl"
+assert_ignored "$SETUP_STORE" "rules.md.bak-20261107"
+assert_ignored "$SETUP_STORE" ".backups/local/rules.md"
+assert_ignored "$SETUP_STORE" "skills/synced/cache/SKILL.md"
+assert_ignored "$SETUP_STORE" "scripts/__pycache__/module.pyc"
+assert_ignored "$SETUP_STORE" "scripts/module.pyo"
+assert_ignored "$SETUP_STORE" "x.corrupt.1"
+assert_ignored "$SETUP_STORE" "skills/.trash/markers.md"
+assert_eq "$(cat "$SETUP_STORE/corrections/history.jsonl")" '{"event":"private"}' \
+  "the private correction event was written into the migrated store"
+assert_not_contains "$(git -C "$SETUP_STORE" status --porcelain --untracked-files=all)" \
+  "corrections/history.jsonl" "git status omits the written correction history"
+assert_not_contains "$(git -C "$SETUP_STORE" ls-files)" \
+  "corrections/history.jsonl" "the initial setup commit does not track correction history"
 
-# Re-running setup is also an upgrade path. A comment containing either pattern
-# is not the pattern line itself. Keep the final local line unterminated too.
+# Re-running setup is also an upgrade path. A comment containing a pattern is
+# not the pattern line itself. Keep the final local line unterminated too.
 SETUP_COMMENT='# keep *.corrupt.* and skills/.trash/ out of git'
 printf '%s\nsetup-local' "$SETUP_COMMENT" > "$SETUP_STORE/.gitignore"
 HOME="$SETUP_HOME" PATH="$SETUP_ROOT/bin:$PATH" \
   bash "$SETUP_ROOT/bin/sync-setup.sh" --nfs "$SETUP_NFS" >/dev/null 2>&1
 assert_eq "$?" "0" "sync-setup also upgrades an existing store"
-EXPECTED_SETUP_IGNORE=$(printf '%s\nsetup-local\n*.corrupt.*\nskills/.trash/' "$SETUP_COMMENT")
+EXPECTED_SETUP_IGNORE=$(printf '%s\nsetup-local\n%s' "$SETUP_COMMENT" "$DEFAULT_IGNORE")
 assert_eq "$(cat "$SETUP_STORE/.gitignore")" "$EXPECTED_SETUP_IGNORE" \
   "setup matches whole lines, not comments, and preserves an unterminated final line"
 HOME="$SETUP_HOME" PATH="$SETUP_ROOT/bin:$PATH" \
@@ -81,15 +137,119 @@ HOME="$SETUP_HOME" PATH="$SETUP_ROOT/bin:$PATH" \
 assert_eq "$(cat "$SETUP_STORE/.gitignore")" "$EXPECTED_SETUP_IGNORE" \
   "a further setup run is idempotent"
 
-section "sync scripts — both entry points use the same pattern list"
-SETUP_PATTERN_LINE=$(sed -n '/^for _sync_ignore in /{p;q;}' "$SYNC_SETUP")
-PUSH_PATTERN_LINE=$(sed -n '/^for _sync_ignore in /{p;q;}' "$SYNC_PUSH")
-if [[ -n "$SETUP_PATTERN_LINE" && -n "$PUSH_PATTERN_LINE" ]]; then
-  pass "both pattern-list extractions are non-empty"
-else
-  fail "both pattern-list extractions are non-empty" "setup='$SETUP_PATTERN_LINE' push='$PUSH_PATTERN_LINE'"
-fi
-assert_eq "$PUSH_PATTERN_LINE" "$SETUP_PATTERN_LINE" "setup and push carry byte-identical pattern lists"
+section "sync scripts — complete patterns with local comments need no healing"
+cat > "$SETUP_ROOT/live.gitignore" <<'EOF'
+# raw correction event log — keep local, never sync to GitHub (privacy)
+corrections/history.jsonl
+# local safety backups
+*.bak-*
+.backups/
+# Claude Code's claude.ai skill cache, regenerated per session
+skills/synced/
+# byte-compiled caches (caused cross-host conflicts)
+__pycache__/
+*.py[cod]
+# self-heal forensic backups
+*.corrupt.*
+# Claude Code's trash of removed skills
+skills/.trash/
+EOF
+cp "$SETUP_ROOT/live.gitignore" "$SETUP_STORE/.gitignore"
+git -C "$SETUP_STORE" add .gitignore
+git -C "$SETUP_STORE" -c core.hooksPath=/dev/null commit -qm local-comments
+NOOP_HEAD=$(git -C "$SETUP_STORE" rev-parse HEAD)
+HOME="$SETUP_HOME" CLADE_RUNTIME_DIR="$SETUP_ROOT/push-runtime" \
+  bash "$SYNC_PUSH_RUN" > "$SETUP_ROOT/noop-push.out" 2>&1
+assert_eq "$?" "0" "a complete ignore file still allows sync-push"
+assert_same_file "$SETUP_STORE/.gitignore" "$SETUP_ROOT/live.gitignore" \
+  "sync-push appends no orphan comments when every pattern is present"
+assert_eq "$(git -C "$SETUP_STORE" rev-parse HEAD)" "$NOOP_HEAD" \
+  "a complete ignore file causes no healing commit"
+cp "$SETUP_ROOT/live.gitignore" "$SETUP_STORE/.gitignore"
+HOME="$SETUP_HOME" PATH="$SETUP_ROOT/bin:$PATH" \
+  bash "$SETUP_ROOT/bin/sync-setup.sh" --nfs "$SETUP_NFS" >/dev/null 2>&1
+assert_eq "$?" "0" "sync-setup accepts the same complete ignore file"
+assert_same_file "$SETUP_STORE/.gitignore" "$SETUP_ROOT/live.gitignore" \
+  "sync-setup also leaves a complete ignore file byte-identical"
+
+section "sync scripts — both entry points call the one shared definition"
+assert_eq "$(grep -cF 'sync-store-heal.sh' "$SYNC_SETUP")" "1" \
+  "sync-setup names the shared healer once"
+assert_eq "$(grep -cF 'sync-store-heal.sh' "$SYNC_PUSH")" "1" \
+  "sync-push names the shared healer once"
+assert_eq "$(grep -cF 'sync_store_heal_gitignore' "$SYNC_SETUP")" "1" \
+  "sync-setup has no separate inline ignore loop"
+assert_eq "$(grep -cF 'sync_store_heal_gitignore' "$SYNC_PUSH")" "1" \
+  "sync-push has no separate inline ignore loop"
+
+section "sync-store-heal — generic line appends have a checked failure contract"
+HELPER_ROOT="$TMP_ROOT/helper"
+mkdir -p "$HELPER_ROOT"
+printf 'local-last\n' > "$HELPER_ROOT/terminated"
+(
+  # shellcheck source=/dev/null
+  source "$SYNC_HEAL" 2>/dev/null || exit 99
+  sync_store_append_missing_lines "$HELPER_ROOT/terminated" <<'EOF'
+next
+EOF
+)
+assert_eq "$?" "0" "the generic helper accepts another metadata line list"
+assert_eq "$(cat "$HELPER_ROOT/terminated")" "$(printf 'local-last\nnext')" \
+  "a terminated existing line gains no spurious blank line"
+printf 'local-last' > "$HELPER_ROOT/read-failure"
+(
+  # shellcheck source=/dev/null
+  source "$SYNC_HEAL" 2>/dev/null || exit 99
+  tail() { return 1; }
+  sync_store_append_missing_lines "$HELPER_ROOT/read-failure" <<'EOF'
+next
+EOF
+)
+assert_eq "$?" "1" "a final-line read failure returns nonzero"
+assert_eq "$(cat "$HELPER_ROOT/read-failure")" "local-last" \
+  "a final-line read failure does not concatenate into the existing line"
+ln -s missing-dir/gitignore "$HELPER_ROOT/append-failure"
+(
+  # shellcheck source=/dev/null
+  source "$SYNC_HEAL" 2>/dev/null || exit 99
+  sync_store_append_missing_lines "$HELPER_ROOT/append-failure" <<'EOF'
+next
+EOF
+)
+assert_eq "$?" "1" "an append failure returns nonzero to the best-effort caller"
+printf 'a\n' > "$HELPER_ROOT/duplicate-input"
+(
+  # shellcheck source=/dev/null
+  source "$SYNC_HEAL" 2>/dev/null || exit 99
+  sync_store_append_missing_lines "$HELPER_ROOT/duplicate-input" <<'EOF'
+a
+b
+EOF
+)
+assert_eq "$?" "0" "the generic helper accepts a mix of present and new lines"
+assert_eq "$(cat "$HELPER_ROOT/duplicate-input")" "$(printf 'a\nb')" \
+  "the generic helper appends only b and never duplicates a"
+
+: > "$HELPER_ROOT/early-failure"
+: > "$HELPER_ROOT/early-failure-empty"
+EARLY_TAIL_FLAG="$HELPER_ROOT/first-tail-failed"
+(
+  # shellcheck source=/dev/null
+  source "$SYNC_HEAL" 2>/dev/null || exit 99
+  tail() {
+    if [[ ! -e "$EARLY_TAIL_FLAG" ]]; then
+      : > "$EARLY_TAIL_FLAG"
+      return 1
+    fi
+    command tail "$@"
+  }
+  sync_store_heal_gitignore "$HELPER_ROOT/early-failure"
+)
+assert_eq "$?" "1" "a first-group append failure returns nonzero immediately"
+assert_eq "$(grep -xcF 'corrections/history.jsonl' "$HELPER_ROOT/early-failure")" "0" \
+  "the failed first group never adds the private-history ignore"
+assert_same_file "$HELPER_ROOT/early-failure" "$HELPER_ROOT/early-failure-empty" \
+  "no later group is appended after the first-group failure"
 
 section "sync-push — an existing store self-heals its ignores before scanning"
 PUSH_ROOT="$TMP_ROOT/push"
@@ -110,24 +270,169 @@ printf '%s\n' '<<<<<<< Updated upstream' '=======' '>>>>>>> Stashed changes' > "
 printf '%s\n' '<<<<<<< Updated upstream' '=======' '>>>>>>> Stashed changes' > "$PUSH_STORE/skills/.trash/markers.md"
 printf -- '- rule one\n- rule two\n' > "$PUSH_STORE/corrections/rules.md"
 HOME="$PUSH_HOME" CLADE_RUNTIME_DIR="$PUSH_ROOT/runtime" \
-  bash "$SYNC_PUSH" > "$PUSH_ROOT/output" 2>&1
+  bash "$SYNC_PUSH_RUN" > "$PUSH_ROOT/output" 2>&1
 PUSH_RC=$?
 PUSH_OUT=$(cat "$PUSH_ROOT/output"; cat "$PUSH_HOME/.claude/.sync-conflicts.log" 2>/dev/null)
 assert_eq "$PUSH_RC" "0" "x.corrupt.1 and skills/.trash markers no longer refuse the push"
 assert_not_contains "$PUSH_OUT" "REFUSED" "the marker guard does not log a refusal for an ignored quarantine file"
+assert_not_contains "$PUSH_OUT" "corrections/history.jsonl is already tracked" \
+  "an untracked correction history does not emit the tracked-file warning"
 assert_eq "$(git -C "$PUSH_STORE" show HEAD:corrections/rules.md 2>/dev/null)" "$(printf -- '- rule one\n- rule two')" \
   "the ordinary clean edit still commits"
 PUSH_TRACKED=$(git -C "$PUSH_STORE" ls-files)
 assert_not_contains "$PUSH_TRACKED" "x.corrupt.1" "the corrupt backup is not committed"
 assert_not_contains "$PUSH_TRACKED" "skills/.trash/markers.md" "the trash file is not committed"
-EXPECTED_IGNORE=$(printf '%s\nlocal-first\nlocal-last\n*.corrupt.*\nskills/.trash/' "$PUSH_COMMENT")
+EXPECTED_IGNORE=$(printf '%s\nlocal-first\nlocal-last\n%s' "$PUSH_COMMENT" "$DEFAULT_IGNORE")
 assert_eq "$(cat "$PUSH_STORE/.gitignore")" "$EXPECTED_IGNORE" \
-  "healing matches whole lines and appends without reordering existing lines"
-HOME="$PUSH_HOME" CLADE_RUNTIME_DIR="$PUSH_ROOT/runtime" bash "$SYNC_PUSH" >/dev/null 2>&1
+  "healing matches whole lines and appends without reordering existing lines or comments"
+HOME="$PUSH_HOME" CLADE_RUNTIME_DIR="$PUSH_ROOT/runtime" bash "$SYNC_PUSH_RUN" >/dev/null 2>&1
 assert_eq "$(cat "$PUSH_STORE/.gitignore")" "$EXPECTED_IGNORE" \
   "a second push adds no duplicate lines and needs no trailing-newline repair"
 assert_eq "$(grep -xcF '*.corrupt.*' "$PUSH_STORE/.gitignore")" "1" "the corrupt pattern stays singular"
 assert_eq "$(grep -xcF 'skills/.trash/' "$PUSH_STORE/.gitignore")" "1" "the trash pattern stays singular"
+assert_eq "$(grep -xcF 'corrections/history.jsonl' "$PUSH_STORE/.gitignore")" "1" \
+  "the private history pattern stays singular"
+
+section "sync-push — a #205 store gains only incomplete groups"
+UPGRADE_ROOT="$TMP_ROOT/upgrade-205"
+UPGRADE_HOME="$UPGRADE_ROOT/home"
+UPGRADE_STORE="$UPGRADE_ROOT/store"
+mkdir -p "$UPGRADE_HOME/.claude" "$UPGRADE_STORE/corrections"
+printf 'SYNC_BACKEND=nfs\nSYNC_DIR=%s\n' "$UPGRADE_STORE" > "$UPGRADE_HOME/.claude/.sync-config"
+git -C "$UPGRADE_STORE" init -q
+git -C "$UPGRADE_STORE" config user.email test@clade.local
+git -C "$UPGRADE_STORE" config user.name clade-test
+printf '%s\n' '*.corrupt.*' 'skills/.trash/' > "$UPGRADE_STORE/.gitignore"
+printf -- '- rule one\n' > "$UPGRADE_STORE/corrections/rules.md"
+git -C "$UPGRADE_STORE" add -A
+git -C "$UPGRADE_STORE" -c core.hooksPath=/dev/null commit -qm base
+HOME="$UPGRADE_HOME" CLADE_RUNTIME_DIR="$UPGRADE_ROOT/runtime" \
+  bash "$SYNC_PUSH_RUN" >/dev/null 2>&1
+assert_eq "$?" "0" "the #205 upgrade push completes"
+cat > "$UPGRADE_ROOT/expected.gitignore" <<'EOF'
+*.corrupt.*
+skills/.trash/
+# Raw correction events are private; keep them local.
+corrections/history.jsonl
+# Local safety backups.
+*.bak-*
+.backups/
+# Claude Code's regenerated skill cache stays local.
+skills/synced/
+# Byte-compiled Python caches cause cross-machine conflicts.
+__pycache__/
+*.py[cod]
+EOF
+assert_same_file "$UPGRADE_STORE/.gitignore" "$UPGRADE_ROOT/expected.gitignore" \
+  "only missing patterns and their group comments are appended"
+cp "$UPGRADE_STORE/.gitignore" "$UPGRADE_ROOT/once.gitignore"
+HOME="$UPGRADE_HOME" CLADE_RUNTIME_DIR="$UPGRADE_ROOT/runtime" \
+  bash "$SYNC_PUSH_RUN" >/dev/null 2>&1
+assert_same_file "$UPGRADE_STORE/.gitignore" "$UPGRADE_ROOT/once.gitignore" \
+  "complete groups add no comments on the next run"
+
+section "sync-push — partially present groups never duplicate their patterns"
+PARTIAL_ROOT="$TMP_ROOT/partial-groups"
+PARTIAL_HOME="$PARTIAL_ROOT/home"
+PARTIAL_STORE="$PARTIAL_ROOT/store"
+mkdir -p "$PARTIAL_HOME/.claude" "$PARTIAL_STORE/corrections"
+printf 'SYNC_BACKEND=nfs\nSYNC_DIR=%s\n' "$PARTIAL_STORE" > "$PARTIAL_HOME/.claude/.sync-config"
+git -C "$PARTIAL_STORE" init -q
+git -C "$PARTIAL_STORE" config user.email test@clade.local
+git -C "$PARTIAL_STORE" config user.name clade-test
+printf '%s\n' '*.bak-*' '__pycache__/' > "$PARTIAL_STORE/.gitignore"
+printf -- '- rule one\n' > "$PARTIAL_STORE/corrections/rules.md"
+git -C "$PARTIAL_STORE" add -A
+git -C "$PARTIAL_STORE" -c core.hooksPath=/dev/null commit -qm base
+HOME="$PARTIAL_HOME" CLADE_RUNTIME_DIR="$PARTIAL_ROOT/runtime" \
+  bash "$SYNC_PUSH_RUN" >/dev/null 2>&1
+assert_eq "$?" "0" "the partial-group healing push completes"
+cat > "$PARTIAL_ROOT/expected.gitignore" <<'EOF'
+*.bak-*
+__pycache__/
+# Raw correction events are private; keep them local.
+corrections/history.jsonl
+# Local safety backups.
+.backups/
+# Claude Code's regenerated skill cache stays local.
+skills/synced/
+# Byte-compiled Python caches cause cross-machine conflicts.
+*.py[cod]
+# Self-heal forensic backups stay local.
+*.corrupt.*
+# Claude Code's removed-skill trash stays local.
+skills/.trash/
+EOF
+assert_same_file "$PARTIAL_STORE/.gitignore" "$PARTIAL_ROOT/expected.gitignore" \
+  "each incomplete group gains its comment and only its missing patterns"
+assert_eq "$(grep -xcF '*.bak-*' "$PARTIAL_STORE/.gitignore")" "1" \
+  "the already present backup suffix stays singular"
+assert_eq "$(grep -xcF '__pycache__/' "$PARTIAL_STORE/.gitignore")" "1" \
+  "the already present Python cache directory stays singular"
+cp "$PARTIAL_STORE/.gitignore" "$PARTIAL_ROOT/once.gitignore"
+HOME="$PARTIAL_HOME" CLADE_RUNTIME_DIR="$PARTIAL_ROOT/runtime" \
+  bash "$SYNC_PUSH_RUN" >/dev/null 2>&1
+assert_same_file "$PARTIAL_STORE/.gitignore" "$PARTIAL_ROOT/once.gitignore" \
+  "a second partial-group healing run is byte-identical"
+
+section "sync-push — already tracked history is reported but never untracked"
+TRACKED_ROOT="$TMP_ROOT/tracked-history"
+TRACKED_HOME="$TRACKED_ROOT/home"
+TRACKED_STORE="$TRACKED_ROOT/store"
+mkdir -p "$TRACKED_HOME/.claude" "$TRACKED_STORE/corrections"
+printf 'SYNC_BACKEND=nfs\nSYNC_DIR=%s\n' "$TRACKED_STORE" > "$TRACKED_HOME/.claude/.sync-config"
+git -C "$TRACKED_STORE" init -q
+git -C "$TRACKED_STORE" config user.email test@clade.local
+git -C "$TRACKED_STORE" config user.name clade-test
+printf '{"event":"already tracked"}\n' > "$TRACKED_STORE/corrections/history.jsonl"
+git -C "$TRACKED_STORE" add -A
+git -C "$TRACKED_STORE" -c core.hooksPath=/dev/null commit -qm base
+HOME="$TRACKED_HOME" CLADE_RUNTIME_DIR="$TRACKED_ROOT/runtime" CLADE_SYNC_PUSH_TODAY=2026-11-07 \
+  bash "$SYNC_PUSH_RUN" > "$TRACKED_ROOT/output" 2>&1
+assert_eq "$?" "0" "a store already tracking history still completes its push"
+TRACKED_NOTICE="[2026-11-07] sync-push privacy: corrections/history.jsonl is already tracked; untrack it with: git -C \"$TRACKED_STORE\" rm --cached corrections/history.jsonl"
+assert_eq "$(grep -xcF "$TRACKED_NOTICE" "$TRACKED_HOME/.claude/.sync-conflicts.log" 2>/dev/null)" "1" \
+  "the log names the tracked file and the exact manual untrack command"
+if git -C "$TRACKED_STORE" ls-files --error-unmatch corrections/history.jsonl >/dev/null 2>&1; then
+  pass "the warning leaves history.jsonl tracked"
+else
+  fail "the warning leaves history.jsonl tracked" "sync-push untracked the file"
+fi
+HOME="$TRACKED_HOME" CLADE_RUNTIME_DIR="$TRACKED_ROOT/runtime" CLADE_SYNC_PUSH_TODAY=2026-11-07 \
+  bash "$SYNC_PUSH_RUN" >/dev/null 2>&1
+assert_eq "$(grep -cF 'corrections/history.jsonl is already tracked' "$TRACKED_HOME/.claude/.sync-conflicts.log")" "1" \
+  "a second push on the same day adds no duplicate warning"
+HOME="$TRACKED_HOME" CLADE_RUNTIME_DIR="$TRACKED_ROOT/runtime" CLADE_SYNC_PUSH_TODAY=2026-11-08 \
+  bash "$SYNC_PUSH_RUN" >/dev/null 2>&1
+assert_eq "$(grep -cF 'corrections/history.jsonl is already tracked' "$TRACKED_HOME/.claude/.sync-conflicts.log")" "2" \
+  "a push on the next day writes one fresh warning"
+
+section "sync-push — refusals do not interleave privacy notices"
+REFUSED_TRACKED_ROOT="$TMP_ROOT/refused-tracked-history"
+REFUSED_TRACKED_HOME="$REFUSED_TRACKED_ROOT/home"
+REFUSED_TRACKED_STORE="$REFUSED_TRACKED_ROOT/store"
+mkdir -p "$REFUSED_TRACKED_HOME/.claude" "$REFUSED_TRACKED_STORE/corrections"
+printf 'SYNC_BACKEND=nfs\nSYNC_DIR=%s\n' "$REFUSED_TRACKED_STORE" > "$REFUSED_TRACKED_HOME/.claude/.sync-config"
+git -C "$REFUSED_TRACKED_STORE" init -q
+git -C "$REFUSED_TRACKED_STORE" config user.email test@clade.local
+git -C "$REFUSED_TRACKED_STORE" config user.name clade-test
+printf '{"event":"already tracked"}\n' > "$REFUSED_TRACKED_STORE/corrections/history.jsonl"
+printf -- '- rule one\n' > "$REFUSED_TRACKED_STORE/corrections/rules.md"
+git -C "$REFUSED_TRACKED_STORE" add -A
+git -C "$REFUSED_TRACKED_STORE" -c core.hooksPath=/dev/null commit -qm base
+printf '%s\n' '<<<<<<< Updated upstream' '=======' '>>>>>>> Stashed changes' \
+  >> "$REFUSED_TRACKED_STORE/corrections/rules.md"
+for _day in 07 08 09; do
+  HOME="$REFUSED_TRACKED_HOME" CLADE_RUNTIME_DIR="$REFUSED_TRACKED_ROOT/runtime" \
+    CLADE_SYNC_PUSH_TODAY="2026-11-$_day" bash "$SYNC_PUSH_RUN" >/dev/null 2>&1
+  assert_eq "$?" "1" "the tracked marker store is refused on 2026-11-$_day"
+done
+REFUSED_TRACKED_LOG="$REFUSED_TRACKED_HOME/.claude/.sync-conflicts.log"
+assert_eq "$(grep -cF 'corrections/history.jsonl is already tracked' "$REFUSED_TRACKED_LOG")" "0" \
+  "a refused run writes no tracked-history privacy notice"
+assert_eq "$(tail -n 3 "$REFUSED_TRACKED_LOG" | grep -cF 'sync-push REFUSED:')" "3" \
+  "the last three log lines remain an uninterrupted REFUSED streak"
+unset _day
 
 # The exemption is for ignored quarantine paths only. A marker in an ordinary
 # tracked file must still block the commit, so deleting the whole scan cannot
@@ -135,7 +440,7 @@ assert_eq "$(grep -xcF 'skills/.trash/' "$PUSH_STORE/.gitignore")" "1" "the tras
 printf '%s\n' '<<<<<<< Updated upstream' '=======' '>>>>>>> Stashed changes' >> "$PUSH_STORE/corrections/rules.md"
 PUSH_COMMITS=$(git -C "$PUSH_STORE" rev-list --count HEAD)
 HOME="$PUSH_HOME" CLADE_RUNTIME_DIR="$PUSH_ROOT/runtime" \
-  bash "$SYNC_PUSH" > "$PUSH_ROOT/refused-output" 2>&1
+  bash "$SYNC_PUSH_RUN" > "$PUSH_ROOT/refused-output" 2>&1
 REFUSED_RC=$?
 if [[ "$REFUSED_RC" -ne 0 ]]; then
   pass "an ordinary tracked file with markers is still refused"
@@ -162,7 +467,7 @@ git -C "$FAIL_STORE" add -A
 git -C "$FAIL_STORE" -c core.hooksPath=/dev/null commit -qm base
 printf -- '- clean edit\n' > "$FAIL_STORE/corrections/rules.md"
 HOME="$FAIL_HOME" CLADE_RUNTIME_DIR="$FAIL_ROOT/runtime" \
-  bash "$SYNC_PUSH" > "$FAIL_ROOT/clean-output" 2>&1
+  bash "$SYNC_PUSH_RUN" > "$FAIL_ROOT/clean-output" 2>&1
 FAIL_CLEAN_RC=$?
 assert_eq "$FAIL_CLEAN_RC" "0" "a failed heal does not abort a clean push"
 assert_eq "$(cat "$FAIL_ROOT/clean-output")" "" "the failed heal emits no stderr noise"
@@ -175,7 +480,7 @@ printf '%s\n' '<<<<<<< Updated upstream' '=======' '>>>>>>> Stashed changes' > "
 printf -- '- another clean edit\n' >> "$FAIL_STORE/corrections/rules.md"
 FAIL_COMMITS=$(git -C "$FAIL_STORE" rev-list --count HEAD)
 HOME="$FAIL_HOME" CLADE_RUNTIME_DIR="$FAIL_ROOT/runtime" \
-  bash "$SYNC_PUSH" > "$FAIL_ROOT/refused-output" 2>&1
+  bash "$SYNC_PUSH_RUN" > "$FAIL_ROOT/refused-output" 2>&1
 FAIL_REFUSED_RC=$?
 if [[ "$FAIL_REFUSED_RC" -ne 0 ]]; then
   pass "a failed heal leaves a marker-carrying quarantine file refused"
@@ -204,7 +509,7 @@ git -C "$APPEND_STORE" -c core.hooksPath=/dev/null commit -qm base
 ln -s missing-dir/gitignore "$APPEND_STORE/.gitignore"
 printf -- '- clean edit\n' > "$APPEND_STORE/corrections/rules.md"
 HOME="$APPEND_HOME" CLADE_RUNTIME_DIR="$APPEND_ROOT/runtime" \
-  bash "$SYNC_PUSH" > "$APPEND_ROOT/output" 2>&1
+  bash "$SYNC_PUSH_RUN" > "$APPEND_ROOT/output" 2>&1
 APPEND_RC=$?
 assert_eq "$APPEND_RC" "0" "a final pattern append failure does not abort a clean push"
 assert_eq "$(cat "$APPEND_ROOT/output")" "" "the final pattern append failure emits no output"
@@ -230,13 +535,135 @@ else
   chmod 444 "$NEWLINE_STORE/.gitignore"
   printf -- '- clean edit\n' > "$NEWLINE_STORE/corrections/rules.md"
   HOME="$NEWLINE_HOME" CLADE_RUNTIME_DIR="$NEWLINE_ROOT/runtime" \
-    bash "$SYNC_PUSH" > "$NEWLINE_ROOT/output" 2>&1
+    bash "$SYNC_PUSH_RUN" > "$NEWLINE_ROOT/output" 2>&1
   NEWLINE_RC=$?
   chmod u+w "$NEWLINE_STORE/.gitignore"
   assert_eq "$NEWLINE_RC" "0" "a newline append failure does not abort a clean push"
   assert_eq "$(cat "$NEWLINE_ROOT/output")" "" "the newline append failure emits no output"
   assert_eq "$(git -C "$NEWLINE_STORE" show HEAD:corrections/rules.md 2>/dev/null)" "- clean edit" \
     "the clean edit commits after the newline append fails"
+fi
+
+section "sync-push — a missing helper degrades quietly, not the privacy notice"
+MISSING_ROOT="$TMP_ROOT/missing-helper"
+MISSING_HOME="$MISSING_ROOT/home"
+MISSING_STORE="$MISSING_ROOT/store"
+MISSING_BIN="$MISSING_ROOT/bin"
+mkdir -p "$MISSING_HOME/.claude" "$MISSING_STORE/corrections" "$MISSING_BIN"
+cp "$SYNC_PUSH" "$MISSING_BIN/sync-push.sh"
+printf 'SYNC_BACKEND=nfs\nSYNC_DIR=%s\n' "$MISSING_STORE" > "$MISSING_HOME/.claude/.sync-config"
+git -C "$MISSING_STORE" init -q
+git -C "$MISSING_STORE" config user.email test@clade.local
+git -C "$MISSING_STORE" config user.name clade-test
+printf '{"event":"already tracked"}\n' > "$MISSING_STORE/corrections/history.jsonl"
+printf -- '- clean base\n' > "$MISSING_STORE/corrections/rules.md"
+git -C "$MISSING_STORE" add -A
+git -C "$MISSING_STORE" -c core.hooksPath=/dev/null commit -qm base
+printf -- '- clean edit\n' > "$MISSING_STORE/corrections/rules.md"
+HOME="$MISSING_HOME" CLADE_RUNTIME_DIR="$MISSING_ROOT/runtime" CLADE_SYNC_PUSH_TODAY=2026-11-07 \
+  bash "$MISSING_BIN/sync-push.sh" > "$MISSING_ROOT/output" 2> "$MISSING_ROOT/error"
+assert_eq "$?" "0" "sync-push without its sibling helper commits a clean edit"
+assert_eq "$(cat "$MISSING_ROOT/error")" "" "a missing helper emits no stderr"
+assert_eq "$(git -C "$MISSING_STORE" show HEAD:corrections/rules.md 2>/dev/null)" "- clean edit" \
+  "the clean edit reaches the store history without the helper"
+assert_eq "$(grep -cF 'corrections/history.jsonl is already tracked' "$MISSING_HOME/.claude/.sync-conflicts.log" 2>/dev/null)" "1" \
+  "the tracked-history notice still works without the helper"
+if [[ ! -e "$MISSING_STORE/.gitignore" ]]; then
+  pass "a missing helper does not invent an ignore file"
+else
+  fail "a missing helper does not invent an ignore file" ".gitignore exists"
+fi
+
+section "sync-push — unreadable and failing helper sources are also quiet"
+for _failure in directory invalid; do
+  SOURCE_ROOT="$TMP_ROOT/source-$_failure"
+  SOURCE_HOME="$SOURCE_ROOT/home"
+  SOURCE_STORE="$SOURCE_ROOT/store"
+  SOURCE_BIN="$SOURCE_ROOT/bin"
+  mkdir -p "$SOURCE_HOME/.claude" "$SOURCE_STORE/corrections" "$SOURCE_BIN"
+  cp "$SYNC_PUSH" "$SOURCE_BIN/sync-push.sh"
+  if [[ "$_failure" == "directory" ]]; then
+    mkdir "$SOURCE_BIN/sync-store-heal.sh"
+  else
+    printf 'false\n' > "$SOURCE_BIN/sync-store-heal.sh"
+  fi
+  printf 'SYNC_BACKEND=nfs\nSYNC_DIR=%s\n' "$SOURCE_STORE" > "$SOURCE_HOME/.claude/.sync-config"
+  git -C "$SOURCE_STORE" init -q
+  git -C "$SOURCE_STORE" config user.email test@clade.local
+  git -C "$SOURCE_STORE" config user.name clade-test
+  printf -- '- clean base\n' > "$SOURCE_STORE/corrections/rules.md"
+  git -C "$SOURCE_STORE" add -A
+  git -C "$SOURCE_STORE" -c core.hooksPath=/dev/null commit -qm base
+  printf -- '- clean edit\n' > "$SOURCE_STORE/corrections/rules.md"
+  HOME="$SOURCE_HOME" CLADE_RUNTIME_DIR="$SOURCE_ROOT/runtime" \
+    bash "$SOURCE_BIN/sync-push.sh" > "$SOURCE_ROOT/output" 2> "$SOURCE_ROOT/error"
+  assert_eq "$?" "0" "a $_failure helper source does not abort sync-push"
+  assert_eq "$(cat "$SOURCE_ROOT/error")" "" "a $_failure helper source emits no stderr"
+  assert_eq "$(git -C "$SOURCE_STORE" show HEAD:corrections/rules.md 2>/dev/null)" "- clean edit" \
+    "a $_failure helper source still permits the clean commit"
+done
+unset _failure
+
+section "sync-setup — ignore write failure is explicit and makes no commit"
+SETUP_FAIL_ROOT="$TMP_ROOT/setup-write-failure"
+SETUP_FAIL_HOME="$SETUP_FAIL_ROOT/home"
+SETUP_FAIL_NFS="$SETUP_FAIL_ROOT/nfs"
+SETUP_FAIL_STORE="$SETUP_FAIL_NFS/claude-dotfiles"
+SETUP_FAIL_BIN="$SETUP_FAIL_ROOT/bin"
+mkdir -p "$SETUP_FAIL_HOME/.claude/corrections" "$SETUP_FAIL_STORE" "$SETUP_FAIL_BIN"
+printf '{"event":"private"}\n' > "$SETUP_FAIL_HOME/.claude/corrections/history.jsonl"
+ln -s missing-dir/gitignore "$SETUP_FAIL_STORE/.gitignore"
+cp "$SYNC_SETUP" "$SETUP_FAIL_BIN/sync-setup.sh"
+if [[ -f "$SYNC_HEAL" ]]; then
+  cp "$SYNC_HEAL" "$SETUP_FAIL_BIN/sync-store-heal.sh"
+fi
+printf '#!/bin/sh\nexit 1\n' > "$SETUP_FAIL_BIN/gh"
+printf '#!/bin/sh\nexit 0\n' > "$SETUP_FAIL_BIN/sync-link-projects.sh"
+chmod +x "$SETUP_FAIL_BIN/gh" "$SETUP_FAIL_BIN/sync-link-projects.sh"
+HOME="$SETUP_FAIL_HOME" PATH="$SETUP_FAIL_BIN:$PATH" \
+  bash "$SETUP_FAIL_BIN/sync-setup.sh" --nfs "$SETUP_FAIL_NFS" \
+  > "$SETUP_FAIL_ROOT/output" 2> "$SETUP_FAIL_ROOT/error"
+if [[ "$?" -ne 0 ]]; then
+  pass "an unwritable setup ignore file stops initialization"
+else
+  fail "an unwritable setup ignore file stops initialization" "sync-setup exited 0"
+fi
+assert_eq "$(grep -xcF "sync-setup: could not write $SETUP_FAIL_STORE/.gitignore; no initial commit was made." "$SETUP_FAIL_ROOT/error")" "1" \
+  "the setup write failure names the ignore file and absent initial commit"
+if git -C "$SETUP_FAIL_STORE" rev-parse --verify HEAD >/dev/null 2>&1; then
+  fail "the failed setup makes no initial commit" "HEAD exists"
+else
+  pass "the failed setup makes no initial commit"
+fi
+assert_not_contains "$(git -C "$SETUP_FAIL_STORE" ls-files)" \
+  "corrections/history.jsonl" "the failed setup does not track private history"
+
+section "sync-setup — a missing helper is explicit and makes no commit"
+SETUP_MISSING_ROOT="$TMP_ROOT/setup-missing-helper"
+SETUP_MISSING_HOME="$SETUP_MISSING_ROOT/home"
+SETUP_MISSING_NFS="$SETUP_MISSING_ROOT/nfs"
+SETUP_MISSING_STORE="$SETUP_MISSING_NFS/claude-dotfiles"
+SETUP_MISSING_BIN="$SETUP_MISSING_ROOT/bin"
+mkdir -p "$SETUP_MISSING_HOME/.claude/corrections" "$SETUP_MISSING_NFS" "$SETUP_MISSING_BIN"
+printf '{"event":"private"}\n' > "$SETUP_MISSING_HOME/.claude/corrections/history.jsonl"
+cp "$SYNC_SETUP" "$SETUP_MISSING_BIN/sync-setup.sh"
+printf '#!/bin/sh\nexit 1\n' > "$SETUP_MISSING_BIN/gh"
+printf '#!/bin/sh\nexit 0\n' > "$SETUP_MISSING_BIN/sync-link-projects.sh"
+chmod +x "$SETUP_MISSING_BIN/gh" "$SETUP_MISSING_BIN/sync-link-projects.sh"
+HOME="$SETUP_MISSING_HOME" PATH="$SETUP_MISSING_BIN:$PATH" \
+  bash "$SETUP_MISSING_BIN/sync-setup.sh" --nfs "$SETUP_MISSING_NFS" \
+  > "$SETUP_MISSING_ROOT/output" 2> "$SETUP_MISSING_ROOT/error"
+if [[ "$?" -ne 0 ]]; then
+  pass "a missing setup helper stops initialization"
+else
+  fail "a missing setup helper stops initialization" "sync-setup exited 0"
+fi
+assert_eq "$(grep -xcF "sync-setup: could not load $SETUP_MISSING_BIN/sync-store-heal.sh for $SETUP_MISSING_STORE/.gitignore; no initial commit was made." "$SETUP_MISSING_ROOT/error")" "1" \
+  "the missing-helper error names both required paths and no initial commit"
+if git -C "$SETUP_MISSING_STORE" rev-parse --verify HEAD >/dev/null 2>&1; then
+  fail "the missing-helper setup makes no initial commit" "HEAD exists"
+else
+  pass "the missing-helper setup makes no initial commit"
 fi
 
 section "Summary"
