@@ -431,6 +431,11 @@ jobs:
       - name: Run correction-pairing tests
         run: bash tests/test-correction-pairing.sh
 
+      # Sync-store quarantine patterns: generated on setup, healed on push before
+      # the conflict-marker scan, without weakening that scan for ordinary files.
+      - name: Run sync-store ignore tests
+        run: bash tests/test-sync-store.sh
+
       - name: Run session-scorecard tests
         run: bash tests/test-session-scorecard.sh
 

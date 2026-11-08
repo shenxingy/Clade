@@ -132,6 +132,21 @@ corrections/promoted-archive.md       merge=union
 memory/*.md                           merge=union
 projects-memory/**/MEMORY.md          merge=union
 ATTRS
+
+# Quarantine files are local recovery state, not dotfiles to replicate. Preserve
+# an existing ignore file and append only patterns that are absent.
+_SYNC_GITIGNORE="$SYNC_DIR/.gitignore"
+for _sync_ignore in '*.corrupt.*' 'skills/.trash/'; do
+  if grep -qxF "$_sync_ignore" "$_SYNC_GITIGNORE" 2>/dev/null; then
+    continue
+  fi
+  if [[ -s "$_SYNC_GITIGNORE" ]] && [[ -n "$(tail -c 1 "$_SYNC_GITIGNORE")" ]]; then
+    printf '\n' >> "$_SYNC_GITIGNORE"
+  fi
+  printf '%s\n' "$_sync_ignore" >> "$_SYNC_GITIGNORE"
+done
+unset _sync_ignore _SYNC_GITIGNORE
+
 # Add/update GitHub remote if we have a URL
 if [[ -n "$SYNC_REPO_URL" ]]; then
   git -C "$SYNC_DIR" remote add origin "$SYNC_REPO_URL" 2>/dev/null || \
