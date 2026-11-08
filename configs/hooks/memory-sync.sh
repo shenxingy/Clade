@@ -25,6 +25,41 @@ SYNC_CONFIG="$CLAUDE_DIR/.sync-config"
 INPUT=$(cat)
 TOOL_NAME=$(echo "$INPUT" | jq -r '.tool_name // empty' 2>/dev/null)
 
+sync_push_backoff_active() {
+  _backoff_half_open=false
+  local _file="${CLADE_SYNC_PUSH_BACKOFF_FILE:-$CLAUDE_DIR/.sync-push-backoff}"
+  local _failed_at="" _failures="" _reason="" _extra=""
+  [[ -f "$_file" ]] || return 1
+  IFS=' ' read -r _failed_at _failures _reason _extra < "$_file"
+  case "$_failed_at" in ''|*[!0-9]*) return 1 ;; esac
+  case "$_failures" in ''|*[!0-9]*) return 1 ;; esac
+  [[ "$_failures" -ge 1 && -n "$_reason" && -z "$_extra" ]] || return 1
+
+  local _base="${CLADE_SYNC_PUSH_BACKOFF_BASE_SECONDS:-1800}"
+  local _max="${CLADE_SYNC_PUSH_BACKOFF_MAX_SECONDS:-86400}"
+  local _now="${CLADE_SYNC_PUSH_BACKOFF_NOW:-$(date +%s)}"
+  case "$_base" in ''|*[!0-9]*|0) _base=1800 ;; esac
+  case "$_max" in ''|*[!0-9]*) _max=86400 ;; esac
+  case "$_now" in ''|*[!0-9]*) _now=$(date +%s) ;; esac
+
+  local _window="$_base" _remaining
+  _remaining=$((_failures - 1))
+  while [[ "$_remaining" -gt 0 && "$_window" -lt "$_max" ]]; do
+    _window=$((_window * 2))
+    _remaining=$((_remaining - 1))
+  done
+  [[ "$_window" -gt "$_max" ]] && _window="$_max"
+  if [[ $((_now - _failed_at)) -lt "$_window" ]]; then
+    return 0
+  fi
+  _backoff_half_open=true
+  _backoff_file="$_file"
+  _backoff_now="$_now"
+  _backoff_failures="$_failures"
+  _backoff_reason="$_reason"
+  return 1
+}
+
 # A project memory under any projects directory sync-link-projects.sh scans:
 # ~/.claude/projects, $CLAUDE_CONFIG_DIR/projects and
 # ~/.claude-profiles/*/projects. Matching ~/.claude/projects alone left every
@@ -46,6 +81,7 @@ is_synced_path=false
 # variable") before it reached sync-push. A synced change made through Bash
 # never pushed: 4,916 such failures in 30 days of one host's transcripts.
 FILE_PATH=""
+_backoff_half_open=false
 
 if [[ "$TOOL_NAME" == "Write" || "$TOOL_NAME" == "Edit" ]]; then
   # ─── Write/Edit: check file_path ─────────────────────────────────────────
@@ -74,6 +110,11 @@ elif [[ "$TOOL_NAME" == "Bash" ]]; then
 fi
 
 [[ "$is_synced_path" == false ]] && exit 0
+
+# The breaker precedes every memory topic gate and every non-memory path class.
+if sync_push_backoff_active; then
+  exit 0
+fi
 
 # ─── DreamConsolidator: 7-gate quality filter for memory paths ───────────────
 # Only applies to memory/ directories — skills/hooks/scripts/corrections always sync.
@@ -157,6 +198,19 @@ fi
 
 SYNC_PUSH="$CLAUDE_DIR/scripts/sync-push.sh"
 [[ -x "$SYNC_PUSH" ]] || exit 0
+
+if [[ "$_backoff_half_open" == true ]]; then
+  _backoff_tmp="$_backoff_file.tmp.$$"
+  # After a claim the timestamp is the last probe time. A failed claim degrades
+  # to an unclaimed probe rather than aborting the hook.
+  {
+    printf '%s %s %s\n' "$_backoff_now" "$_backoff_failures" "$_backoff_reason" \
+      > "$_backoff_tmp"
+    mv -f "$_backoff_tmp" "$_backoff_file"
+  } 2>/dev/null || {
+    rm -f "$_backoff_tmp" 2>/dev/null || true
+  }
+fi
 
 "$SYNC_PUSH" &>/dev/null &
 disown

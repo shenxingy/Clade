@@ -1439,6 +1439,11 @@ built is written and **unrun**.
   radar's own Lane C clusters. The matcher needs a labelled sample before it
   changes; this week's 45 are a start. Not built: the matcher's vocabulary is
   the whole behaviour, and changing it without a labelled set is a guess.
+  **2026-11-07:** on the 20 latest correction-detector fires, 8 are corrections by
+  hand label — Chinese task briefs and questions fire it — consistent with the
+  measured 41–57%. The false fires are also written as `rule_text` into
+  `cross-project-rules.jsonl` (862 lines), the raw-prompt field the Mac memory
+  `rule-promoter-poisoned-claude-md` already names.
 
 ## 2026-10-05 radar sweep follow-ups
 
@@ -1531,6 +1536,16 @@ that was built has been run.
   no longer holds; re-measure the overlap before retiring it. Until then a
   single-file `cat`/`head` of a matching file can deliver a rule twice (native +
   hook) on a CLI that has the native fix.
+  **2026-11-07:** the 2026-11-16 re-measure should score rule *violations* in the
+  sample, not task success. Research: arXiv:2602.11988 v3 (2026-09-29) finds
+  context files "do not generally improve task success rates, while increasing
+  inference cost by over 20%"; arXiv:2601.20404 finds AGENTS.md cuts median
+  runtime 28.6% and output tokens 16.6% at comparable completion; TRACE
+  (arXiv:2606.13174, on unmerged `radar/2026-10-26`) compiles corrections into
+  checks because memory alone left 57.5% of applicable preference checks violated;
+  arXiv:2604.15877 puts memory, skills and rules on one compression axis (5–20x,
+  50–500x, 1,000x+), and nothing here decides which level a learned item belongs
+  to.
 - [ ] 🟡 **`/equip` scans each skill alone; ColluSkill splits a payload across
   skills.** arXiv:2608.09732 (August 2026) reports 96.0% attack success against
   six per-skill scanners. Sub-payloads sit in separately packaged skills joined
@@ -1705,6 +1720,13 @@ uncommitted edits sat in the checkout of an unrelated branch for four days. Queu
   root-cause (`premature-action`, `inaccurate-self-reporting` …), the one
   vocabulary both sides already share. Whichever is chosen, its first test is a
   mutation: with the gate as it is today, the test must be red.
+  **2026-11-07:** cross-reference from § 2026-11-07 housekeeping audit:
+  `rule-effectiveness.json` remains `{}`, with mtime 2026-04-15.
+  `session-scorecard.sh` is not "wired nowhere": the `/sync` prompt still runs it
+  (`configs/skills/sync/prompt.md:101`), while `configs/skills/sync/SKILL.md` no
+  longer mentions it; `scorecards.jsonl` has not been written since 2026-03-19
+  (its mtime). The separate auto-audit promotion versus `/audit` scheduling
+  decision stays in that section.
 - [ ] 🟡 **Promoted rules have no half-life.** 93 `[auto-promoted …]` lines in
   the global `~/.claude/CLAUDE.md` (462 lines). `/audit` retires a promoted rule
   only when a hook takes it over; `auto-audit.sh` archives `rules.md` lines
@@ -2987,3 +3009,174 @@ Cursor (production A/B, n not given) and Jain (10 runs per arm) carry numbers.
   have not run on bash 3.2: after the install there, run `bash tests/test-loop.sh`,
   `bash tests/test-hooks.sh` and `bash tests/test-sync-link-projects.sh`. Listed in
   § Needs the owner.
+
+## 2026-11-07 housekeeping audit — memory, rules, TODO
+
+The owner asked whether the parts that keep a project running — project memory,
+the correction rules, TODO.md — still have room to improve, whether they work,
+and what recent research says. Measured on aries on 2026-11-07: `harness-usage.py
+--since 30`, the sync store's git state, a scan of 593 main-thread transcripts
+(30 days), 7 TinyFish searches + 10 fetches (ledgered in
+`~/.claude/research/known-concepts.md`, § Run 2026-11-07) and the Claude Code
+docs/changelog through the claude-code-guide agent. Verdict: the three loops run
+(rule-injector 445 fires, correction-detector 91, 163 sessions read a memory file
+beyond the index, auto-audit ran 11-04), but every push had been REFUSED since
+2026-09-19 (49 days, the interval in which nothing aries wrote left the machine),
+there had been no aries commit in the store since 2026-09-26 (42 days), and the
+store had been unmergeable since 2026-10-05 (33 days). Nothing in the health
+check could see it. The state was repaired by hand the same day; the 12 open
+items below include the code that keeps the next failure from being silent.
+
+**Repaired by hand on 2026-11-07 (host state in the sync store, no repository change):**
+
+- The dotfiles sync store (`~/shared-nfs/claude-dotfiles`, the third remote) had no
+  commit from aries since 2026-09-26 (42 days to 2026-11-07) and sat from
+  2026-10-05 16:52 (33 days to 2026-11-07) in an unresolved
+  `pull --rebase --autostash` pop: three unmerged paths (`corrections/stats.json`,
+  `hooks/correction-detector.sh`, `memory/.sync-cooldown.json`) and one `autostash`
+  entry, so `git commit` was impossible. Independently, since 2026-09-19 (49 days
+  to 2026-11-07), every `sync-push` run was REFUSED (244 log lines): its marker
+  scan, `git ls-files -mo --exclude-standard`, matched the self-heal's own
+  `stats.json.corrupt.*` backups, which carry markers by construction.
+  Consequences: 36+ Mac commits never reached aries; nothing aries wrote left the
+  machine during those 49 days (`rules.md`, `rules-archive.md`,
+  `cross-project-rules.jsonl` and hooks never reached the remote);
+  all 19 project-memory directories adopted on 2026-11-06 were untracked (no
+  history, no backup — the property the 11-06 fix was for); `memory-sync.sh`
+  spawned a failing push 4,954 times in 30 days (every fire "rejected" in
+  harness-usage). Repair: the working tree was taken as the resolution (no
+  markers; the hook byte-identical to `configs/hooks/`), the stash dropped after
+  checking every line it held was present, `*.corrupt.*` and `skills/.trash/`
+  ignored in the store, the two tracked `.corrupt` files untracked, then the
+  regular `sync-push.sh` committed, hit the expected conflict, merged `-X ours`
+  with the union attributes keeping every Mac-side line (0 dropped on the four
+  append-only files; 8 rules the Mac had learned came in) and pushed. 215
+  `skills/.trash/` files the Mac had committed were untracked in a second commit.
+  Backup: store branch `backup/aries-pre-repair-20261107` plus a tarball of
+  `corrections/`, `projects-memory/`, `memory/` in the session scratchpad.
+- docforensics memory under the main1 profile was a fork: 80 local files against
+  the store's 46 (the 11-06 adoption took a poorer profile's copy; both sides were
+  then edited daily). Union-merged to 92 files and a 92-entry index; the one file
+  edited on both sides (`internal-trustable.md`) kept the newer store text with the
+  five 11-03 paragraphs appended under a dated merge note; main1 relinked to the
+  store; the original kept beside it as `memory.pre-sync-20261107`. The
+  session-start conflict warning is gone.
+- Clade memory written on the Mac lands in `projects-memory/shenxingy-Clade` (its
+  path slug) and never loaded here — including a feedback memory from 2026-11-07
+  (`no-ai-coauthor-trailers`, already satisfied on aries: `attribution` set in
+  every profile, 0 trailers in the last 30 commits). Its 11 files and one 2026-05
+  feedback memory were folded into `projects-Clade` (now 29 memories, index
+  verified against the files). The Mac keeps writing to its own slug until the
+  item below lands.
+
+**Open — transport and health (the failure above must not be silent again):**
+
+- [ ] 🔴 **`sync-health.sh` cannot see a wedged store.** It checks the config file,
+  the symlinks, `SYNC_DIR` and the memory-conflict file — and reported "1 project
+  memory conflict" at every start while the store itself had been unmergeable for
+  33 days. Add, one line each at SessionStart: unmerged paths (`git ls-files -u`),
+  a leftover `autostash` stash, days since the last commit by this host, the
+  REFUSED streak in `.sync-conflicts.log`, and commits behind the remote. Test in
+  `tests/test-hooks.sh`: a fixture store wedged each of the five ways must produce
+  the line, and a healthy one must not.
+- [ ] 🟠 **The marker guard scans files the store will never commit.** `*.corrupt.*`
+  and `skills/.trash/` are ignored in the live store's hand-made `.gitignore`; no
+  script writes that file (`sync-setup.sh` writes only `.gitattributes`,
+  `configs/scripts/sync-setup.sh:124`). Make `sync-setup.sh` generate a `.gitignore`
+  carrying both entries, or have `sync-push.sh` ensure those lines before its
+  marker scan, so a fresh machine does not recreate the wedge. Better:
+  `correction-detector.sh`'s stats.json self-heal should write its `.corrupt`
+  backup under the runtime dir (`configs/hooks/lib/runtime-dir.sh`), never into a
+  synced directory.
+- [ ] 🟠 **`memory-sync.sh` has no circuit breaker.** Its only push backoff is the
+  24 h per-topic cooldown (`memory/.sync-cooldown.json`): it has other gates at
+  `configs/hooks/memory-sync.sh:87-140`, but no circuit breaker after a REFUSED
+  push. Writes to `corrections/`, `hooks/` and `skills/` bypass the topic gate
+  entirely. A wedged store therefore cost 4,954 failing spawns in 30 days. After a
+  REFUSED, skip pushes for a window and let sync-health carry the message.
+- [ ] 🟠 **Project memory is keyed by path, so one repository on two machines is two
+  memories.** aries writes `projects-memory/projects-Clade`, the Mac
+  `shenxingy-Clade`; `sync-link-projects.sh` derives the key from the path under
+  `$HOME` and reports the other machine's key as "no top-level project named X
+  here". A memory written on one machine never loads on the other — the reason the
+  memory is synced at all. Key by repository identity (`git remote get-url origin`,
+  normalised; path as the fallback), record one `.project-path` per host, and
+  migrate the legacy pairs; `tests/test-sync-link-projects.sh` gains the two-path
+  case.
+- [ ] 🟡 **82 memory files in 14 legacy store directories reach no session** —
+  11 directories with memories plus three index-only directories (11 + 3 = 14).
+  Under `~/shared-nfs/claude-dotfiles/projects-memory/`, counting directories
+  without `.project-path` and excluding `shenxingy-Clade` (folded into
+  `projects-Clade` on 2026-11-07): faker-100 37, server-infra 20,
+  deepfake-platform 7, inkweave 4, octo-reach 4, splendor-advisor 3, clade 3, and
+  four single-file dirs (`claude-code-kit`, `h1b-compass`, `ta-grading-private`,
+  `youth-age-groundtruth`); `ai-ap-manager`, `companyOS` and `home` hold only an
+  index. Written 2026-03 → 09 under the old basename keys. faker-100 is the
+  face-swap app, whose checkout under `product/apps/` has no memory directory on
+  this host at all. Decide per directory: adopt under the current key (and read
+  for staleness first), archive, or delete.
+
+**Open — memory hygiene:**
+
+- [ ] 🟡 **Memory has no staleness signal.** A file carries `modified`, nothing marks
+  it stale when its subject changed; 9 of the 29 Clade memories were last touched
+  before 2026-10. Research this week: DreamBench-SWE (arXiv:2608.20664) — "a memory
+  system can harm the agent when it retrieves a similar but stale fact"; the
+  anchored-memory scheme in openai/codex#12567 (a memory names the files it depends
+  on and `check` marks it ⚠STALE once they change in a commit); Memcurrency (IEEE,
+  decay / refresh / conflict candidates). Proposal, cheapest first: an optional
+  `anchors:` list (paths or a commit) in the frontmatter, a SessionStart pass that
+  appends ⚠STALE to the MEMORY.md line of any memory whose anchor changed, and a
+  monthly review list of unanchored memories older than N days. The channel is
+  worth it: of 593 main-thread sessions in 30 days, 163 read a memory file beyond
+  the auto-loaded index and 126 wrote one (most-read file: 22 reads).
+- [ ] 🟡 **Watch the native index cap.** Claude Code loads MEMORY.md as the first 200
+  lines or 25 KB (docs, memory.md). After today's merge docforensics is 92 lines /
+  16.3 KB and product 61 lines / 17.6 KB — 70% of the byte cap, with one-line
+  entries that run to 300 bytes. Add the two numbers to `sync-health.sh`'s output
+  (or a check in `sync-link-projects.sh`) at 80% of either cap, so the tail is
+  never dropped silently.
+- [ ] 🔵 **Codex is designing native memories** (openai/codex#12567, 2026-10-28 →
+  11). Clade's Codex surface (`plugins/clade`, `~/.codex`) carries none today;
+  when it ships, decide whether the synced project memory is exported to it or the
+  two stay separate.
+
+**Open — rules:**
+
+- [ ] 🟡 **The manual half of the rules loop is not running.** `/audit` was invoked 0
+  times in 30 days (harness-usage) while every session start says "37 older rules
+  not shown — run /audit"; only the hook-side auto-audit runs (last 2026-11-04, "no
+  changes needed"). Decide: make the auto-audit run the promotion step, or schedule
+  `/audit` from `radar-cron.sh`. The existing **Most "explicit corrections" are not
+  corrections** item carries the 2026-11-07 false-correction measurement; the
+  existing **`rule-effectiveness.sh` cannot fire** item carries the dead-instruments
+  and scorecard cross-reference.
+
+**Open — TODO.md and the research intake:**
+
+- [ ] 🟡 **The "Next TODO" line is the first unchecked line in file order.** Today that
+  is "Validate the new browser project/task flow with representative GUI users"
+  (`TODO.md:103`, the dormant GUI, needs the owner), injected into every session by
+  `session-context.sh:182`. The TODO.md on `radar/2026-11-02` (unmerged) reframed it
+  and carries the trust-region note (arXiv:2610.38867: an instruction in a README
+  or TODO is followed 2.6x more often than in code). Pick by priority marker and
+  skip owner-only sections, or drop the line: a backlog is not a task. The census
+  before this section was added was 2,989 lines, 89 open / 190 done; the file is
+  organised by sweep date — the opposite failure of the field, where 78 of 85
+  committed plan files (91.8%) are written once and never revised (study relayed
+  2026-08-09).
+- [ ] 🟠 **Radar review debt compounds.** radar/2026-10-26 (15 files, +525/−51) and
+  radar/2026-11-02 (13 files, +258/−17) are unreviewed and now conflict with main
+  (`tests/test-hooks.sh`, `tests/test-correction-pairing.sh`;
+  `tests/test-radar-cron.sh`); the 11-09 run adds a third. Their TODO follow-ups
+  (+111/−2 on `radar/2026-10-26`, including TRACE and its 57.5% figure; +68/−0 on
+  `radar/2026-11-02`, including the Next-TODO fix and 2.6x trust-region note) never
+  reached main. Either review-and-land weekly as an agent task (the sweep's own
+  message says "read with git log -p, then land via PR or delete"), or have
+  `radar-cron.sh` rebase its open branches before each run and open a draft PR.
+- [ ] 🟡 **Session start spends its budget on archaeology.** `commit-archeology.sh`
+  timed out on 41 of 153 starts (27%, 15 s timeout); `session-context.sh` on 4 of
+  162. `--inject` runs the 60-day scan on a stale-cache start, not on every start;
+  the cache is 24 h (`configs/scripts/commit-archeology.sh:9-15`). Measure that
+  cost and replace or supplement the age-based cache with a per-HEAD cache, or cut
+  the window.
