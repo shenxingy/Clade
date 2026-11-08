@@ -12,5 +12,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4.3.1
-      - name: Concurrent creation race, 300 rounds of 4
-        run: bash tests/probe-mkdir-race.sh
+      - name: Real suite up to the concurrent case, fixed vs main, 25 runs each
+        run: |
+          N=$(grep -n "two concurrent injections launch exactly one scan" tests/probe-fixed-suite-full.sh | cut -d: -f1)
+          head -n "$N" tests/probe-fixed-suite-full.sh > tests/probe-fixed-suite.sh
+          mkdir --version | head -1
+          fixed=0; main=0
+          for i in $(seq 1 25); do
+            if COMMIT_ARCH_SCRIPT=$PWD/tests/probe-fixed-arch.sh bash tests/probe-fixed-suite.sh 2>&1 | grep '^not ok'; then fixed=$((fixed + 1)); fi
+            if COMMIT_ARCH_SCRIPT=$PWD/configs/scripts/commit-archeology.sh bash tests/probe-fixed-suite.sh 2>&1 | grep '^not ok'; then main=$((main + 1)); fi
+          done
+          echo "PROBE RESULT: fixed failed $fixed of 25; main failed $main of 25"
