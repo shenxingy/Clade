@@ -177,9 +177,43 @@ PYEOF
   [[ -n "$LOOP_LINE" ]] && CONTEXT="${CONTEXT}${LOOP_LINE}\n"
 fi
 
-# Next TODO item
-# trim with sed, not bare xargs — xargs errors on unmatched quotes in TODO text
-NEXT_TODO=$(grep -m1 "^\- \[ \]" TODO.md 2>/dev/null | sed 's/- \[ \] \*\*//' | sed 's/\*\*.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+# Next TODO item: priority tiers first, then file order; owner sections and
+# inline owner-only phrasings in this TODO.md are skipped case-insensitively:
+# "needs the owner", "owner decision", and "Owner:".
+# Move marked bold titles past the opening "**" so the shared trim keeps the
+# title and drops the body. Trim with sed, not bare xargs — xargs errors on
+# unmatched quotes in TODO text.
+NEXT_TODO=$(awk '
+  {
+    if ($0 ~ /^#+[[:space:]]/) {
+      heading = $0
+      sub(/[[:space:]].*$/, "", heading)
+      level = length(heading)
+      if (owner_level && level <= owner_level) owner_level = 0
+      if ((level == 2 || level == 3) && tolower($0) ~ /owner/) owner_level = level
+    }
+    if ($0 !~ /^- \[ \]/ || owner_level) next
+    item = tolower($0)
+    if (item ~ /needs the owner/ || item ~ /owner decision/ || item ~ /owner:/) next
+    if (!fallback) fallback = $0
+    if ($0 ~ /🔴/) tier = 1
+    else if ($0 ~ /🟠/) tier = 2
+    else if ($0 ~ /🟡/) tier = 3
+    else if ($0 ~ /🔵/) tier = 4
+    else next
+    if (!seen[tier]) {
+      selected[tier] = $0
+      seen[tier] = 1
+    }
+  }
+  END {
+    if (seen[1]) print selected[1]
+    else if (seen[2]) print selected[2]
+    else if (seen[3]) print selected[3]
+    else if (seen[4]) print selected[4]
+    else if (fallback) print fallback
+  }
+' TODO.md 2>/dev/null | sed 's/^- \[ \] 🔴 \*\*/🔴 /;s/^- \[ \] 🟠 \*\*/🟠 /;s/^- \[ \] 🟡 \*\*/🟡 /;s/^- \[ \] 🔵 \*\*/🔵 /;s/- \[ \] \*\*//' | sed 's/\*\*.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
 if [[ -n "$NEXT_TODO" ]]; then
   CONTEXT="${CONTEXT}\nNext TODO: ${NEXT_TODO}\n"
 fi
