@@ -79,25 +79,15 @@ if [[ -n "$(git ls-files -u 2>/dev/null)" ]]; then
   exit 1
 fi
 
-# Heal the quarantine ignores on stores created before sync-setup wrote them.
-# This must precede the marker scan: these files contain markers by construction,
-# and --exclude-standard can omit them only after the patterns are present. The
-# heal is best-effort: a read or append failure leaves the old marker scan to
-# decide the push, and must not abort this async job under set -e.
-_SYNC_GITIGNORE="$SYNC_DIR/.gitignore"
-for _sync_ignore in '*.corrupt.*' 'skills/.trash/'; do
-  if grep -qxF "$_sync_ignore" "$_SYNC_GITIGNORE" 2>/dev/null; then
-    continue
-  fi
-  if [[ -s "$_SYNC_GITIGNORE" ]]; then
-    _sync_last_char=$(tail -c 1 "$_SYNC_GITIGNORE" 2>/dev/null) || break
-    if [[ -n "$_sync_last_char" ]]; then
-      printf '\n' 2>/dev/null >> "$_SYNC_GITIGNORE" || break
-    fi
-  fi
-  printf '%s\n' "$_sync_ignore" 2>/dev/null >> "$_SYNC_GITIGNORE" || break
-done
-unset _sync_ignore _sync_last_char _SYNC_GITIGNORE
+# Heal before the marker scan so ignored recovery files stay out of that scan.
+# A read or append failure leaves the old scan to decide the push; it must not
+# abort this async job under set -e.
+_SYNC_STORE_HEAL="$(cd "$(dirname "$0")" 2>/dev/null && pwd)/sync-store-heal.sh"
+# shellcheck source=/dev/null
+if source "$_SYNC_STORE_HEAL" 2>/dev/null; then
+  sync_store_heal_gitignore "$SYNC_DIR/.gitignore" || true
+fi
+unset _SYNC_STORE_HEAL
 
 # NEVER stage a file carrying conflict markers. This is not hygiene — it is the
 # bug that ate the correction log. `git pull --rebase --autostash` leaves marker
@@ -121,6 +111,18 @@ if [ -n "$_marker_files" ]; then
   echo "sync-push: resolve them by hand, then the next sync will proceed." >&2
   sync_push_record_failure conflict-markers
   exit 1
+fi
+
+# Ignoring an already tracked file does not untrack it. Never rewrite the
+# store's index or history automatically; leave an actionable notice instead.
+# Keep this after refusal handling so daily notices cannot break a REFUSED streak.
+if git ls-files --error-unmatch -- corrections/history.jsonl >/dev/null 2>&1; then
+  _sync_today="${CLADE_SYNC_PUSH_TODAY:-$(date +%Y-%m-%d)}"
+  _sync_tracked_notice="[$_sync_today] sync-push privacy: corrections/history.jsonl is already tracked; untrack it with: git -C \"$SYNC_DIR\" rm --cached corrections/history.jsonl"
+  if ! grep -qxF "$_sync_tracked_notice" "$CLAUDE_DIR/.sync-conflicts.log" 2>/dev/null; then
+    printf '%s\n' "$_sync_tracked_notice" >> "$CLAUDE_DIR/.sync-conflicts.log"
+  fi
+  unset _sync_today _sync_tracked_notice
 fi
 
 git add -A 2>/dev/null || {
