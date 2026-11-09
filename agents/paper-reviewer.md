@@ -121,6 +121,57 @@ Work through each dimension. For every issue found, record:
 - Is code/data availability stated (even if "will be released upon acceptance")?
 - Are there dual-use concerns that need an ethics statement?
 
+### Dimension 7 — Integrity audit (claims vs. artifacts)
+
+Dimensions 1–6 judge the paper. This one checks that it is TRUE: every claim
+traced to an artifact, the way ScientistTwo (arXiv:2609.19644, §4.2) gates its
+own papers with the CoE Integrity Audit. Their reason applies to human-written
+papers too: with the integrity checks removed, the audits failed sporadically,
+and one run that otherwise succeeded only scored well because its code was
+reward-hacking. Run all five checks. Report each one, and when a check could
+not run, say why: an unchecked item is "not verified", never a pass.
+
+1. **Score provenance.** For every number in the abstract, intro and main
+   tables, find the file that produced it (result JSON/CSV, log, notebook
+   output) and record `claim → file:line → match | mismatch | no source`.
+   Before calling a number measured, read the artifact's own header and guard
+   fields (`RUN_STOPPED`, `DO_NOT_INFER`, `control_passed`, a partial-run or
+   smoke-test marker, a seed count). A number from a stopped or smoke run is
+   not a result, even if the table looks finished. Without a repo, list the
+   claims that would need one.
+2. **Evaluation integrity.** Does the code evaluate the split, metric and
+   protocol the paper states? Look for tuning or early stopping on the test
+   set, leakage across splits, a metric or protocol that differs from the
+   cited benchmark's, a best-of-N seed reported as the mean, and baselines run
+   with a smaller budget than the method. A gain that comes from changing the
+   evaluation is not a gain.
+3. **Reference existence.** Check that every `.bib` entry exists and matches
+   its title, first author and year. Use free endpoints only, no keys:
+   `curl -s "https://export.arxiv.org/api/query?id_list=<id>"` for arXiv ids,
+   `curl -sI "https://doi.org/<doi>"` for DOIs (a real DOI answers 302, an
+   unknown one 404), and
+   `curl -s "https://api.crossref.org/works?query.bibliographic=<url-encoded title>&rows=1"`
+   for the rest. Report `verified / mismatch / not found / not checked (no
+   network)` counts. A hallucinated citation is 🔴.
+4. **Method–code alignment.** Map each component the method section describes
+   to the function that implements it. Flag a described component with no
+   code (overclaim) and a code path that changes results but is not described
+   (an undisclosed trick: a filter, a reweighting, a special case for one
+   dataset). The paper must describe the code that produced its numbers.
+5. **Gain attribution.** For each component credited with the gain, is there
+   an ablation that removes only it? If removing it does not hurt, or no
+   ablation isolates it, the paper may not credit it. Say which credited
+   component is unsupported. This is stricter than Dimension 3's "are design
+   choices ablated": it asks whether the stated *source* of the gain is the
+   measured one.
+
+**Held-out reading.** If memory shows you reviewed earlier drafts of this
+paper, say so in the Executive Summary. A draft revised against your own
+critiques has been fitted to your judgement, so your score is in-distribution.
+ScientistTwo reports a held-out reviewer, one never used during drafting, for
+exactly this reason. Recommend a final read by a reviewer this draft has not
+seen: a `second-opinion-*` agent or a human.
+
 ## Step 4: Save the review file
 
 Create directory if needed, then write:
@@ -203,6 +254,29 @@ Copy this into TODO.md if needed:
 
 ---
 
+## Integrity Audit
+
+Verdict: PASS | FAIL | INCOMPLETE. FAIL if any check found a 🔴. INCOMPLETE if
+any check could not run. Never write PASS over a check that did not run.
+
+| Check | Result | Evidence |
+|-------|--------|----------|
+| Score provenance | N of M claims traced, K mismatched, J no source | `results/x.json:12` … |
+| Evaluation integrity | ok / issue | `eval.py:88` tunes on test split … |
+| Reference existence | V verified, X mismatch, Y not found, Z not checked | `refs.bib: smith2024` not found … |
+| Method–code alignment | ok / overclaim / undisclosed | `model.py:140` filter not in §3 … |
+| Gain attribution | supported / unsupported: <component> | Table 4 has no ablation without X … |
+
+## Rebuttal Plan
+
+For each 🔴 and 🟡 a reviewer would raise, the supplementary experiment that
+would answer it. ScientistTwo turns each review weakness into a planned
+experiment, runs it, and revises the draft with the results.
+
+| Weakness | Experiment that would resolve it | Command / file to extend | Cost | Status |
+|----------|----------------------------------|--------------------------|------|--------|
+| No ablation isolates X | Run variant without X on the main benchmark | `python train.py --no-x` | ~2 GPU-h | run: −0.4 pts / not run (why) |
+
 ## LaTeX Health
 
 [compilation warnings, undefined references, unused bib entries]
@@ -238,6 +312,7 @@ Executive Summary:
 
 🟡 Warnings: N
 🔵 Info: N
+Integrity audit: PASS | FAIL | INCOMPLETE (which checks did not run, and why)
 
 Full report: reviews/paper-review-YYYY-MM-DD.md
 Action checklist appended to TODO.md ✓ / (no TODO.md found)
