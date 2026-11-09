@@ -26,13 +26,13 @@ CHECKED = re.compile(r"^- \[[xX]\] (.+?)(\r?\n)?$")
 
 
 def read_outcomes(path: Path) -> dict[int, str]:
-    """`<idx>\t<outcome>` lines; the last line for an index wins (a merge
+    """`<idx>\t<outcome>[\t<log>]` lines; the last line for an index wins (a merge
     conflict is re-run serially and recorded again). A missing file is an
     error, not an empty map: without it no task can be shown to have landed."""
     outcomes: dict[int, str] = {}
     for raw_line in path.read_text(encoding="utf-8").splitlines():
         parts = raw_line.strip().split("\t")
-        if len(parts) == 2 and parts[0].isdigit():
+        if len(parts) >= 2 and parts[0].isdigit():
             outcomes[int(parts[0])] = parts[1].strip()
     return outcomes
 

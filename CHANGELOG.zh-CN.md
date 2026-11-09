@@ -154,6 +154,8 @@ semantic versioning。
 
 ### 新增
 
+- `/loop` 会记住失败的尝试。过去 supervisor 每轮只看到 commit 数，失败或什么都没改的 task 不留下任何它能读到的痕迹，下一轮会用同样的方式再规划一次；一个永远无法完成的 goal item 会每轮都被尝试，直到 `--max-iter`（在旧代码上实测：4 轮尝试 4 次）。现在 `loop_attempts.py` 在各道关卡之后把每个 task 记入 `<state>-attempts.jsonl`：是否落地，若没有则记录原因，包括从 worker 的 stream-json 日志中取出的它自己的最后一条消息。下一轮 supervisor prompt 会为每个仍未完成的条目附上 "Prior attempts that did not land"。同一条目 3 次未落地后（一次尝试加两轮改进，即 ScientistTwo 在剪枝一个 idea 之前给它的工程预算，arXiv:2609.19644 附录 A.2），该条目被记入 `.claude/skipped.md` 搁置，绑定到它的 task 会被丢弃，每次丢弃都写入日志。全新运行从空账本开始，`--resume` 保留账本。worker 结果行新增可选的第三列：worker 日志路径。`tests/test-loop-goal.sh` 在两个 runner 下新增 22 项检查，其中 18 项在旧脚本上失败；7 个变异各自都会让测试变红：去掉全新运行时的清空、绕过过滤、不注入上下文、不读取 worker 消息、每次未落地都写一条搁置记录、去掉"仅限未完成条目"的限定、丢掉串行日志路径。
+
 - 同步仓库出口的隐私闸门。`sync-push.sh` 不再推送任何提到私人项目
   （`~/.claude/private-projects`）或私人关键词（`~/.claude/private-keywords`）的
   内容：命中的行从只追加的日志里删掉，其他命中的文件整个不提交，并记录在日志里。

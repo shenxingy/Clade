@@ -417,9 +417,9 @@ while true; do
 
   if $task_succeeded; then
     success=$((success + 1))
-    record_task_outcome "$idx" "$(classify_tree_change "$fingerprint_before" "$(tree_fingerprint)")"
+    record_task_outcome "$idx" "$(classify_tree_change "$fingerprint_before" "$(tree_fingerprint)")" "$log_file"
   else
-    record_task_outcome "$idx" failed
+    record_task_outcome "$idx" failed "$log_file"
     failed=$((failed + 1))
     FAILED_TASKS+=("$task_name")
     FAILED_ERRORS+=("$last_error (after $max_attempts attempts)")

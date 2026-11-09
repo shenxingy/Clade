@@ -82,7 +82,8 @@ The loop runs as a deterministic + LLM hybrid state machine:
 ```
 [DET] Pre-flight check      — goal file exists, blocker check, no LLM
 [DET] Context hydration     — git log + relevant files → .claude/loop-context.md
-[LLM] Supervisor            — plans tasks for this iteration (≤4 tasks)
+[LLM] Supervisor            — plans tasks for this iteration (≤4 tasks), seeing prior misses
+[DET] Drop parked tasks     — tasks bound to a goal item with 3 misses are not run
 [DET] Task scoring          — skips under-specified tasks (<50 score)
 [LLM] Workers (parallel)    — executes planned tasks via run-tasks-parallel.sh
 [DET] Syntax check          — validates all changed .py / .sh / .ts files
@@ -91,6 +92,7 @@ The loop runs as a deterministic + LLM hybrid state machine:
 [LLM] Final verify          — explicit pass required for completion evidence
 [DET] Holdout (--holdout)   — scenarios outside the repo; names never reach a prompt or the checkout
 [DET] Goal reconciliation  — coordinator marks exact task-bound goal items
+[DET] Attempt ledger        — records per task whether it landed and why not
 [DET] Commit changes        — sweeps leftovers and counts all worker commits
 [DET] Convergence check     — CONVERGED? max_iter? 3 consecutive empty iters?
 → Repeat until converged, max_iter reached, or stuck
@@ -105,6 +107,10 @@ Hard limits (not overridable by LLM):
 - A goal item is reconciled only if its own task changed the tree: a worker
   that exits 0 having changed nothing leaves the item unchecked (logged as
   "withheld … changed nothing"), so a run cannot converge on no-op tasks
+- A goal item gets 3 attempts that do not land; then it is parked in
+  `.claude/skipped.md` and any task bound to it is dropped. Misses, with the
+  worker's own last message, reach the next supervisor prompt
+  (`<state>-attempts.jsonl`; fresh runs start it empty, `--resume` keeps it)
 - Iteration progress counts commits made directly by workers, not only files
   left over for the final commit sweep
 - Supervisor CLI failures preserve the raw response, stop immediately with

@@ -99,6 +99,11 @@ readonly HOLDOUT_TIMEOUT
 SUPERVISOR_TIMEOUT=300                  # supervisor LLM call timeout (seconds)
 readonly WORKER_TIMEOUT=600             # per-worker timeout (seconds)
 readonly MAX_FIX_ATTEMPTS=1             # syntax fix: max 1 LLM call per iter
+# A goal item gets this many attempts that do not land, then it is parked in
+# .claude/skipped.md and no task bound to it is run again (loop_attempts.py).
+# 3 = one attempt plus two refinement rounds, ScientistTwo's engineering budget
+# (arXiv:2609.19644, appendix A.2) before it prunes an idea.
+readonly MAX_ITEM_ATTEMPTS=3
 # ────────────────────────────────────────────────────────────────
 
 # ─── DEFAULTS ───────────────────────────────────────────────────
@@ -139,6 +144,7 @@ ITERATION_START_COMMIT=""
 DRY_RUN=false
 RESUME=false
 HOLDOUT_DIR=""   # --holdout DIR; validated and resolved by loop_holdout.sh
+ATTEMPTS_FILE=""  # set from STATE_FILE in run_blueprint_loop (loop_attempts.py)
 # ────────────────────────────────────────────────────────────────
 
 # ─── LOGGING ────────────────────────────────────────────────────
@@ -298,6 +304,9 @@ node_hydrate_context() {
       cat .claude/health-warning.md
       echo ""
     fi
+    # What earlier iterations tried and why it did not land (loop_attempts.py).
+    python3 "$(_sibling_script loop_attempts.py)" context --ledger "$ATTEMPTS_FILE" \
+      --goal "$GOAL_FILE" --max-attempts "$MAX_ITEM_ATTEMPTS" 2>/dev/null || true
     echo "# Loop Context: $(date '+%Y-%m-%d %H:%M')"
     echo "## Goal File: $GOAL_FILE"
     echo ""
@@ -492,6 +501,7 @@ You output tasks. The script decides convergence. Do NOT output CONVERGED.
 - Model: haiku=mechanical/trivial (<30 lines, rename, delete), sonnet=standard, opus=complex architecture
 - Bind only goal items the task fully satisfies, using the exact _Line and text from context; use [] for supporting work
 - Never repeat a task already in recent commits
+- For a goal item under "Prior attempts that did not land", change the approach using the recorded reason, or plan other work; tasks bound to a PARKED item are dropped by the loop
 - Workers commit via: committer "type: msg" file1 file2 (NEVER git add .)
 - If .claude/blockers.md exists, output an empty tasks array []
 EOF
@@ -596,6 +606,54 @@ node_reconcile_goal() {
     return 1
   fi
   log_success "Coordinator reconciled $marked goal item(s)"
+}
+# ────────────────────────────────────────────────────────────────────
+
+# ─── [DET] NODE: ATTEMPT LEDGER ─────────────────────────────────
+# Records what each task tried and whether it landed, so the next supervisor
+# sees failures with the worker's own last message, and drops tasks bound to a
+# goal item that has used MAX_ITEM_ATTEMPTS. Fresh runs start an empty ledger;
+# --resume keeps it (run_blueprint_loop).
+_log_stderr_lines() {
+  local line
+  while IFS= read -r line; do
+    [ -n "$line" ] && log_warn "$line"
+  done < "$1"
+}
+
+node_drop_parked_tasks() {
+  local tasks_json="$1" err filtered
+  err=$(mktemp "${TMPDIR:-/tmp}/clade-loop-parked-XXXXXX")
+  if filtered=$(printf '%s' "$tasks_json" | python3 "$(_sibling_script loop_attempts.py)" filter \
+       --ledger "$ATTEMPTS_FILE" --goal "$GOAL_FILE" --max-attempts "$MAX_ITEM_ATTEMPTS" 2>"$err"); then
+    _log_stderr_lines "$err"
+    printf '%s' "$filtered"
+  else
+    # Parking saves iterations; it is not a correctness gate. A broken ledger
+    # must not stop the loop from running the plan it has.
+    log_warn "attempt ledger filter failed; running the supervisor's plan unfiltered"
+    printf '%s' "$tasks_json"
+  fi
+  rm -f "$err"
+}
+
+node_record_attempts() {
+  local task_file="$1" iteration="$2" workers_ok="$3" syntax="$4" test_rc="$5" verify="$6" holdout_rc="$7"
+  [ -s "$task_file" ] || return 0
+  local gates="" err
+  [ "$workers_ok" = "true" ] || gates="${gates:+$gates, }a worker failed"
+  [ -z "$syntax" ] || gates="${gates:+$gates, }syntax check failed"
+  [ "$test_rc" -eq 0 ] || gates="${gates:+$gates, }test_sample failed"
+  _verify_passed "$verify" || gates="${gates:+$gates, }final verify did not pass"
+  [ "$holdout_rc" -eq 0 ] || gates="${gates:+$gates, }holdout failed"
+  err=$(mktemp "${TMPDIR:-/tmp}/clade-loop-attempts-XXXXXX")
+  python3 "$(_sibling_script loop_attempts.py)" record --ledger "$ATTEMPTS_FILE" \
+    --goal "$GOAL_FILE" --task-file "$task_file" --outcomes "$(_task_outcomes_file "$task_file")" \
+    --iteration "$iteration" --gates "$gates" --skipped .claude/skipped.md \
+    --max-attempts "$MAX_ITEM_ATTEMPTS" 2>"$err" \
+    || log_warn "attempt ledger could not record iteration $iteration"
+  _log_stderr_lines "$err"
+  rm -f "$err"
 }
 # ────────────────────────────────────────────────────────────────────
 
@@ -969,6 +1027,11 @@ EOF
 # ─── MAIN BLUEPRINT LOOP ────────────────────────────────────────
 run_blueprint_loop() {
   mkdir -p "$LOG_DIR"
+  ATTEMPTS_FILE="${STATE_FILE%.json}-attempts.jsonl"
+  if [ "$RESUME" != "true" ]; then
+    mkdir -p "$(dirname "$ATTEMPTS_FILE")"
+    : > "$ATTEMPTS_FILE"   # a fresh run never inherits an old run's failures
+  fi
   local iteration=0
   local consecutive_no_commits=0
   local consecutive_worker_failures=0
@@ -1033,6 +1096,7 @@ run_blueprint_loop() {
         exit_reason="supervisor_failed"
         break
       fi
+      tasks_json=$(node_drop_parked_tasks "$tasks_json")
       node_score_and_write "$tasks_json" "$task_file" >/dev/null
       if [ -n "$task_file" ] && [ -f "$task_file" ]; then
         task_count=$(grep -c '===TASK===' "$task_file" 2>/dev/null || true)
@@ -1144,6 +1208,8 @@ run_blueprint_loop() {
     else
       log_warn "Skipping goal reconciliation because an execution or verification gate did not pass"
     fi
+    node_record_attempts "$task_file" "$iteration" "$all_workers_succeeded" \
+      "$syntax_failures" "$test_result" "$verify_result" "$holdout_result"
 
     # [DET] commit_changes
     local new_commits

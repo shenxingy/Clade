@@ -62,6 +62,7 @@
 | LR7 | `loop-runner.sh --help` prints usage and performs no checkpoint writes or `~/.claude` side effects | ✅ | 2026-07-29 | "--help prints usage" + "--help has no checkpoint side effects" |
 | LR8 | Successful tasks reconcile exact goal line/text evidence only after all gates pass and only when their own task changed the tree, worker-created commits count without leftover files, and serial/parallel task failures propagate non-zero | ✅ | 2026-11-09 | `tests/test-loop-goal.sh`: 25/25 deterministic checks, including failed-worker blocking, no-op workers withheld under both runners, and same-iteration `converged` |
 | LR9 | A non-zero supervisor CLI exit preserves its raw provider response, stops immediately as `supervisor_failed`, retains a resumable checkpoint, and propagates a non-zero runner exit instead of consuming iterations as empty plans | ✅ | 2026-07-29 | integration regression asserts reason + exit 1; live run preserved the Claude session-limit response |
+| LR10 | Every task's attempt is recorded after the gates; the next supervisor prompt shows open goal items' misses with the worker's own last message; a goal item that misses 3 times is parked in `.claude/skipped.md` and tasks bound to it are dropped; a fresh run starts an empty ledger | ✅ | 2026-11-09 | `tests/test-loop-goal.sh` "Loop attempt ledger": 22 checks, both runners; 7 mutations each red |
 
 ## Hook Behavior
 <!-- Hooks must fire correctly and not over-block. -->

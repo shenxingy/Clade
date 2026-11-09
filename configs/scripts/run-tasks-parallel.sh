@@ -553,16 +553,16 @@ for i in $(seq 1 "$TOTAL"); do
   if [[ "$result" == "success" ]]; then
     if merge_worktree "$i"; then
       SUCCESS=$((SUCCESS + 1))
-      record_task_outcome "$i" "$MERGE_RESULT"
+      record_task_outcome "$i" "$MERGE_RESULT" "$REPO_ROOT/$LOG_DIR/${TIMESTAMP}-task-${i}.log"
     else
       MERGE_FAILURES+=("$i")   # outcome recorded after the serial re-run below
     fi
   elif [[ "$result" == "failed" ]]; then
     FAILED=$((FAILED + 1))
-    record_task_outcome "$i" failed
+    record_task_outcome "$i" failed "$REPO_ROOT/$LOG_DIR/${TIMESTAMP}-task-${i}.log"
     cleanup_worktree "$i" failed
   else
-    record_task_outcome "$i" failed
+    record_task_outcome "$i" failed "$REPO_ROOT/$LOG_DIR/${TIMESTAMP}-task-${i}.log"
     cleanup_worktree "$i" unknown
   fi
   COMPLETED=$((COMPLETED + 1))
@@ -588,14 +588,14 @@ if [[ ${#MERGE_FAILURES[@]} -gt 0 ]]; then
 
     if [[ $exit_code -eq 0 ]]; then
       SUCCESS=$((SUCCESS + 1))
-      record_task_outcome "$task_idx" "$(classify_tree_change "$fingerprint_before" "$(tree_fingerprint)")"
+      record_task_outcome "$task_idx" "$(classify_tree_change "$fingerprint_before" "$(tree_fingerprint)")" "$log_file"
     else
       if [[ $exit_code -eq 124 ]]; then
         cleanup_escaped_processes "$task_name"
         analyze_timeout "$task_name" "$task_timeout" "$log_file"
       fi
       FAILED=$((FAILED + 1))
-      record_task_outcome "$task_idx" failed
+      record_task_outcome "$task_idx" failed "$log_file"
     fi
   done
 fi
