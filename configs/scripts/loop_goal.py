@@ -1,5 +1,12 @@
 #!/usr/bin/env python3
-"""Apply coordinator-owned Loop goal completions from a verified task file."""
+"""Apply coordinator-owned Loop goal completions from a verified task file.
+
+A goal item is checked only when the task bound to it recorded `changed` in the
+worker runners' outcomes file (record_task_outcome, run_tasks_common.sh). Exit 0
+says a worker did not crash, not that it did anything: a worker that gives up
+the Tier-2 way exits 0 having changed nothing, and its item used to be checked
+off with every gate green, because there was nothing for the gates to fail on.
+"""
 
 from __future__ import annotations
 
@@ -12,13 +19,34 @@ import sys
 import tempfile
 
 GOAL_ITEMS_PREFIX = "goal_items_json:"
+TASK_MARKER = "===TASK==="
+LANDED = "changed"
 UNCHECKED = re.compile(r"^- \[ \] (.+?)(\r?\n)?$")
 CHECKED = re.compile(r"^- \[[xX]\] (.+?)(\r?\n)?$")
 
 
-def _mapped_items(task_file: Path) -> dict[int, str]:
-    mapped: dict[int, str] = {}
+def read_outcomes(path: Path) -> dict[int, str]:
+    """`<idx>\t<outcome>` lines; the last line for an index wins (a merge
+    conflict is re-run serially and recorded again). A missing file is an
+    error, not an empty map: without it no task can be shown to have landed."""
+    outcomes: dict[int, str] = {}
+    for raw_line in path.read_text(encoding="utf-8").splitlines():
+        parts = raw_line.strip().split("\t")
+        if len(parts) == 2 and parts[0].isdigit():
+            outcomes[int(parts[0])] = parts[1].strip()
+    return outcomes
+
+
+def _mapped_items(task_file: Path) -> dict[int, list[tuple[int, str]]]:
+    """Goal items keyed by 1-based task index — the order run-tasks*.sh number
+    the ===TASK=== blocks in."""
+    by_task: dict[int, list[tuple[int, str]]] = {}
+    seen: dict[int, str] = {}
+    task_index = 0
     for raw_line in task_file.read_text(encoding="utf-8").splitlines():
+        if raw_line.strip() == TASK_MARKER:
+            task_index += 1
+            continue
         if not raw_line.startswith(GOAL_ITEMS_PREFIX):
             continue
         payload = json.loads(raw_line[len(GOAL_ITEMS_PREFIX) :].strip())
@@ -35,14 +63,27 @@ def _mapped_items(task_file: Path) -> dict[int, str]:
                 raise ValueError("goal item must have a positive line and text")
             line = item["line"]
             text = item["text"].strip()
-            if line in mapped and mapped[line] != text:
+            if line in seen and seen[line] != text:
                 raise ValueError(f"conflicting goal text for line {line}")
-            mapped[line] = text
-    return mapped
+            seen[line] = text
+            by_task.setdefault(task_index, []).append((line, text))
+    return by_task
 
 
-def apply(goal: Path, task_file: Path) -> int:
-    mapped = _mapped_items(task_file)
+def apply(goal: Path, task_file: Path, outcomes_file: Path) -> int:
+    outcomes = read_outcomes(outcomes_file)
+    mapped: dict[int, str] = {}
+    for task_index, items in sorted(_mapped_items(task_file).items()):
+        outcome = outcomes.get(task_index, "no outcome recorded")
+        if outcome == LANDED:
+            mapped.update(items)
+            continue
+        for line, text in items:
+            print(
+                f"withheld goal line {line} ({text!r}): task {task_index} "
+                + ("changed nothing" if outcome == "unchanged" else outcome),
+                file=sys.stderr,
+            )
     if not mapped:
         print(0)
         return 0
@@ -80,9 +121,15 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--goal", required=True, type=Path)
     parser.add_argument("--task-file", required=True, type=Path)
+    parser.add_argument(
+        "--outcomes",
+        required=True,
+        type=Path,
+        help="per-task outcomes written by run-tasks*.sh via CLADE_TASK_OUTCOMES",
+    )
     args = parser.parse_args()
     try:
-        return apply(args.goal.resolve(), args.task_file.resolve())
+        return apply(args.goal.resolve(), args.task_file.resolve(), args.outcomes.resolve())
     except (OSError, json.JSONDecodeError, ValueError) as exc:
         print(f"goal reconciliation refused: {exc}", file=sys.stderr)
         return 2

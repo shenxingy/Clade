@@ -365,6 +365,9 @@ while true; do
 
   task_succeeded=false
   last_error=""
+  # Before any attempt: rollback_to_checkpoint restores this state between
+  # attempts, so one baseline serves the whole task (see record_task_outcome).
+  fingerprint_before=$(tree_fingerprint)
 
   for attempt in $(seq 1 "$max_attempts"); do
     log_file="$LOG_DIR/${TIMESTAMP}-task-${idx}-attempt-${attempt}.log"
@@ -414,7 +417,9 @@ while true; do
 
   if $task_succeeded; then
     success=$((success + 1))
+    record_task_outcome "$idx" "$(classify_tree_change "$fingerprint_before" "$(tree_fingerprint)")"
   else
+    record_task_outcome "$idx" failed
     failed=$((failed + 1))
     FAILED_TASKS+=("$task_name")
     FAILED_ERRORS+=("$last_error (after $max_attempts attempts)")

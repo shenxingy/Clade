@@ -529,6 +529,11 @@ EOF
 
 # ─── [LLM-PAR] NODE: RUN WORKERS ────────────────────────────────
 # Runs tasks in parallel using run-tasks-parallel.sh or run-tasks.sh
+# Per-task outcomes (changed/unchanged/failed) land beside the task file; goal
+# reconciliation reads them, so a worker that exited 0 having changed nothing
+# cannot check off its goal item.
+_task_outcomes_file() { printf '%s-outcomes.tsv' "${1%.txt}"; }
+
 node_run_workers() {
   local task_file="$1"
   WORKERS_SUCCEEDED=false
@@ -538,6 +543,9 @@ node_run_workers() {
     log_warn "Task file empty or missing: $task_file"
     return
   fi
+  local outcomes_file
+  outcomes_file=$(_task_outcomes_file "$task_file")
+  : > "$outcomes_file"
 
   local task_count
   task_count=$(grep -c '===TASK===' "$task_file" 2>/dev/null || true)
@@ -553,6 +561,7 @@ node_run_workers() {
   # Workers keep user hooks deliberately; pure judges drop them — see PURE_JUDGE_FLAGS.
   if [ "$MAX_WORKERS" -gt 1 ]; then
     if CLADE_WORKER_TASK_ID="loop-iter${ITERATION}" MAX_WORKERS="$MAX_WORKERS" \
+      CLADE_TASK_OUTCOMES="$outcomes_file" \
       _timeout "$worker_total_timeout" \
       bash "$(_sibling_script run-tasks-parallel.sh)" "$task_file" 2>&1 \
       | tee -a "$LOG_DIR/loop.log"; then WORKERS_SUCCEEDED=true
@@ -563,6 +572,7 @@ node_run_workers() {
     # what tests/test-loop-real.sh asserts). run-tasks-parallel.sh never
     # garbage-collects them — keep both paths consistent.
     if CLADE_WORKER_TASK_ID="loop-iter${ITERATION}" \
+      CLADE_TASK_OUTCOMES="$outcomes_file" \
       _timeout "$worker_total_timeout" \
       bash "$(_sibling_script run-tasks.sh)" "$task_file" --keep-logs 2>&1 \
       | tee -a "$LOG_DIR/loop.log"; then WORKERS_SUCCEEDED=true
@@ -573,8 +583,15 @@ node_run_workers() {
 
 # ─── [DET] NODE: RECONCILE GOAL ─────────────────────────────────
 node_reconcile_goal() {
-  local marked
-  if ! marked=$(python3 "$(_sibling_script loop_goal.py)" --goal "$GOAL_FILE" --task-file "$1"); then
+  local marked withheld_log line rc=0
+  withheld_log=$(mktemp "${TMPDIR:-/tmp}/clade-loop-withheld-XXXXXX")
+  marked=$(python3 "$(_sibling_script loop_goal.py)" --goal "$GOAL_FILE" \
+    --task-file "$1" --outcomes "$(_task_outcomes_file "$1")" 2>"$withheld_log") || rc=$?
+  while IFS= read -r line; do
+    [ -n "$line" ] && log_warn "$line"
+  done < "$withheld_log"
+  rm -f "$withheld_log"
+  if [ "$rc" -ne 0 ]; then
     log_warn "Goal reconciliation refused; leaving checklist unchanged"
     return 1
   fi

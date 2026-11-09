@@ -31,7 +31,7 @@ POST (deterministic + conditional LLM):
   mid-iter fix     — [LLM] if test fails → fix → re-test (Stripe pattern)
   verify           — require an explicit final-state pass
   holdout          — run --holdout scenarios kept outside the repository
-  reconcile_goal   — coordinator marks exact task-bound goal items
+  reconcile_goal   — coordinator marks exact task-bound goal items whose task changed the tree
   commit_changes   — sweep leftovers and count every iteration commit
                 ↓
 Deterministic convergence check:
@@ -137,7 +137,11 @@ launch starts fresh and never silently consumes an older checkpoint.
 
 Workers never mutate the shared goal file. The supervisor binds each task to
 exact goal line/text evidence, and the coordinator marks those items only
-after the worker, syntax, test, and final verification gates all pass. Commit
+after the worker, syntax, test, and final verification gates all pass, and only
+for tasks whose worker actually changed the tree. Both worker runners record a
+per-task outcome (`changed` / `unchanged` / `failed`); a worker that exits 0
+having changed nothing (the Tier-2 "skip, log, continue" path) leaves its item
+unchecked and the coordinator logs it as withheld. Commit
 progress counts commits created directly by workers as well as the final sweep.
 If the supervisor runtime is unavailable, Loop preserves its raw response,
 reports `supervisor_failed`, and leaves the checkpoint resumable instead of

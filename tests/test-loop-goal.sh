@@ -36,14 +36,32 @@ printf '\n━━━ Loop coordinator reconciliation ━━━\n'
 
 mkdir -p "$TEST_ROOT/unit"
 printf '# Goal\n\n- [ ] exact item\n' > "$TEST_ROOT/unit/goal.md"
-printf 'goal_items_json: [{"line":3,"text":"exact item"}]\n---\nwork\n' > "$TEST_ROOT/unit/tasks.txt"
-marked=$(python3 "$HELPER" --goal "$TEST_ROOT/unit/goal.md" --task-file "$TEST_ROOT/unit/tasks.txt")
+printf '===TASK===\ngoal_items_json: [{"line":3,"text":"exact item"}]\n---\nwork\n' > "$TEST_ROOT/unit/tasks.txt"
+printf '1\tchanged\n' > "$TEST_ROOT/unit/changed.tsv"
+printf '1\tunchanged\n' > "$TEST_ROOT/unit/unchanged.tsv"
+# Last line per index wins: a merge conflict re-run is recorded after the first.
+printf '1\tfailed\n1\tchanged\n' > "$TEST_ROOT/unit/rerun.tsv"
+reconcile() { python3 "$HELPER" --goal "$TEST_ROOT/unit/goal.md" --task-file "$TEST_ROOT/unit/$1" --outcomes "$TEST_ROOT/unit/$2"; }
+
+marked=$(reconcile tasks.txt unchanged.tsv 2>/dev/null)
+contains "$marked" "0" "a task that changed nothing marks no item"
+contains "$(cat "$TEST_ROOT/unit/goal.md")" "- [ ] exact item" "an unchanged task leaves the item unchecked"
+if reconcile tasks.txt missing.tsv >/dev/null 2>&1; then
+  fail "reconciliation without an outcomes file fails closed"
+else
+  pass "reconciliation without an outcomes file fails closed"
+fi
+contains "$(cat "$TEST_ROOT/unit/goal.md")" "- [ ] exact item" "a refused reconciliation writes nothing"
+marked=$(reconcile tasks.txt rerun.tsv)
+contains "$marked" "1" "the last recorded outcome for a task is the one read"
+printf '# Goal\n\n- [ ] exact item\n' > "$TEST_ROOT/unit/goal.md"
+marked=$(reconcile tasks.txt changed.tsv)
 contains "$marked" "1" "exact line/text evidence marks one item"
 contains "$(cat "$TEST_ROOT/unit/goal.md")" "- [x] exact item" "coordinator writes the checked marker"
-marked=$(python3 "$HELPER" --goal "$TEST_ROOT/unit/goal.md" --task-file "$TEST_ROOT/unit/tasks.txt")
+marked=$(reconcile tasks.txt changed.tsv)
 contains "$marked" "0" "reconciliation is idempotent"
-printf 'goal_items_json: [{"line":3,"text":"wrong item"}]\n' > "$TEST_ROOT/unit/bad-tasks.txt"
-if python3 "$HELPER" --goal "$TEST_ROOT/unit/goal.md" --task-file "$TEST_ROOT/unit/bad-tasks.txt" >/dev/null 2>&1; then
+printf '===TASK===\ngoal_items_json: [{"line":3,"text":"wrong item"}]\n' > "$TEST_ROOT/unit/bad-tasks.txt"
+if reconcile bad-tasks.txt changed.tsv >/dev/null 2>&1; then
   fail "stale evidence fails closed"
 else
   pass "stale evidence fails closed"
@@ -71,11 +89,21 @@ input=$(cat)
 if [[ "$args" == *"Verify these changed files"* ]]; then
   echo '{"passed":true,"items":[],"summary":"mock pass"}'
 elif [[ "$args" == *"autonomous improvement loop"* ]]; then
-  echo '[{"description":"Update README.md and commit it to satisfy the exact item","model":"haiku","files":["README.md"],"goal_items":[{"line":3,"text":"exact item"}]}]'
+  if [[ "${MOCK_TWO_TASKS:-false}" == "true" ]]; then
+    echo '[{"description":"Create work file and commit it to satisfy the first item","model":"haiku","files":["work.txt"],"goal_items":[{"line":3,"text":"exact item"}]},{"description":"NOOP: try the second item, change nothing and exit cleanly","model":"haiku","files":["other.txt"],"goal_items":[{"line":4,"text":"second item"}]}]'
+  else
+    echo '[{"description":"Update README.md and commit it to satisfy the exact item","model":"haiku","files":["README.md"],"goal_items":[{"line":3,"text":"exact item"}]}]'
+  fi
 elif [[ "$args" == *"stream-json"* ]]; then
   [[ "${MOCK_WORKER_FAIL:-false}" == "true" ]] && exit 9
-  printf 'worker\n' >> README.md
-  git add README.md
+  # A worker that gives up the Tier-2 way: logs, changes nothing, exits 0.
+  if [[ "${MOCK_WORKER_NOOP:-false}" == "true" || "$input" == *"NOOP:"* ]]; then
+    echo '{"type":"result","subtype":"success","result":"skipped: could not do it"}'
+    exit 0
+  fi
+  f="work-$$.txt"
+  printf 'worker\n' >> "$f"
+  git add "$f"
   git commit -q -m "test: worker commit"
   echo '{"type":"result","subtype":"success","result":"done"}'
 else
@@ -104,6 +132,43 @@ output=$(
 ) || true
 contains "$output" "Skipping goal reconciliation" "failed worker blocks coordinator reconciliation"
 contains "$(cat "$REPO/.claude/fail-goal.md")" "- [ ] exact item" "failed task leaves goal evidence unchecked"
+
+# A worker that exits 0 having changed nothing — the Tier-2 "skip, log,
+# continue" path every task brief prescribes — used to count as a success. With
+# no changed files node_verify returns "no changes" as a pass, every gate is
+# green, and the coordinator checked the item off: the loop could report
+# CONVERGED having done nothing. Both worker runners are covered, because the
+# loop picks run-tasks.sh at --max-workers 1 and run-tasks-parallel.sh above it.
+for workers in 1 2; do
+  printf '# Goal\n\n- [ ] exact item\n' > "$REPO/.claude/noop-goal-$workers.md"
+  output=$(
+    cd "$REPO" || exit
+    PATH="$TEST_ROOT/bin:$PATH" MOCK_WORKER_NOOP=true timeout --kill-after=5s 60s \
+      bash "$RUNNER" ".claude/noop-goal-$workers.md" --max-iter 1 --max-workers "$workers" \
+      --state ".claude/noop-state-$workers.json" --log-dir "logs/noop-loop-$workers" 2>&1
+  ) || true
+  contains "$(cat "$REPO/.claude/noop-goal-$workers.md")" "- [ ] exact item" \
+    "a task that changed nothing leaves its goal item unchecked (--max-workers $workers)"
+  if printf '%s' "$output" | grep -qF "CONVERGED:"; then
+    fail "a no-op iteration does not converge (--max-workers $workers)"
+  else
+    pass "a no-op iteration does not converge (--max-workers $workers)"
+  fi
+  contains "$output" "changed nothing" "the withheld item is named in the log (--max-workers $workers)"
+done
+
+# Per task, not per iteration: one task lands, its sibling changes nothing, and
+# only the landed task's item is checked.
+printf '# Goal\n\n- [ ] exact item\n- [ ] second item\n' > "$REPO/.claude/mixed-goal.md"
+output=$(
+  cd "$REPO" || exit
+  PATH="$TEST_ROOT/bin:$PATH" MOCK_TWO_TASKS=true timeout --kill-after=5s 90s \
+    bash "$RUNNER" .claude/mixed-goal.md --max-iter 1 --max-workers 2 \
+    --state .claude/mixed-state.json --log-dir logs/mixed-loop 2>&1
+) || true
+mixed_goal=$(cat "$REPO/.claude/mixed-goal.md")
+contains "$mixed_goal" "- [x] exact item" "the task that committed work reconciles its item"
+contains "$mixed_goal" "- [ ] second item" "its no-op sibling's item stays unchecked"
 
 printf '===TASK===\nmodel: haiku\nretries: 0\n---\nFail deliberately\n' > "$REPO/.claude/fail-task.txt"
 if (cd "$REPO" && PATH="$TEST_ROOT/bin:$PATH" MOCK_WORKER_FAIL=true bash "$ROOT/configs/scripts/run-tasks.sh" .claude/fail-task.txt --keep-logs >/dev/null 2>&1); then
