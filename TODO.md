@@ -1302,6 +1302,16 @@ record is wrong**. The four below were reproduced by hand before filing.
 - [ ] 🟡 goal 复选框无自动勾稽——6 迭代全程 "10 unchecked"，收敛只能靠人工核验后勾。score_and_write 应把已完成 work item 回写 goal（`_From:` 段对账），否则收敛判定恒为 not-done。
 - [ ] 🟡 loop 在任何 cwd 的 repo 原地跑 `pnpm build` 类门——会打断从该 checkout 服务的生产进程（本次直接把 companyOS 运行中构建的静态资产搞成 503）。goal/loop 文档应要求 worker 门在 worktree 或要求 lead 确认目标 checkout 非生产服务源；或在 loop_args 加 `--worktree` 默认。
 - [ ] 🟡 目标文件必须是 checkbox 列表——纯 prose goal 会让 supervisor 返回 0 任务（stuck_no_tasks）。loop_args 起步检查应直接报 "goal 无 - [ ] 项" 而非跑三轮空转。
+  Re-derived 2026-11-09 ([Rieseberg note](docs/research/2026-11-09-rieseberg-ambition.md#measured-baseline)):
+  10 zero-item iterations in 12 `loop.log`s on the author's host. The refusal cannot
+  ship alone: `start.sh`'s non-targeted mode feeds loop-runner `===TASK===` blocks,
+  checkbox-free by construction, so it needs a waiver flag (`--freeform`) that
+  start.sh passes there and /loop never adds on its own. And a targeted
+  `/start --goal '<one line>'` writes the bare string as the goal file, so
+  loop-runner can never converge and every such run ends `Targeted mode ended
+  INCOMPLETE` whatever it achieved. Wrapping the string as `- [ ] <goal>` fixes
+  that but changes when /start reports done, so it ships with this item, tested
+  against a stub loop-runner that records its argv.
 
 ## 2026-09-19 design-sense-as-rules follow-ups (PR feat/design-rules)
 
@@ -3348,7 +3358,7 @@ deliberately:
 ## 2026-11-09 Rieseberg ambition follow-ups
 
 Read Felix Rieseberg's "How to be more ambitious" against Clade
-([note](docs/research/2026-11-09-rieseberg-ambition.md)): 18 candidate techniques,
+([note](docs/research/2026-11-09-rieseberg-ambition.md)): 17 techniques,
 0 confirmed gaps, persuasion text declined on evidence. Conditional watches, not
 open work:
 

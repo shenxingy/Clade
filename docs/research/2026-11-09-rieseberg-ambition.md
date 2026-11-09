@@ -5,10 +5,11 @@ review_date: 2026-11-09
 status: needs_work
 summary: >
   The owner pasted Felix Rieseberg's post (13 Oct 2026; Altitude, Depth, Range) and asked
-  to integrate it. A 47-agent sweep mapped 18 candidate techniques onto Clade at two
+  to integrate it. A 47-agent sweep mapped 17 techniques (EFF-1 split four ways) onto Clade at two
   levels — the owner framing a request, and Clade's own supervisors and briefs prompting
   other agents — and tried to refute every claimed gap twice (existing mechanism, value).
-  Result: 3 already covered, 15 refuted, 0 confirmed gaps. The part the evidence supports —
+  Result: 3 covered outright, DEP-5 covered on /loop, DEP-2 declined, 12 refuted, 0
+  confirmed gaps. The part the evidence supports —
   an ambitious target needs a judge the doer cannot edit — is already /loop's design. The
   part it counts against — "tell the model an unreasonable goal is reasonable, keep going" —
   stays out of every agent-to-agent brief by decision. The one real defect surfaced while
@@ -75,7 +76,11 @@ lens can apply, and they get different answers:
 
 Verdicts are the sweep's after two refuters per claimed gap (one looking for an
 existing mechanism, one for the value of closing it; uncertain counted as
-refuted, per the house rule that a gap needs demonstrated deficiency).
+refuted, per the house rule that a gap needs demonstrated deficiency). So
+**refuted** means the proposed change did not survive: either Clade already has
+an equivalent, or adding it would not change outcomes. It does not always mean
+Clade has an equivalent. Tally over the 17 rows: 3 covered (ALT-3, RNG-3,
+EFF-1d), DEP-5 covered on /loop, DEP-2 declined, 12 refuted.
 
 | id | technique (post) | where Clade does it | verdict | reopens when |
 |---|---|---|---|---|
@@ -92,7 +97,7 @@ refuted, per the house rule that a gap needs demonstrated deficiency).
 | RNG-1 | Replace nouns with verbs to find fields | `/artifact` spines route by the reader's task | refuted | `/artifact` scope grows to outbound decks |
 | RNG-2 | Assemble a crew of fields plus a red team | Hard-coded crews where they matter (`/outbound` cold read, `/cso`, `paper-reviewer`); TODO "N skeptics is measurably overspent" | refuted | A Clade measurement shows heterogeneous lanes beat one better verifier |
 | RNG-3 | Do what a short seller does, don't write like one | Workflow `LENSES` constants; `security-auditor`, `paper-reviewer` procedures | covered | — |
-| EFF-1a | Specific hard goals beat "do your best" | — | refuted | Not reopened: a stretch checkbox is ticked when its task lands, met or not |
+| EFF-1a | Specific hard goals beat "do your best" (a stretch target in the goal) | Deliberately not in the goal: the number goes in the judge ([below](#where-an-ambitious-number-lives)) | refuted — the change would not help | Never as a checkbox, which is ticked when its task lands, met or not |
 | EFF-1b | Permission to fail / don't abort early | Tier 2 and Park | refuted | A recorded premature `<loop-abort>` |
 | EFF-1c | Existence proofs (watch someone else do it) | `/radar`, `docs/who-to-learn-from.md` | refuted | Radar output gains a channel present at framing time |
 | EFF-1d | Keep going without yielding | "Keep going", "Re-earn stuck" in `configs/CLAUDE.md` | covered | — |
