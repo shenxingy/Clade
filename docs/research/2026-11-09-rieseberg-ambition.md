@@ -15,9 +15,9 @@ summary: >
   stays out of every agent-to-agent brief by decision. The one real defect surfaced while
   checking the judge lens, and predates the post: neither documented /loop goal format
   could converge.
-integrated_items: []
+integrated_items:
+  - "Both documented /loop goal formats can converge (were: the SKILL.md example parsed 0/0, the shipped template 18/18 with 15 untickable lines); tests/test-loop.sh feeds both to the real runner — a pre-existing defect found while checking DEP-5, not a finding from the post"
 needs_work_items:
-  - "Both documented /loop goal formats are judgeable by the convergence check (the SKILL.md example parses 0/0, the shipped template 18/18 with 15 untickable lines) — a pre-existing defect found while checking DEP-5, not a finding from the post"
   - "Refuse a checkbox-free goal at pre-flight (TODO.md, 2026-09-18 converge-loop section, last item) — owner-recorded debt; the note only re-derives its baseline"
 reference_items:
   - "COVERED — ALT-3 measurable end state; RNG-3 lenses written as methods; EFF-1d keep going without yielding"
@@ -53,9 +53,10 @@ defect in what feeds /loop's judge.**
   turned out to be miswired: the goal example in `configs/skills/loop/SKILL.md`
   has no `- [ ]` lines (the runner reads `Goal: 0 open / 0 total`), and
   `configs/templates/loop-goal.md` carries 18 checkboxes, 15 of them
-  Verification Checklist lines no task can tick. Neither documented format can
-  converge. This predates the post and is fixed separately, credited to the
-  defect, not to Rieseberg.
+  Verification Checklist lines no task can tick. Neither documented format could
+  converge. This predates the post; it was fixed separately, and
+  `tests/test-loop.sh` now feeds both formats to the real runner. Credit goes to
+  the defect, not to Rieseberg.
 
 ## Two levels
 

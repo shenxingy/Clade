@@ -583,6 +583,50 @@ assert_not_contains "$output" "CONVERGED:" "checkbox-free goal file does not dec
 assert_contains "$output" "no '- [ ]' / '- [x]' items" "checkbox-free goal file says convergence is unmeasurable"
 assert_eq "2" "$nocheckbox_status" "checkbox-free goal run does not exit 0"
 
+# ─── Shipped goal formats are judgeable ───
+# The two goal formats the kit documents are fed to the real runner. The
+# SKILL.md example used to be plain bullets (Goal: 0 open / 0 total, so
+# convergence was unmeasurable) and the template carried 15 Verification
+# Checklist checkboxes no task can tick (18 open / 18 total, never converging).
+CLADE_ROOT="$(cd "$SCRIPTS_DIR/../.." && pwd)"
+export MOCK_CLAUDE_RESPONSE='[]'
+
+# (A) The goal.md example in the loop skill.
+awk '/^## What you write/{s=1} s&&/^```markdown$/{f=1;next} f&&/^```$/{exit} f' \
+  "$CLADE_ROOT/configs/skills/loop/SKILL.md" > goal-skill-example.md
+assert_contains "$(cat goal-skill-example.md)" "# Goal:" "SKILL.md goal example was extracted"
+mkdir -p logs/loop-skill-example
+output=$(
+  exec 3>&- 4>&- 5>&- 6>&- 7>&- 8>&- 9>&- 2>/dev/null
+  timeout --kill-after=5s 60s bash "$SCRIPTS_DIR/loop-runner.sh" "goal-skill-example.md" --max-iter 1 --max-workers 1 --state .claude/loop-state-skill-example --log-dir logs/loop-skill-example 2>&1
+) || true
+skill_example_total=$(printf '%s\n' "$output" | sed -n 's/.*Goal: [0-9]* open \/ \([0-9]*\) total.*/\1/p' | head -1)
+assert_eq "3" "${skill_example_total:-none}" "SKILL.md goal example carries 3 countable goal items"
+assert_not_contains "$output" "no '- [ ]' / '- [x]' items" "SKILL.md goal example is not unmeasurable"
+
+# (B) The shipped template: only its Acceptance Criteria are goal items.
+cp "$CLADE_ROOT/configs/templates/loop-goal.md" goal-template.md
+mkdir -p logs/loop-template
+output=$(
+  exec 3>&- 4>&- 5>&- 6>&- 7>&- 8>&- 9>&- 2>/dev/null
+  timeout --kill-after=5s 60s bash "$SCRIPTS_DIR/loop-runner.sh" "goal-template.md" --max-iter 1 --max-workers 1 --state .claude/loop-state-template --log-dir logs/loop-template 2>&1
+) || true
+assert_contains "$output" "Goal: 3 open / 3 total" "template counts only its 3 Acceptance Criteria"
+stray_items=$(awk '/^## /{in_ac=($0 ~ /^## Acceptance Criteria/)} /^- \[/ && !in_ac' goal-template.md | wc -l | tr -d ' ')
+assert_eq "0" "$stray_items" "template has no checkbox outside Acceptance Criteria"
+
+# (C) The template can converge once its Acceptance Criteria are met.
+awk '/^## /{in_ac=($0 ~ /^## Acceptance Criteria/)} in_ac{sub(/^- \[ \]/, "- [x]")} {print}' \
+  "$CLADE_ROOT/configs/templates/loop-goal.md" > goal-template-done.md
+mkdir -p logs/loop-template-done
+template_done_status=0
+output=$(
+  exec 3>&- 4>&- 5>&- 6>&- 7>&- 8>&- 9>&- 2>/dev/null
+  timeout --kill-after=5s 60s bash "$SCRIPTS_DIR/loop-runner.sh" "goal-template-done.md" --max-iter 1 --max-workers 1 --state .claude/loop-state-template-done --log-dir logs/loop-template-done 2>&1
+) || template_done_status=$?
+assert_contains "$output" "CONVERGED:" "template with its criteria met converges"
+assert_eq "0" "$template_done_status" "converged template run exits 0"
+
 # Test 2: Missing goal file
 rm -f nonexistent.md
 output=$(bash "$SCRIPTS_DIR/loop-runner.sh" "nonexistent.md" --max-iter 1 --state .claude/loop-state2 --log-dir logs/loop 2>&1) || true

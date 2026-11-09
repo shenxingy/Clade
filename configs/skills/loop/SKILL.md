@@ -50,14 +50,21 @@ Repeat until CONVERGED or max iterations
 # Goal: Improve orchestrator loop mode
 
 ## Requirements
-- Oracle rejection re-queues task with rejection reason as context
-- Worker context budget warning auto-injected at 80%
-- Workers get AGENTS.md prepended automatically
+- [ ] Oracle rejection re-queues task with rejection reason as context
+- [ ] Worker context budget warning auto-injected at 80%
+- [ ] Workers get AGENTS.md prepended automatically
 
-## Success criteria
+## Success criteria (enforced by the verify command or --holdout, never ticked)
 - python -m py_compile server.py passes
 - Existing features unaffected
 ```
+
+Each `- [ ]` line is a goal item: the loop counts them and converges when none is
+left unchecked, ticking one only when a task bound to it changed the tree and
+passed the gates. A pass/fail property belongs in the repository's verify command
+or a `--holdout` scenario, which the loop actually runs; written as a checkbox it
+would be ticked by an edit, not by the property. Full template:
+`~/.claude/templates/loop-goal.md`.
 
 The **supervisor** does the task breakdown — not you.
 
