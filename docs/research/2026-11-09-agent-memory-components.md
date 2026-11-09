@@ -9,7 +9,7 @@ summary: >
   transcripts, build linked representations, keep the always-loaded layer small, one
   writer per page). A 36-agent sweep mapped 11 components onto Clade and native Claude
   Code 2.1.283, measured the live memory, and attacked every claimed gap twice. Result:
-  1 of 10 survived (Workflow agents overwrite each other's scratch files), and the
+  1 of the 10 claimed gaps survived (Workflow agents overwrite each other's scratch files), and the
   post's central mechanism already ships natively — Claude Code's auto-dream — but is
   switched off server-side on this account, so `autoDreamEnabled: true` does nothing.
   Its absence is measurable: 12 of Clade's 32 project memories were stale, wrong or
@@ -44,14 +44,16 @@ predicts.**
   ("auto-dream", setting `autoDreamEnabled`). Its gate reads a server flag first
   (`tengu_onyx_plover`); all five cached copies on this host say
   `{"enabled": false, "minHours": 24, "minSessions": 3}`, so the setting is never
-  read. No `.consolidate-lock` exists under any config dir or the store, and none is
-  in the store's 738-commit history: it has never run here.
-- **What its absence costs, measured.** Of Clade's 32 project memories, 12 were
-  defective — 5 stale, 2 wrong, 5 contradicting a CLAUDE.md — and 8 of the 32
-  always-loaded index lines were too. One had carried a fire rate CLAUDE.md declares
+  read (`jq '.cachedGrowthBookFeatures.tengu_onyx_plover' ~/.claude.json
+  ~/.claude-profiles/*/.claude.json`). No `.consolidate-lock` exists under any config
+  dir or the store, and none was ever committed (0 of 741 store commits on any ref,
+  `git log --all -- '*/.consolidate-lock'`): it has never run here.
+- **What its absence costs, measured.** Of Clade's 32 project memory files, 12 were
+  defective — 5 stale, 2 wrong, 5 contradicting a CLAUDE.md — and so were 8 of the 32
+  lines of the always-loaded index (one line per file). One had carried a fire rate CLAUDE.md declares
   unreproducible ("~17%") for about 55 days. Fixed by a hand-run dream that applied the
-  native prompt's own rules; the agent that applied it re-checked the audit first and
-  upheld 20 of its 21 points.
+  native prompt's own rules. It edited 21 files, not 12: besides the 12 defects it fixed
+  dead pointers and undated statements, and it re-checked every finding before acting.
 - **One gap survived.** Workflow agents share one session scratchpad and pick
   conventional file names: 24 of 560 runs had live agents writing the same path
   (the post's shared-table result: 41 of 57 facts kept, 57 of 57 with one writer per
@@ -130,7 +132,7 @@ the lead where marked †.
 
 | Quantity | Value | Population · command |
 |---|---|---|
-| Defective Clade project memories | 12 of 32 files (5 stale, 2 wrong, 5 contradict a CLAUDE.md); 8 of 32 index lines | every topic file in the Clade store key, against repo HEAD 1825984 and both CLAUDE.md files; hand audit; the fixing agent re-checked it first (20 of 21 points upheld) |
+| Defective Clade project memories | 12 of 32 files (5 stale, 2 wrong, 5 contradict a CLAUDE.md); 8 of 32 index lines | every topic file in the Clade store key, against repo HEAD 1825984 and both CLAUDE.md files; hand audit; the fixing agent re-checked each finding before acting |
 | Longest-lived wrong note in the always-loaded index | ~55 days ("fires 17%") | `git log -L` on CLAUDE.md's red-phase paragraph vs the index line |
 | Memory files that declare `anchors:` | 0 of 980 | every topic `.md` in the 60 store dirs, `grep -l` |
 | Sessions that read / wrote a memory topic file | 135 / 102 of 463 (29% / 22%) | main-thread transcripts, 30 days, all profiles, symlinks deduplicated (`transcripts.py`). The 2026-11-07 figure (163 / 126 of 593) could not be re-derived |
@@ -157,6 +159,9 @@ the lead where marked †.
 - Contract terms in a LAB task: several agents on one shared table kept 41 of 57
   graded facts; one agent per contract quoting terms word for word kept 57 of 57.
 
+A "scheduled reconcile" below means running the native dream prompt headless on a
+timer, one profile on one host — not a second dreamer with rules of its own.
+
 ## How we would know we are wrong
 
 - **Decay.** Re-run the hand audit on 2026-12-09. Twelve defects accumulated over
@@ -176,7 +181,10 @@ the lead where marked †.
   2026-11-06, written by Lance Martin; fetched 2026-11-09. The text is not committed.
 - Binary: Claude Code 2.1.283, the version installed on the author's host.
 - Measurements: a 36-agent Workflow run (11 component maps, 4 measurements, 20
-  refuters, 1 completeness critic) on 2026-11-09; the lead re-checked the flag values,
+  refuters, 1 completeness critic) on 2026-11-09. "10 claimed gaps" are the gaps the
+  11 maps proposed; each got an existence refuter and an outcome refuter. The store
+  counts in the component table (files per project, links, dangling pointers) come
+  from one scan of all 60 store dirs, 980 topic files, that day; the lead re-checked the flag values,
   the gate, the prompt, the index cap, the store history and one scratch-collision
   instance by hand.
 - Not measured: the owner's Mac (its account flag, its transcripts); whether the
