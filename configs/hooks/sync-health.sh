@@ -324,11 +324,14 @@ if [[ -f "$SYNC_CONFIG" && -d "${SYNC_DIR:-}" ]]; then
   fi
 fi
 
-# Case 10: Claude Code loads only the first 200 lines or 25*1024 bytes (25 KB)
-# of MEMORY.md. Warn at 80% of either cap; all three are env-overridable so the
-# boundary can be exercised without changing the shipped native limits.
+# Case 10: Claude Code loads only the first 200 lines and 25,000 characters of
+# MEMORY.md ("25 KB" in its docs; 2.1.283 compares the trimmed string's length
+# with 25000, not 25*1024). This counts bytes, never fewer than characters, so it
+# warns early on non-ASCII text and never late. Warn at 80% of either cap; all
+# three are env-overridable so the boundary can be exercised without changing
+# the shipped native limits.
 MEMORY_LINE_CAP="${CLADE_SYNC_MEMORY_LINE_CAP:-200}"
-MEMORY_BYTE_CAP="${CLADE_SYNC_MEMORY_BYTE_CAP:-25600}"
+MEMORY_BYTE_CAP="${CLADE_SYNC_MEMORY_BYTE_CAP:-25000}"
 MEMORY_WARN_PERCENT="${CLADE_SYNC_MEMORY_WARN_PERCENT:-80}"
 MEMORY_FILES=()
 if [[ -n "${SYNC_DIR:-}" ]]; then

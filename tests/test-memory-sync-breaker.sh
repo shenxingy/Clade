@@ -81,7 +81,9 @@ new_store() {
     '__pycache__/' \
     '*.py[cod]' \
     '*.corrupt.*' \
-    'skills/.trash/' > "$STORE/.gitignore"
+    'skills/.trash/' \
+    '.consolidate-lock' \
+    'projects-memory/*/logs/' > "$STORE/.gitignore"
   printf 'projects-memory/*/.project-paths merge=union\n' > "$STORE/.gitattributes"
   git init -q "$STORE"
   git -C "$STORE" config user.email test@example.com

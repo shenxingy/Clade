@@ -55,4 +55,7 @@ sync_store_heal_gitignore() {
   _sync_store_heal_gitignore_group "$_target" \
     "# Claude Code's removed-skill trash stays local." \
     'skills/.trash/' || return 1
+  _sync_store_heal_gitignore_group "$_target" \
+    "# Claude Code's auto-dream lock and session logs are per-host and private." \
+    '.consolidate-lock' 'projects-memory/*/logs/' || return 1
 }

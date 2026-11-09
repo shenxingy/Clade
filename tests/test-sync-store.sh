@@ -38,6 +38,13 @@ assert_ignored() {
     fail "$2 is ignored" "git check-ignore rejected the default pattern"
   fi
 }
+assert_not_ignored() {
+  if git -C "$1" check-ignore -q -- "$2"; then
+    fail "$2 is synced" "a default pattern ignores a memory file"
+  else
+    pass "$2 is synced"
+  fi
+}
 assert_same_file() {
   if cmp -s "$1" "$2"; then
     pass "$3"
@@ -79,6 +86,9 @@ __pycache__/
 *.corrupt.*
 # Claude Code's removed-skill trash stays local.
 skills/.trash/
+# Claude Code's auto-dream lock and session logs are per-host and private.
+.consolidate-lock
+projects-memory/*/logs/
 EOF
 )
 
@@ -117,6 +127,10 @@ assert_ignored "$SETUP_STORE" "scripts/__pycache__/module.pyc"
 assert_ignored "$SETUP_STORE" "scripts/module.pyo"
 assert_ignored "$SETUP_STORE" "x.corrupt.1"
 assert_ignored "$SETUP_STORE" "skills/.trash/markers.md"
+assert_ignored "$SETUP_STORE" "projects-memory/repo-example/.consolidate-lock"
+assert_ignored "$SETUP_STORE" "projects-memory/repo-example/logs/2026/11/09/abcd1234-title.md"
+assert_not_ignored "$SETUP_STORE" "projects-memory/repo-example/MEMORY.md"
+assert_not_ignored "$SETUP_STORE" "projects-memory/repo-example/logs-of-builds.md"
 assert_eq "$(cat "$SETUP_STORE/corrections/history.jsonl")" '{"event":"private"}' \
   "the private correction event was written into the migrated store"
 assert_not_contains "$(git -C "$SETUP_STORE" status --porcelain --untracked-files=all)" \
@@ -155,6 +169,9 @@ __pycache__/
 *.corrupt.*
 # Claude Code's trash of removed skills
 skills/.trash/
+# auto-dream lock + session logs (per host)
+.consolidate-lock
+projects-memory/*/logs/
 EOF
 cp "$SETUP_ROOT/live.gitignore" "$SETUP_STORE/.gitignore"
 git -C "$SETUP_STORE" add .gitignore
@@ -332,6 +349,9 @@ skills/synced/
 # Byte-compiled Python caches cause cross-machine conflicts.
 __pycache__/
 *.py[cod]
+# Claude Code's auto-dream lock and session logs are per-host and private.
+.consolidate-lock
+projects-memory/*/logs/
 EOF
 assert_same_file "$UPGRADE_STORE/.gitignore" "$UPGRADE_ROOT/expected.gitignore" \
   "only missing patterns and their group comments are appended"
@@ -372,6 +392,9 @@ skills/synced/
 *.corrupt.*
 # Claude Code's removed-skill trash stays local.
 skills/.trash/
+# Claude Code's auto-dream lock and session logs are per-host and private.
+.consolidate-lock
+projects-memory/*/logs/
 EOF
 assert_same_file "$PARTIAL_STORE/.gitignore" "$PARTIAL_ROOT/expected.gitignore" \
   "each incomplete group gains its comment and only its missing patterns"
