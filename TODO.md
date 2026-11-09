@@ -3298,3 +3298,41 @@ owner); none is a regression on main.
   migrated. The dry run never creates the new key, so its link pass cannot see that
   key claim the project. Have the dry run's link pass treat planned migrations as
   done, and add a dry/real parity case with two legacy keys for one project.
+
+## 2026-11-09 ScientistTwo review follow-ups (#220, #221, loop attempt ledger)
+
+Read arXiv:2609.19644 (ScientistTwo) against `/loop` and `paper-reviewer`. Landed:
+no-op tasks no longer check off goal items (#220), the loop's attempt ledger with
+parking after 3 misses, and the `paper-reviewer` integrity audit (#221). Not done,
+deliberately:
+
+- [ ] 🟡 **`test-loop.sh` is red on macOS: 10 failures, 6 of them a test defect.**
+  The "Task Parsing — New Format" section re-implements the prompt extractor
+  instead of calling `get_task_prompt_new`. Its copy ends in GNU-only
+  `sed -e '1{/^$/d}'`, which BSD sed rejects ("extra characters at the end of d
+  command"), so the 6 prompt and name assertions fail on a Mac. The product's
+  extractor uses portable `awk 'NF{p=1} p'` and parses correctly. Fix: source
+  `run_tasks_common.sh` and test the real function. The other 4: `state_write`
+  and resume ×3 (not diagnosed), and `setsid not found` (macOS has no setsid; make it a
+  skip with a printed reason, not a fail). Measured identical on clean `main`.
+- [ ] 🔵 **`node_verify` passes an iteration with no changed files** ("no
+  changes" → `passed: true`). Harmless for reconciliation since #220 gates per
+  task, but the verdict still reads as a check that ran. Report it as
+  `passed: null` with a reason instead, and check `_verify_passed` callers.
+- [ ] 🔵 **No exit reason for "every open goal item is parked".** Such a run ends
+  through the empty-plan detector (`stuck_no_tasks`) after 3 supervisor calls
+  that can only return `[]`. A distinct `attempts_exhausted`, checked before the
+  supervisor call, would save those calls and name the outcome. It touches
+  `_check_convergence`, the exit-code map, `generate_loop_report` and the docs.
+- [ ] 🔵 **Local `claude plugin validate . --strict` fails under Claude Code
+  2.1.319** on every checkout, including clean `main`: a new warning that
+  root `CLAUDE.md` is not loaded as plugin context, and `--strict` makes it an
+  error. `check-cc-plugin-components.sh` also resolves 0 agents locally. The
+  hosted job passed on #220 and #221, so it is version skew. Decide whether to
+  pin the CLI in the workflow, or move root `CLAUDE.md` out of the plugin's view.
+- [ ] 🔵 **The Mac cannot run `ci-local.py`**: every job is `runs-on: ubuntu`, so
+  it reports NOTHING RAN, and `~/.claude/fleet.conf` is absent on this Mac.
+  aries was at load 84 on 32 cores, so #220–#222 used the hosted run as the
+  gate. Either add a Linux host to this Mac's fleet config, or give `ci-local.py`
+  an explicit opt-in to run Linux jobs on macOS (most suites here are
+  bash 3.2 / BSD safe).
