@@ -11,7 +11,8 @@ Older entries live in [docs/progress-archive/](docs/progress-archive/) — 66 ar
 
 The owner asked whether project memory, the correction rules and TODO.md still
 work and what the research adds. Measured on aries: the loops run (rule-injector
-445 fires / 30 d, 163 sessions read a memory file beyond the index), but every
+445 fires / 30 d, 163 sessions read a memory file beyond the index — 135 of 463
+on a 2026-11-09 re-count that deduplicates profile links), but every
 push had been REFUSED since 2026-09-19 (49 days in which nothing aries wrote left
 the machine), no aries commit had landed in the store since 2026-09-26 (42 days),
 and the store had been unmergeable since 2026-10-05 (33 days). The 19 adopted
