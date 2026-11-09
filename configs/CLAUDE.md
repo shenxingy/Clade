@@ -271,7 +271,10 @@ When the free path genuinely cannot answer something, say so in those words.
     64 of 90 usage-limit deaths hid in 16 "completed" runs. At 7-day quota
     ≥ 90%, or 5-hour use plus projected burn ≥ 100%, defer or switch account.
   - Write full results to a file and return ≤ 6k chars: the completion notice
-    cuts at 8,000, and 259 of 281 results overflowed.
+    cuts at 8,000, and 259 of 281 results overflowed. Name each agent's own
+    sub-directory in its brief: all of a run's agents share the scratchpad, and
+    live agents overwrote each other's `pr-body.md` or `crawl.py` in 24 of 560
+    runs (2026-10-08 → 11-09).
   - Pass data, never a stand-in: past a handful of items, write a scratch JSON
     file and pass its path plus a count the script asserts (10 of 324 launches
     carried `"__FILL__"`, `{"__see": …}` or `"(see …)"`). Hand prior results on
