@@ -21,7 +21,7 @@ Each deep-dive in this folder has YAML frontmatter (`status`, `summary`, `integr
 > conditional watches; the server rollout and branch cleanup are complete. Do
 > not reopen the historical lists without new evidence.
 
-- **Last reviewed:** 2026-09-16 (machineslop deep-dive indexed after its re-verification; prior full re-screen 2026-07-28) · **Cadence:** refresh when a deep-dive's `status` changes or a new one lands.
+- **Last reviewed:** 2026-11-09 (Rieseberg ambition note indexed; machineslop deep-dive 2026-09-16; prior full re-screen 2026-07-28) · **Cadence:** refresh when a deep-dive's `status` changes or a new one lands.
 
 **Status:** ✅ integrated (absorbed) · 📘 reference (studied, nothing to build) · 🔨 needs_work (open gaps)
 
@@ -59,6 +59,7 @@ Grouped by [watch-list](../who-to-learn-from.md) tier. `Gaps` = count of open `n
 
 | Source | Status | Gaps | Core lesson | Doc |
 |--------|--------|------|-------------|-----|
+- [2026-11-09 — Rieseberg, "How to be more ambitious", read against Clade](2026-11-09-rieseberg-ambition.md) — 18 candidate techniques (Altitude, Depth, Range) at two levels, each claimed gap attacked twice: 3 covered, 15 refuted, 0 gaps. The supported part — an ambitious target needs a judge the doer cannot edit — is already /loop's design; "tell the model it's reasonable, keep going" is declined for agent-to-agent briefs on ImpossibleBench, system-card and METR evidence. By-product: neither documented /loop goal format could converge. The four-question reframe is kept as a hand-run procedure with a pilot
 - [2026-10-16 — Inspiration engines](2026-10-16-inspiration-engines.md) — has anyone built a good one (partly: structure helps in a 20-minute session, lab systems close the loop with a verifier, nothing is shown to improve what a person ships over weeks), how ours should work, and where it lives. Split by the owner on 2026-10-18 into (A) project breakthrough, where the project's own metric is the verifier (piloted on the face-swap SaaS), and (B) big-direction collisions, a `/radar` lane
 - [2026-10-23 — Workflow agents: per-stage effort and a lean reader type](2026-10-23-workflow-effort-and-reader-ab.md) — a paired A/B on 15 known-answer claims: low/medium effort matched xhigh's accuracy at 29–52% of its output tokens (xhigh alone reproduced an edge case); `wf-reader` cut turn-1 context 95.8k → 5.4k tokens at equal accuracy, and was adopted on 2026-10-24 once its read-allowlist Bash hook (#160) was shown refusing writes live. A model-tier A/B for implement stages is queued there, not run: 8 replayed fixes × 3 arms, $207–420 at list price for the full design.
 - [2026-09-23 — The artifact standard](2026-09-23-artifact-standard.md) — what makes a report page legible at a glance, measured on 1,032 hub pages; produced the `/artifact` skill, `artifact-lint.py` and the path-scoped rule

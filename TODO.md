@@ -81,6 +81,9 @@ Phases 1–14 complete.
   stop a worker"), and what calibrated confidence may authorise auto-merge
   ([§ Tech Debt](#tech-debt), "Adversarial verification with N skeptics", with the
   "half is your call" paragraph a few lines below it).
+- Opt in to the reframe pilot (judge up to 8 of your own asks), or decline it:
+  [§ 2026-11-09 Rieseberg ambition](#2026-11-09-rieseberg-ambition-follow-ups),
+  "Pilot the reframe procedure by hand".
 
 **Needs the owner at a machine, a login, or an outward step**
 
@@ -419,6 +422,9 @@ choice with a real tradeoff, which is why they are recorded instead of built.
   architectural fork with a real cost (a second place for a rule to be wrong,
   and a migration for every existing control), not a gap with an obvious
   implementation.
+  Rieseberg's "keep our apps crash-free" (2026-11-09
+  [note](docs/research/2026-11-09-rieseberg-ambition.md)) is this same fork; Behavior
+  Anchors re-checked by `/verify` after `/start` are the current partial home.
 - [x] **Dependency scanning — decided and built.** `pip-audit` and `npm audit`
       run weekly in `ci.yml`'s `dependency-audit` job as of 2026-09-02, and the
       four highs the npm half found were fixed on 2026-09-02 (`a9cb20e`). What remains
@@ -1284,6 +1290,8 @@ record is wrong**. The four below were reproduced by hand before filing.
 | Oracle | Off by default | Opt-in quality gate, doesn't break existing flow |
 | Model routing | Off by default | User may want explicit control |
 | CLI loop | Pure bash (loop-runner.sh) | No Python dependency, safe for self-modification |
+| Persuasion in agent-to-agent briefs | None: no "it's reasonable / solvable, keep going", stakes, difficulty or persona text in supervisor, Workflow, codex or /iloop briefs; the exits stay (Tier 2, park after 3 misses, `<loop-abort>`) | Pressure without an exit raises gaming; an explicit exit or anti-hack sentence lowers it (ImpossibleBench, 8 models; Sonnet 4.5 card 53% → 20% on impossible tasks; METR o3) — [note](docs/research/2026-11-09-rieseberg-ambition.md) |
+| Where an ambitious target lives | In the judge's threshold (verify_cmd, a `--holdout` scenario), never in task prose or a goal checkbox | A checkbox is ticked when its bound task lands, met or not; speed targets are where agents patch timers (METR, 6 of 24 kernel runs) |
 
 ---
 
@@ -3336,3 +3344,36 @@ deliberately:
   gate. Either add a Linux host to this Mac's fleet config, or give `ci-local.py`
   an explicit opt-in to run Linux jobs on macOS (most suites here are
   bash 3.2 / BSD safe).
+
+## 2026-11-09 Rieseberg ambition follow-ups
+
+Read Felix Rieseberg's "How to be more ambitious" against Clade
+([note](docs/research/2026-11-09-rieseberg-ambition.md)): 18 candidate techniques,
+0 confirmed gaps, persuasion text declined on evidence. Conditional watches, not
+open work:
+
+- [ ] 🔵 **Anti-hack sentence in the /loop Tier 2 worker rule** ("if the target
+  looks infeasible or a test looks wrong, say so in `.claude/skipped.md`; do not
+  hard-code or edit the check" — the wording that took Sonnet 4.5 from 53% to
+  20% on impossible tasks, outside Claude Code). Not added: no Clade incident,
+  and the exits already exist. **Reopen** on the first HOLDOUT CHANGED, HOLDOUT
+  FAILED under a green verify, "verify_cmd changed mid-run", or test-integrity
+  signal on a /loop worker diff (instruments from #189, never yet exposed to a
+  run). Measure as an A/B on Clade's own runs judged by the holdout, never by
+  self-report.
+- [ ] 🔵 **/iloop `--verify-cmd`**: reopen at the first transcript showing
+  `iloop: Completion promise matched` (0 across 41 project dirs on 2026-11-09).
+  A verify command stored where the model can edit it is not an outside judge.
+- [ ] 🔵 **Loop-outcome reader** (exit reasons, zero-item iterations and gaming
+  signals across the fleet's `loop.log`s). Build after 10 or more real /loop
+  runs post-#189; today it would report over a zero denominator.
+- [ ] 🔵 **Pilot the reframe procedure by hand before building a skill.** The
+  owner opts in per ask by naming the note. Population: the owner's next 8 asks
+  of about an hour or more of agent work that end in something checkable or a
+  decision. Per ask, log outside the repo (`~/.claude/research/reframe-pilot.md`):
+  did the rewrite add a judge, raw input or premise check the original lacked;
+  adopted / partly / rejected; within 7 days, did the added check fire, read from
+  logs. **Build** the skill (measured at +761 listing chars, 36,407 → 37,168 of
+  40,000) if at least 4 of 8 are adopted and at least 2 added checks fired;
+  **reject** at 2 of 8 or fewer; otherwise run 8 more. Fewer than 8 eligible asks
+  in 30 days closes it as too rare to earn a listing entry. No control arm.
