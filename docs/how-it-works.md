@@ -64,7 +64,7 @@ Common values: `"tsc --noEmit"` (TypeScript), `"python3 -m py_compile <file>"` (
 | Agent | Model | Use case |
 |-------|-------|----------|
 | `code-reviewer` | Sonnet | Code review with persistent memory |
-| `paper-reviewer` | Sonnet | Academic paper review — structured critique for LaTeX papers before submission |
+| `paper-reviewer` | Opus | Academic paper review — structured critique for LaTeX papers before submission, plus an integrity audit (score provenance, evaluation integrity, reference existence, method–code alignment, gain attribution) and a rebuttal plan |
 | `debug-specialist` | Sonnet | Root cause analysis — traces execution paths, reads call chains, forms testable hypotheses. Spawned by `/investigate` |
 | `security-auditor` | Sonnet | Deep security analysis of a file/module — OWASP Top 10, injection vectors, auth flaws. Spawned by `/cso` |
 | `verify-app` | Sonnet | Runtime verification — adapts to project type (web, Rust, Go, Swift, Gradle, LaTeX) |
