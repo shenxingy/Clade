@@ -62,12 +62,23 @@ _timeout() {
 #   unchanged  exited 0 and the tree is identical
 #   failed     non-zero exit, timeout, or no result recorded
 #
-# CLADE_TASK_OUTCOMES (optional) is the file to append "<idx>\t<outcome>" lines
-# to; unset, nothing is written. A task may appear twice (a merge conflict is
-# re-run serially); readers take the last line for an index.
+# CLADE_TASK_OUTCOMES (optional) is the file to append
+# "<idx>\t<outcome>[\t<worker log>]" lines to; unset, nothing is written. A task
+# may appear twice (a merge conflict is re-run serially); readers take the last
+# line for an index. The log path (made absolute) is how the loop's attempt
+# ledger finds a worker's own last words about why it stopped.
 record_task_outcome() {
   [[ -n "${CLADE_TASK_OUTCOMES:-}" ]] || return 0
-  printf '%s\t%s\n' "$1" "$2" >> "$CLADE_TASK_OUTCOMES"
+  local log_path="${3:-}"
+  case "$log_path" in
+    ""|/*) ;;
+    *) log_path="$PWD/$log_path" ;;
+  esac
+  if [[ -n "$log_path" ]]; then
+    printf '%s\t%s\t%s\n' "$1" "$2" "$log_path" >> "$CLADE_TASK_OUTCOMES"
+  else
+    printf '%s\t%s\n' "$1" "$2" >> "$CLADE_TASK_OUTCOMES"
+  fi
 }
 
 # Content hash of the whole working tree (tracked + untracked, honouring

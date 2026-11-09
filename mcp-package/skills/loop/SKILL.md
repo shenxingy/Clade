@@ -17,11 +17,12 @@ You write: goal.md  (what the system should do — NOT a task list)
                 ↓
 PRE (deterministic):
   pre_flight       — goal exists, no blockers
-  hydrate_context  — git log + status
+  hydrate_context  — git log + status + prior attempts that did not land (and why)
   parse_todo       — extract unchecked items from goal file
                 ↓
 LLM CORE:
   Supervisor       — plans 1–4 tasks (output: JSON task array)
+  drop_parked      — [DET] drop tasks bound to a goal item that used its 3 attempts
   Workers          — execute ALL tasks IN PARALLEL
                 ↓
 POST (deterministic + conditional LLM):
@@ -32,6 +33,7 @@ POST (deterministic + conditional LLM):
   verify           — require an explicit final-state pass
   holdout          — run --holdout scenarios kept outside the repository
   reconcile_goal   — coordinator marks exact task-bound goal items whose task changed the tree
+  record_attempts  — ledger: per task, did it land, and if not why (worker's own last message)
   commit_changes   — sweep leftovers and count every iteration commit
                 ↓
 Deterministic convergence check:
@@ -141,7 +143,16 @@ after the worker, syntax, test, and final verification gates all pass, and only
 for tasks whose worker actually changed the tree. Both worker runners record a
 per-task outcome (`changed` / `unchanged` / `failed`); a worker that exits 0
 having changed nothing (the Tier-2 "skip, log, continue" path) leaves its item
-unchecked and the coordinator logs it as withheld. Commit
+unchecked and the coordinator logs it as withheld.
+
+Failures are remembered. After the gates, every task is recorded in an attempt
+ledger beside the state file (`<state>-attempts.jsonl`): whether it landed and,
+if not, why, including the worker's own final message. The next supervisor
+prompt shows the misses for every still-open goal item, so it can change the
+approach instead of re-planning the same task. A goal item gets 3 attempts that
+do not land (one attempt plus two refinements, ScientistTwo's budget before it
+prunes an idea). Then the loop parks it in `.claude/skipped.md` and drops any
+task bound to it. A fresh run starts an empty ledger; `--resume` keeps it. Commit
 progress counts commits created directly by workers as well as the final sweep.
 If the supervisor runtime is unavailable, Loop preserves its raw response,
 reports `supervisor_failed`, and leaves the checkpoint resumable instead of

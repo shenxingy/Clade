@@ -192,6 +192,8 @@ versioning for the `clade-mcp` Python package and tagged public releases.
 
 ### Added
 
+- `/loop` remembers failed attempts. The supervisor used to see only commit counts per iteration, so a task that failed or changed nothing left no trace it could read, and the next iteration planned it again the same way. A goal item that could never land was attempted every iteration until `--max-iter` (4 times in 4 iterations, measured on the previous code). Now `loop_attempts.py` records every task after the gates in `<state>-attempts.jsonl`: whether it landed and, if not, why, including the worker's own final message from its stream-json log. The next supervisor prompt gets a "Prior attempts that did not land" section for every still-open item. After 3 misses (one attempt plus two refinements, the engineering budget ScientistTwo gives an idea before pruning it, arXiv:2609.19644 appendix A.2), the item is parked in `.claude/skipped.md` and tasks bound to it are dropped, with each drop logged. A fresh run starts an empty ledger; `--resume` keeps it. Worker outcome lines gain an optional third column, the worker's log path. `tests/test-loop-goal.sh` gains 22 checks under both runners. 18 fail on the previous scripts, and 7 mutations each turn the suite red: no fresh-start truncation, filter bypassed, context not hydrated, worker message unread, a park entry written per miss, open-item scoping removed, and the serial log path dropped.
+
 - A privacy guard at the sync store's exit. `sync-push.sh` refuses to push
   anything that names a private project (`~/.claude/private-projects`) or a
   private keyword (`~/.claude/private-keywords`): matching lines are removed from
