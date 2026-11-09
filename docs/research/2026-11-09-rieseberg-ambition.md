@@ -53,9 +53,10 @@ defect in what feeds /loop's judge.**
   turned out to be miswired: the goal example in `configs/skills/loop/SKILL.md`
   has no `- [ ]` lines (the runner reads `Goal: 0 open / 0 total`), and
   `configs/templates/loop-goal.md` carries 18 checkboxes, 15 of them
-  Verification Checklist lines no task can tick. Neither documented format can
-  converge. This predates the post and is fixed separately, credited to the
-  defect, not to Rieseberg.
+  Verification Checklist lines no task can tick. Neither documented format could
+  converge. This predates the post; it was fixed separately, and
+  `tests/test-loop.sh` now feeds both formats to the real runner. Credit goes to
+  the defect, not to Rieseberg.
 
 ## Two levels
 
