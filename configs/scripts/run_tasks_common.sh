@@ -49,6 +49,59 @@ _timeout() {
   fi
 }
 
+# ─── Per-task outcomes ──────────────────────────────────────────────
+#
+# An exit code says whether a worker crashed, not whether it did anything. A
+# worker that gives up the Tier-2 way ("skip, log, continue", in every loop task
+# brief) exits 0 having changed nothing, and both runners used to count that as
+# a success indistinguishable from real work — so the loop coordinator checked
+# off the goal items that task was bound to, and a run could report CONVERGED
+# with nothing done. Each runner now records what every task actually produced:
+#
+#   changed    exited 0 and the tree differs from before the task
+#   unchanged  exited 0 and the tree is identical
+#   failed     non-zero exit, timeout, or no result recorded
+#
+# CLADE_TASK_OUTCOMES (optional) is the file to append "<idx>\t<outcome>" lines
+# to; unset, nothing is written. A task may appear twice (a merge conflict is
+# re-run serially); readers take the last line for an index.
+record_task_outcome() {
+  [[ -n "${CLADE_TASK_OUTCOMES:-}" ]] || return 0
+  printf '%s\t%s\n' "$1" "$2" >> "$CLADE_TASK_OUTCOMES"
+}
+
+# Content hash of the whole working tree (tracked + untracked, honouring
+# .gitignore), computed through a COPY of the index so the real one — and any
+# staging a worker or checkpoint did — is untouched. Copying keeps the stat
+# cache, so only modified files are rehashed. Committing alone does not change
+# it; changing content does, committed or not. Prints nothing outside git.
+tree_fingerprint() {
+  git rev-parse --is-inside-work-tree &>/dev/null || return 0
+  local real_index tmp_index tree
+  real_index=$(git rev-parse --git-path index 2>/dev/null) || return 0
+  tmp_index=$(mktemp "${TMPDIR:-/tmp}/clade-fingerprint-XXXXXX") || return 0
+  if [[ -f "$real_index" ]]; then
+    cp "$real_index" "$tmp_index"
+  else
+    rm -f "$tmp_index"   # an empty file is not a valid index; let git create one
+  fi
+  tree=$(GIT_INDEX_FILE="$tmp_index" git add -A 2>/dev/null \
+         && GIT_INDEX_FILE="$tmp_index" git write-tree 2>/dev/null) || tree=""
+  rm -f "$tmp_index"
+  printf '%s' "$tree"
+}
+
+# changed | unchanged, from two tree_fingerprint values. An empty fingerprint
+# (no git, or git failed) cannot prove a change, so it reads as unchanged —
+# the side that withholds a goal item rather than granting one.
+classify_tree_change() {
+  if [[ -n "$1" && -n "$2" && "$1" != "$2" ]]; then
+    echo changed
+  else
+    echo unchanged
+  fi
+}
+
 # ─── Format detection ───────────────────────────────────────────────
 
 is_new_format() {

@@ -417,10 +417,14 @@ run_task_in_worktree() {
   fi
 }
 
+# Sets MERGE_RESULT to what the merge carried — `changed` or `unchanged` — for
+# record_task_outcome. A branch with commits but no content difference from
+# the merge base (an empty commit) is unchanged: it did nothing.
 merge_worktree() {
   local task_idx="$1"
   local branch_name="batch/task-${task_idx}-${TIMESTAMP}"
   local wt_dir="$WORKTREE_BASE/task-${task_idx}"
+  MERGE_RESULT=unchanged
 
   # Check if branch has commits ahead of main
   local ahead
@@ -428,6 +432,9 @@ merge_worktree() {
   if [[ "${ahead:-0}" -eq 0 ]]; then
     cleanup_worktree "$task_idx"
     return 0
+  fi
+  if ! git diff --quiet "$MAIN_BRANCH...$branch_name" 2>/dev/null; then
+    MERGE_RESULT=changed
   fi
 
   echo "Merging task $task_idx..."
@@ -546,13 +553,16 @@ for i in $(seq 1 "$TOTAL"); do
   if [[ "$result" == "success" ]]; then
     if merge_worktree "$i"; then
       SUCCESS=$((SUCCESS + 1))
+      record_task_outcome "$i" "$MERGE_RESULT"
     else
-      MERGE_FAILURES+=("$i")
+      MERGE_FAILURES+=("$i")   # outcome recorded after the serial re-run below
     fi
   elif [[ "$result" == "failed" ]]; then
     FAILED=$((FAILED + 1))
+    record_task_outcome "$i" failed
     cleanup_worktree "$i" failed
   else
+    record_task_outcome "$i" failed
     cleanup_worktree "$i" unknown
   fi
   COMPLETED=$((COMPLETED + 1))
@@ -572,17 +582,20 @@ if [[ ${#MERGE_FAILURES[@]} -gt 0 ]]; then
 
     echo "Running task $task_idx serially: $task_name"
     record_task_start_state
+    fingerprint_before=$(tree_fingerprint)
     exit_code=0
     echo "$task_prompt" | run_claude_task "$model" "$task_timeout" "$log_file" || exit_code=$?
 
     if [[ $exit_code -eq 0 ]]; then
       SUCCESS=$((SUCCESS + 1))
+      record_task_outcome "$task_idx" "$(classify_tree_change "$fingerprint_before" "$(tree_fingerprint)")"
     else
       if [[ $exit_code -eq 124 ]]; then
         cleanup_escaped_processes "$task_name"
         analyze_timeout "$task_name" "$task_timeout" "$log_file"
       fi
       FAILED=$((FAILED + 1))
+      record_task_outcome "$task_idx" failed
     fi
   done
 fi

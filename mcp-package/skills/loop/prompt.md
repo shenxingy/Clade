@@ -102,6 +102,9 @@ Hard limits (not overridable by LLM):
 - Never commits files with syntax errors
 - Workers never edit the shared goal file; only the coordinator reconciles
   exact supervisor line/text mappings after worker, syntax, test, and verify pass
+- A goal item is reconciled only if its own task changed the tree: a worker
+  that exits 0 having changed nothing leaves the item unchecked (logged as
+  "withheld … changed nothing"), so a run cannot converge on no-op tasks
 - Iteration progress counts commits made directly by workers, not only files
   left over for the final commit sweep
 - Supervisor CLI failures preserve the raw response, stop immediately with
