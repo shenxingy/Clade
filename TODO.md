@@ -1291,6 +1291,7 @@ record is wrong**. The four below were reproduced by hand before filing.
 | Model routing | Off by default | User may want explicit control |
 | CLI loop | Pure bash (loop-runner.sh) | No Python dependency, safe for self-modification |
 | Persuasion in agent-to-agent briefs | None: no "it's reasonable / solvable, keep going", stakes, difficulty or persona text in supervisor, Workflow, codex or /iloop briefs; the exits stay (Tier 2, park after 3 misses, `<loop-abort>`) | Pressure without an exit raises gaming; an explicit exit or anti-hack sentence lowers it (ImpossibleBench, 8 models; Sonnet 4.5 card 53% → 20% on impossible tasks; METR o3) — [note](docs/research/2026-11-09-rieseberg-ambition.md) |
+| Memory consolidation ("dreaming") | Native auto-dream when the account flag opens; until then a hand-run reconcile, re-audited monthly. No Clade-built dreamer | Claude Code 2.1.283 ships one (orient, gather, consolidate, prune, reconcile against CLAUDE.md) behind server flag `tengu_onyx_plover`, off here, so `autoDreamEnabled: true` is a no-op. A second implementation would race it once the flag opens ([note](docs/research/2026-11-09-agent-memory-components.md)) |
 | Where an ambitious target lives | In the judge's threshold (verify_cmd, a `--holdout` scenario), never in task prose or a goal checkbox | A checkbox is ticked when its bound task lands, met or not; speed targets are where agents patch timers (METR, 6 of 24 kernel runs) |
 
 ---
@@ -3039,7 +3040,7 @@ and what recent research says. Measured on aries on 2026-11-07: `harness-usage.p
 `~/.claude/research/known-concepts.md`, § Run 2026-11-07) and the Claude Code
 docs/changelog through the claude-code-guide agent. Verdict: the three loops run
 (rule-injector 445 fires, correction-detector 91, 163 sessions read a memory file
-beyond the index, auto-audit ran 11-04), but every push had been REFUSED since
+beyond the index — not re-derivable on 2026-11-09, see below — auto-audit ran 11-04), but every push had been REFUSED since
 2026-09-19 (49 days, the interval in which nothing aries wrote left the machine),
 there had been no aries commit in the store since 2026-09-26 (42 days), and the
 store had been unmergeable since 2026-10-05 (33 days). Nothing in the health
@@ -3192,6 +3193,9 @@ items below include the code that keeps the next failure from being silent.
   monthly review list of unanchored memories older than N days. The channel is
   worth it: of 593 main-thread sessions in 30 days, 163 read a memory file beyond
   the auto-loaded index and 126 wrote one (most-read file: 22 reads).
+  RE-MEASURED 2026-11-09 with profile symlinks deduplicated (`transcripts.py`, main
+  thread, 30 days): 135 of 463 sessions read a topic file and 102 wrote one. The
+  593 / 163 / 126 above could not be re-derived; quote the new figures.
   DONE 2026-11-08 (#211): optional `anchors:` (paths, globs, `commit:` baseline) in a
   memory's frontmatter; `memory-staleness.sh` (SessionStart, read-only, 2 s budget)
   prints a "Memory staleness" list beside the index rather than rewriting the synced
@@ -3209,6 +3213,9 @@ items below include the code that keeps the next failure from being silent.
   (`CLADE_SYNC_MEMORY_LINE_CAP`, `CLADE_SYNC_MEMORY_BYTE_CAP`,
   `CLADE_SYNC_MEMORY_WARN_PERCENT`). Implemented by Kimi K3.1 Pro (max effort) in its own
   worktree; verified independently by Claude (re-run suites, red proof, mutations).
+  CORRECTED 2026-11-09 (#227): "25 KB" is 25,000
+  characters in 2.1.283 (`Z3=25000`, the trimmed string's length), not 25 × 1,024 bytes;
+  the byte-cap default is now 25000.
 - [ ] 🔵 **Codex is designing native memories** (openai/codex#12567, 2026-10-28 →
   11). Clade's Codex surface (`plugins/clade`, `~/.codex`) carries none today;
   when it ships, decide whether the synced project memory is exported to it or the
@@ -3387,3 +3394,64 @@ open work:
   40,000) if at least 4 of 8 are adopted and at least 2 added checks fired;
   **reject** at 2 of 8 or fewer; otherwise run 8 more. Fewer than 8 eligible asks
   in 30 days closes it as too rare to earn a listing entry. No control arm.
+
+## 2026-11-09 Agent memory components follow-ups
+
+Read Anthropic's "The components of agent memory" against Clade
+([note](docs/research/2026-11-09-agent-memory-components.md)): 10 claimed gaps,
+1 survived (per-agent Workflow scratch, fixed in the template). Clade's own memory
+was reconciled by hand the same day (12 of 32 files defective). Mostly conditional:
+
+- [ ] 🟡 **Re-audit Clade's project memory on 2026-12-09.** Same method as the
+  2026-11-09 baseline (every topic file and index line against repo HEAD and both
+  CLAUDE.md files; 12 of 32 files, 8 of 32 index lines defective, roughly ten
+  weeks of drift). **Build** a scheduled reconcile (a cron'd headless run of the
+  native dream prompt, one profile, one host) if 4 or more files are defective
+  again; otherwise keep a monthly hand pass. Close the item if the native flag has
+  opened by then (next item).
+- [ ] 🔵 **Tripwire: native auto-dream turns on.** Any `.claude.json` whose
+  `cachedGrowthBookFeatures.tengu_onyx_plover.enabled` is true (`jq
+  '.cachedGrowthBookFeatures.tengu_onyx_plover' ~/.claude.json
+  ~/.claude-profiles/*/.claude.json`; all 5 read false on 2026-11-09). Then decide: (a) `MEMORY.md`
+  merges as `union` in the store, so a line one host's dream prunes comes back from
+  another host's edit — shown on a scratch repo, not on the live store; (b) each
+  profile dreams over its own transcripts only, so pick one owner or accept partial
+  views; (c) a dream on one host deletes a topic file another host still links.
+  The lock and session logs are already ignored (#227).
+- [ ] 🔵 **Native age warning reads mtime, and the store resets it.** 2.1.283 adds
+  "This memory is N days old … verify against current code" to a recalled topic
+  file when its mtime is over a day old; index lines never get it. A pull or an
+  adoption copy rewrites the file, so `orchestrator-gui-dormant.md` (`modified:`
+  2026-09-02) carried its 2026-11-07 adoption mtime and read as two days old.
+  Candidate: after a pull, `touch` each changed memory file to its `modified:`
+  stamp (BSD and GNU both take `touch -t`). Not built: no outcome measured — a
+  2-day warning still says "verify". Reopen if a session acts on a recalled note
+  that the true age would have flagged.
+- [ ] 🔵 **`memory-staleness.sh` reads the wrong memory dir for 120 of 463
+  sessions (26%).** It resolves `dirname(transcript)/memory`; Claude Code resolves
+  the canonical git root, so a session started in a subdirectory checks a dir that
+  is not the one it loads. Its parser also matches `anchors:` only at column 0,
+  while 939 of 980 store files carry the native nested `metadata:` block. Both
+  latent: 0 of 980 memories declare anchors. Fix both before anything starts
+  writing anchors.
+- [ ] 🔵 **832 of 1,122 index lines across 59 store indexes run past ~150
+  characters**, the native prompt's own guide; none of the 59 is near either cap
+  (largest 97 lines, 17,778 characters). Clade's was trimmed by hand; the rest is
+  each project's own. Watched by `sync-health.sh` at 80% of the cap.
+- [ ] 🔵 **Workflow scratch collisions — re-measure.** Baseline: 26 full-file
+  Writes onto a file another live agent of the same run had written, in 24 of 560
+  multi-agent runs (2026-10-08 → 11-09). The template now says (#228) to name each
+  agent's sub-directory. Re-count over runs started after the template reaches the
+  installed global file; if concurrent same-path Writes do not fall toward 0, add
+  a report-only warning to `check-workflow-script.py` (the preflight hook), which
+  is the layer that reads the script.
+- [ ] 🔵 **Unverified, from the completeness critic:** 5 path-keyed store dirs (81
+  notes) without `.migrated-to` duplicate a repo-keyed dir and have no link on
+  this host; their `.project-path` prefixes look like another machine's. Check
+  `sync-link-projects.sh --dry-run` on that machine before calling it a defect.
+- Refuted on outcome, recorded so they are not re-proposed: `corrections/stats.json`
+  loses increments under `-X ours` (its one reader fired 0 times in 30 days); the
+  pre-compact state re-injected at `session-context.sh` carries no task (bytes, not
+  behaviour); no link from a memory note to its writing session; no anchor
+  suggestion mode. The 2026-10-24 global CLAUDE.md budget item above already covers
+  the C8 finding (the installed file is 42,499 characters).
