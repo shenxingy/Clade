@@ -110,6 +110,8 @@ semantic versioning。
 
 ### 修复
 
+- dotfiles 同步仓库不再把 Claude Code auto-dream 的锁文件（`.consolidate-lock`）和会话日志（`projects-memory/*/logs/`）纳入 git；`sync-health.sh` 改为在原生 MEMORY.md 上限 25,000 字符的 80% 时提醒，而不是 25,600 字节。Claude Code 2.1.283 自带后台记忆整理（auto-dream），作者账号上被服务端开关关闭，在作者主机上从未触发过（任何 Claude 配置目录和同步仓库里都没有 `.consolidate-lock`，仓库历史中也没有）。一旦开关打开，`sync-push.sh` 会提交这个锁——它记录本机 PID，mtime 就是 dream 的时钟，另一台机器 pull 后时钟会被重置——还会把原始会话日志推到 GitHub。上限值读自二进制（`Z3=25000`，与去掉首尾空白后的 index 字符串长度比较）；按字节计数在非 ASCII 的 index 上只会提早、不会推迟提醒。已有的同步仓库在下一次 push 时补上这两条规则。
+
 - `/loop` 文档里的两种 goal 写法现在都能收敛。loop skill 里的 goal 示例是普通列表，runner 读成 `Goal: 0 open / 0 total`，收敛无从判断；`configs/templates/loop-goal.md` 有 18 个复选框，其中 15 个是任何任务都勾不掉的 Verification Checklist 行（9 个 Auto-Verifiable、6 个 Human-Verifiable），照模板写的 goal 永远不会收敛。示例的需求改成 `- [ ]` 项，成功标准注明由 verify 命令或 `--holdout` 判定；模板的清单行改成普通列表，供 supervisor 阅读、loop 不计数，也不再声称由 worker 勾选或由 `.claude/blockers.md` 卡合并。`tests/test-loop.sh` 把两种写法喂给真实 runner（旧文件红、现在绿）。这是对照 Rieseberg 的 ambition 一文时发现的（[笔记](docs/research/2026-11-09-rieseberg-ambition.md)），但缺陷本身与该文无关。
 
 - `/loop` 不再把"什么都没改"的 worker 所绑定的 goal item 勾掉。按 Tier-2 规则（"跳过、记录、继续"，每个 task brief 都有）放弃的 worker 会在没有任何改动的情况下以 0 退出；两个 worker runner 都把它算作成功，`node_verify` 对没有改动的迭代直接判通过，coordinator 随即把条目标为完成——一次运行可能什么都没做就报告 `CONVERGED`。两条路径都复现了（`--max-workers 1` → `run-tasks.sh`，`2` → `run-tasks-parallel.sh`）。现在两个 runner 都把每个 task 的结果（`changed` / `unchanged` / `failed`）写入 `CLADE_TASK_OUTCOMES`：工作树内容哈希通过 index 的副本计算，合并的 worktree 分支则看它相对 merge base 的 diff。`loop_goal.py` 通过必填的 `--outcomes` 读取该文件，只勾选 task 为 `changed` 的条目，其余记为 withheld，缺少文件时拒绝对账。`tests/test-loop-goal.sh` 新增 13 项检查，其中 8 项端到端检查有 7 项在旧代码上失败；三个变异（分类器恒为 `changed`、合并结果默认 `changed`、并行合并循环不记录）各自都会让测试变红。

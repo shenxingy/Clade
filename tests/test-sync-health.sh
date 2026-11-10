@@ -544,12 +544,12 @@ t_index() {
 
   new_store
   MEM="$H/.claude/projects/bytes/memory/MEMORY.md"
-  write_sized_file "$MEM" 20224
+  write_sized_file "$MEM" 19999
   OUT=$(run_health "$H")
-  assert_not_contains "$OUT" "MEMORY.md index cap" "20224 bytes (79 percent of 25 KiB) is silent"
-  write_sized_file "$MEM" 20480
+  assert_not_contains "$OUT" "MEMORY.md index cap" "19999 bytes (under 80 percent of 25000) is silent"
+  write_sized_file "$MEM" 20000
   OUT=$(run_health "$H")
-  assert_contains "$OUT" "20.0 KB" "20480 bytes (80 percent of 25 KiB) warns with its KB size"
+  assert_contains "$OUT" "19.5 KB" "20000 bytes (80 percent of the native 25000) warns with its KB size"
   OUT=$(run_health "$H" CLADE_SYNC_MEMORY_BYTE_CAP=40960)
   assert_not_contains "$OUT" "MEMORY.md index cap" "the native byte cap is env-overridable for fixtures"
 
