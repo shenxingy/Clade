@@ -37,6 +37,9 @@ opt-in and the default exits 0 with its findings on stdout.
     check-sibling-facts.py --strict        # exit 1 when a survivor is found
     check-sibling-facts.py --self-test
 
+It examines the repository of the current working directory (its git top
+level), wherever the script itself is installed.
+
 Stdlib only — the syntax-check CI job installs no dependencies.
 """
 
@@ -49,7 +52,32 @@ import subprocess
 import sys
 from pathlib import Path
 
-REPO = Path(__file__).resolve().parents[2]
+
+
+def _caller_repo(cwd: Path | None = None) -> Path:
+    """The repository the CALLER is in: `git rev-parse --show-toplevel` of cwd.
+
+    This was `Path(__file__).resolve().parents[2]`, the checkout this script
+    lives in. The global rules tell every project to run it, and it is deployed
+    to ~/.claude/scripts/, so from any other repository it diffed and searched
+    Clade (or, from the deployed copy, the parent of ~/.claude) and printed the
+    clean sentence about a tree it had never looked at. The top level, not cwd
+    itself: `git diff` names files from the top level, and run from a
+    subdirectory a cwd-rooted search missed every sibling outside it.
+
+    Outside any repository there is nothing to diff; fall back to cwd, so the
+    first git call fails and main() says NOT CHECKED instead of a clean result.
+    """
+    where = cwd or Path.cwd()
+    proc = subprocess.run(["git", "rev-parse", "--show-toplevel"], cwd=where,
+                          capture_output=True, text=True, check=False)
+    out = proc.stdout.strip()
+    if proc.returncode or not out:
+        return where.resolve()
+    return Path(out).resolve()
+
+
+REPO = _caller_repo()
 
 # A "fact" distinctive enough to be worth chasing. Each pattern is anchored on
 # something a coincidence rarely reproduces.
@@ -259,6 +287,7 @@ def self_test() -> int:
             problems.append(f"invented a fact in {line!r}: {got}")
 
     problems.extend(_survivor_controls())
+    problems.extend(_caller_repo_controls())
 
     if problems:
         for line in problems:
@@ -269,7 +298,9 @@ def self_test() -> int:
         "versioned literals and spelled-out counts and stays quiet on ordinary "
         "prose and bare identifiers; and the survivor search reports a sibling "
         "in a file the same commit touched, matches case-insensitively, "
-        "respects word boundaries, and stays quiet on a fact the diff re-added."
+        "respects word boundaries, and stays quiet on a fact the diff re-added; "
+        "and, run from a subdirectory of another repository, it examines that "
+        "repository's whole tree."
     )
     return 0
 
@@ -374,6 +405,64 @@ def _survivor_controls() -> list[str]:
     globals()["diff_lines"] = saved_diff
     globals()["_tree_files"] = saved_tree
     globals()["REPO"] = saved_repo
+    return problems
+
+
+def _caller_repo_controls() -> list[str]:
+    """Run the real entry point from inside ANOTHER repository.
+
+    REPO used to be this script's own checkout, so run from any other project
+    it diffed Clade and reported Clade's facts. In-process controls patch REPO
+    and cannot see that, so this one runs the script as a subprocess with cwd
+    in a throwaway repository — from a SUBDIRECTORY, because a cwd-rooted tree
+    search misses a sibling at the top level while `git diff` still names it.
+    """
+    import os
+    import tempfile
+
+    problems: list[str] = []
+    env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+    env.update(GIT_CONFIG_GLOBAL=os.devnull, GIT_CONFIG_NOSYSTEM="1")
+
+    def git(root: Path, *args: str) -> None:
+        subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@t",
+                        "-c", "commit.gpgsign=false", *args], cwd=root, env=env,
+                       capture_output=True, text=True, check=True)
+
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp) / "other"
+        sub = root / "sub"
+        sub.mkdir(parents=True)
+        (sub / "a.md").write_text("we ship 47 hooks today\n", encoding="utf-8")
+        (root / "b.md").write_text("also 47 hooks here\n", encoding="utf-8")
+        try:
+            git(root, "init", "-q")
+            git(root, "add", "-A")
+            git(root, "commit", "-q", "-m", "init")
+        except (OSError, subprocess.CalledProcessError) as exc:
+            return [f"could not build the caller-repo fixture: {exc}"]
+        (sub / "a.md").write_text("we ship 48 hooks today\n", encoding="utf-8")
+        proc = subprocess.run([sys.executable, str(Path(__file__).resolve())],
+                              cwd=sub, env=env, capture_output=True, text=True,
+                              check=False, timeout=120)
+        out = proc.stdout
+        if "47 hooks" not in out or "still in:   b.md" not in out:
+            problems.append(
+                "run from another repository's subdirectory, it did not report "
+                f"that repository's top-level sibling (exit {proc.returncode}): "
+                f"{(out + proc.stderr)[-300:]!r}")
+
+        # Outside every repository there is nothing to diff, and saying
+        # "no changed fact survives" there would be the clean sentence again.
+        bare = Path(tmp) / "bare"
+        bare.mkdir()
+        proc = subprocess.run([sys.executable, str(Path(__file__).resolve())],
+                              cwd=bare, env={**env, "GIT_CEILING_DIRECTORIES": tmp},
+                              capture_output=True, text=True, check=False,
+                              timeout=120)
+        if "NOT CHECKED" not in proc.stdout:
+            problems.append("outside any repository it did not say NOT CHECKED: "
+                            f"{proc.stdout[-200:]!r}")
     return problems
 
 
