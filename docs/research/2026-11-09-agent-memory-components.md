@@ -18,7 +18,7 @@ summary: >
 integrated_items:
   - "Hand-run dream of Clade's own project memory (2026-11-09): 21 topic files and the MEMORY.md index corrected against the repo and both CLAUDE.md files; every index line ≤ ~150 chars; no deletions (outside the repo — the dotfiles sync store)"
   - "Sync store ignores Claude Code's auto-dream lock (.consolidate-lock) and session logs (projects-memory/*/logs/); sync-health uses the native index cap of 25,000 characters (#227)"
-  - "Workflow rule: name each agent's own scratch sub-directory in its brief (branch docs/workflow-scratch-per-agent) — the one gap that survived both refuters"
+  - "Workflow rule: name each agent's own scratch sub-directory in its brief (#228) — the one gap that survived both refuters"
 needs_work_items:
   - "Re-audit Clade's memory on 2026-12-09 and decide whether a scheduled reconcile is worth building (TODO § 2026-11-09 agent memory)"
   - "memory-staleness.sh resolves the memory dir from the transcript dir, not the git root Claude Code uses — wrong for 120 of 463 sessions; latent while no memory declares anchors"

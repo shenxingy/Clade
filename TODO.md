@@ -3440,7 +3440,7 @@ was reconciled by hand the same day (12 of 32 files defective). Mostly condition
   each project's own. Watched by `sync-health.sh` at 80% of the cap.
 - [ ] 🔵 **Workflow scratch collisions — re-measure.** Baseline: 26 full-file
   Writes onto a file another live agent of the same run had written, in 24 of 560
-  multi-agent runs (2026-10-08 → 11-09). The template now says to name each
+  multi-agent runs (2026-10-08 → 11-09). The template now says (#228) to name each
   agent's sub-directory. Re-count over runs started after the template reaches the
   installed global file; if concurrent same-path Writes do not fall toward 0, add
   a report-only warning to `check-workflow-script.py` (the preflight hook), which
