@@ -3213,7 +3213,7 @@ items below include the code that keeps the next failure from being silent.
   (`CLADE_SYNC_MEMORY_LINE_CAP`, `CLADE_SYNC_MEMORY_BYTE_CAP`,
   `CLADE_SYNC_MEMORY_WARN_PERCENT`). Implemented by Kimi K3.1 Pro (max effort) in its own
   worktree; verified independently by Claude (re-run suites, red proof, mutations).
-  CORRECTED 2026-11-09 (branch fix/memory-store-native-dream): "25 KB" is 25,000
+  CORRECTED 2026-11-09 (#227): "25 KB" is 25,000
   characters in 2.1.283 (`Z3=25000`, the trimmed string's length), not 25 × 1,024 bytes;
   the byte-cap default is now 25000.
 - [ ] 🔵 **Codex is designing native memories** (openai/codex#12567, 2026-10-28 →
@@ -3417,7 +3417,7 @@ was reconciled by hand the same day (12 of 32 files defective). Mostly condition
   another host's edit — shown on a scratch repo, not on the live store; (b) each
   profile dreams over its own transcripts only, so pick one owner or accept partial
   views; (c) a dream on one host deletes a topic file another host still links.
-  The lock and session logs are already ignored (fix/memory-store-native-dream).
+  The lock and session logs are already ignored (#227).
 - [ ] 🔵 **Native age warning reads mtime, and the store resets it.** 2.1.283 adds
   "This memory is N days old … verify against current code" to a recalled topic
   file when its mtime is over a day old; index lines never get it. A pull or an

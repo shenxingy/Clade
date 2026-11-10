@@ -17,7 +17,7 @@ summary: >
   hand-run dream fixed them; the store now ignores the dream's lock and session logs.
 integrated_items:
   - "Hand-run dream of Clade's own project memory (2026-11-09): 21 topic files and the MEMORY.md index corrected against the repo and both CLAUDE.md files; every index line ≤ ~150 chars; no deletions (outside the repo — the dotfiles sync store)"
-  - "Sync store ignores Claude Code's auto-dream lock (.consolidate-lock) and session logs (projects-memory/*/logs/); sync-health uses the native index cap of 25,000 characters (branch fix/memory-store-native-dream)"
+  - "Sync store ignores Claude Code's auto-dream lock (.consolidate-lock) and session logs (projects-memory/*/logs/); sync-health uses the native index cap of 25,000 characters (#227)"
   - "Workflow rule: name each agent's own scratch sub-directory in its brief (branch docs/workflow-scratch-per-agent) — the one gap that survived both refuters"
 needs_work_items:
   - "Re-audit Clade's memory on 2026-12-09 and decide whether a scheduled reconcile is worth building (TODO § 2026-11-09 agent memory)"
