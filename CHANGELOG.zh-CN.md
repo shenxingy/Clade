@@ -9,6 +9,8 @@ semantic versioning。
 
 ### 变更
 
+- 全局模板的 Workflow 规则新增一条：在每个 agent 的 brief 里写明它自己的子目录。同一个 Workflow run 的所有 agent 共用一个会话 scratchpad，文件名由 agent 自己按惯例取：作者主机上 560 个多 agent run（2026-10-08 → 11-09）中，有 24 个出现同时存活的 agent 写同一路径，某个 run 的 10 条 lane 在 30 秒内都写了 `crawl.py`，还有两个开 PR 的 agent 从共用的 `pr-body.md` 读回了别的 PR 的正文。没有确认出错的 PR，两次险情都是 agent 自己发现的。这对应 Anthropic《The components of agent memory》（2026-11-06）里"一页一个写者"的结论：多个 agent 覆盖同一张共享表时，57 条评分事实只保住 41 条；每页一个写者时 57 条全部保住。
+
 - `paper-reviewer` 新增第七个维度：完整性审计，参照 ScientistTwo（arXiv:2609.19644，§4.2）用于自身论文的 CoE Integrity Audit。它把每个关键数字追溯到产生它的文件，并在称其为"实测"之前读取该文件的守卫字段（`RUN_STOPPED`、`DO_NOT_INFER`、`control_passed`、smoke/partial 标记）。它核对评测是否符合论文声明的划分与协议，并通过免费、无需 key 的 arXiv、doi.org 和 Crossref 接口核对每个 `.bib` 条目确实存在。它双向对照方法章节与代码，并检查论文归功于某个组件的增益是否有只移除该组件的消融实验支撑。评审文件新增 Integrity Audit 表，结论为 PASS / FAIL / INCOMPLETE，未能运行的检查只会让结论成为 INCOMPLETE，绝不会是 PASS。评审文件还新增 Rebuttal Plan，把每条弱点转成一个补充实验，附命令与状态。若 memory 显示它评审过此前的稿件，它会说明自己的打分属于 in-distribution，并建议由未见过此稿的评审做最终阅读。`docs/how-it-works.md` 曾把该 agent 标为 Sonnet，而其 frontmatter 写的是 `model: opus`，现已改正。
 
 - `ci-local.py` 会把失败的 step 用同样的命令、环境变量和目录重跑一次；重跑才通过的 step 记为 **FLAKY**，绝不算绿色。它所在的 job 不算失败；摘要行显示 `FLAKY`（unproven lane 的优先级更高，此时显示 `PARTIAL`，但仍列出 flaky step），另有一行以 `Job › Step (first exit N)` 的形式列出每个 flaky step，并附上第一次运行的输出；`--json` 新增 `verdict: flaky` 和 `flaky: [{job, workflow, step, first_exit, first_output_tail}]`。两次都失败的 step 仍按失败处理，报告重跑的退出码和输出，`failed[].first_exit` 记录第一次的退出码。超过 step 超时的 step 不重跑。`--no-rerun` 关闭重跑。`--strict` 遇到 FLAKY 时与 PARTIAL 一样 exit 2；只报告期内默认退出码仍为 0。`/green` 把 flaky step 当作需要调查的失败，绝不算已修复。动机（实测）：在负载约 80 的主机上，`tests/test-context-policy-install.sh` 的 206 个用例中有 1 个在完整运行中失败一次，立即重跑 206/206 通过；那次运行报告 FAILED，却没有任何记录说明这是一次 flake。
