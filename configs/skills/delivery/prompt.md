@@ -205,7 +205,10 @@ normal writable owned branch dirty.
 Before READY:
 
 1. Re-resolve the intended base and current forge policy.
-2. Sync/restack if base or parent changed; any head rewrite invalidates evidence.
+2. Restack if the stack parent changed; any head rewrite invalidates evidence.
+   The default branch moving is not a reason to sync or re-gate: a head that
+   merges cleanly into the current base keeps its candidate (configs/CLAUDE.md,
+   "Merge, then test: no queue, no re-gate").
 3. Run complete repository-required verification on the exact final head.
 4. Record it:
 

@@ -57,13 +57,26 @@ Block—not warn—when:
   protection-`BLOCKED` PR is queued with auto-merge rather than bypassed);
 - required review/CODEOWNERS/conversation gates are unresolved;
 - PR is draft, conflicting, closed, or not mergeable;
-- base/head changed after candidate/review evidence;
+- the head changed after candidate/review evidence (the base moving is not
+  a reason; see the merge condition below);
 - branch/rules policy discovery fails for an external mutation;
 - the requested merge method is disabled;
 - parent ancestry would be rewritten while live children lack a safe restack.
 
 There is no conversational override for a red/pending protected gate. Do not
 use admin bypasses, `--no-verify`, or unsupported confirmation flags.
+
+**The merge condition** (configs/CLAUDE.md, "Merge, then test: no queue, no
+re-gate"): a green gate record for the exact head, and a clean merge of that
+head into the CURRENT default branch (`git merge-tree --write-tree`, or the
+forge's `MERGEABLE`). Main moving after the gate never calls for a rebase, an
+"update branch" or a re-run of the same head; the post-merge runner
+(`mainline-ci.py`) tests the merged tree and bisects a red one. A conflict
+resolution is a new head and needs its own gate. A PR with a gate record but no
+delivery state lands through
+`python3 <plugin-root>/skills/merge-pr/scripts/land-pr.py <pr> --record <gate.json>`, which
+checks the same condition, merges with `--match-head-commit` and confirms
+`mergedAt`.
 
 ## 3. Lock READY and choose history semantics
 
@@ -97,7 +110,9 @@ and emits one exact command containing:
 
 Merge queues and auto-merge are repository integrations, not bypasses. Use the
 native queue when required; otherwise execute exactly the emitted strategy and
-head lock.
+head lock. A required queue or "require branches to be up to date" setting is
+the re-gate the rule removes: report it to the owner as a setting to review,
+never work around it.
 
 `mergeable: UNKNOWN` right after a parent landed or a child was retargeted is
 GitHub still computing, not a verdict; the controller re-queries with backoff
@@ -183,7 +198,9 @@ and the delivery state `CLEAN`.
 Integrator workflow for an already reviewed Clade delivery. It never treats
 authorship as merge authority, never bypasses pending/red gates, locks the
 reviewed head SHA, respects repository merge policy and live child ancestry,
-and does not finish until mainline/branch cleanup is verified.
+and does not finish until mainline/branch cleanup is verified. A green gate on
+the exact head plus a clean merge into the current main is the merge
+condition; main moving is never a reason to re-gate.
 
 ## Delivery completion
 

@@ -145,6 +145,12 @@ SKILL_TEXT_REPLACEMENTS = {
             "<plugin-root>/skills/green/scripts/ci-local.py",
         ),
     ),
+    "merge-pr": (
+        (
+            "~/.claude/scripts/land-pr.py",
+            "<plugin-root>/skills/merge-pr/scripts/land-pr.py",
+        ),
+    ),
     "retro": (
         (
             "~/.claude/scripts/outcome-scorecard.py",
@@ -169,6 +175,17 @@ DECLARED_RESOURCES = {
         (
             REPO_ROOT / "configs" / "scripts" / "ci-local.py",
             Path("scripts/ci-local.py"),
+        ),
+    ),
+    "merge-pr": (
+        (
+            REPO_ROOT / "configs" / "scripts" / "land-pr.py",
+            Path("scripts/land-pr.py"),
+        ),
+        # Its self-test imports the cases from beside it.
+        (
+            REPO_ROOT / "configs" / "scripts" / "merge_then_test_cases.py",
+            Path("scripts/merge_then_test_cases.py"),
         ),
     ),
     "retro": (

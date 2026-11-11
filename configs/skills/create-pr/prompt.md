@@ -44,8 +44,10 @@ python3 "$DELIVERY_PY" show --id "<id>"
 git rev-parse HEAD
 ```
 
-If evidence is absent/stale, align the base, run full repository checks, and
-record `delivery candidate` before publication.
+If evidence is absent or names another head, run full repository checks on
+this head and record `delivery candidate` before publication. Align the base
+only to resolve a conflict or a stack parent that landed: main moving alone
+never makes a candidate stale (configs/CLAUDE.md, "Merge, then test").
 
 ## 3. Reuse existing PR
 
