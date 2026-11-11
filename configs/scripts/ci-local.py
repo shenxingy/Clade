@@ -78,6 +78,12 @@ green. During the report-only rollout the exit code for partial, flaky and
 none is still 0; --strict makes it 2, and the default flips on the date
 TODO.md names.
 
+The JSON also names the tree it judged: `head` (the commit checked out when the
+run started, null outside a git checkout), `dirty` (tracked or untracked
+changes at that moment, so the run did not test `head` alone), `exit` and
+`ended`. That makes the output a gate record for one commit: land-pr.py merges
+a PR whose head it names with a pass verdict and no dirt.
+
 Stdlib only — the syntax-check job installs no dependencies.
 """
 
@@ -1139,6 +1145,26 @@ def print_plan(repo: Path, plan: list[tuple[Job, Skip | None]]) -> None:
 _CLEAN_HOME: Path | None = None
 
 
+def checkout_state(repo: Path) -> tuple[str | None, bool | None]:
+    """(HEAD sha, whether the tree differs from it) at the start of a run; (None, None) outside git.
+
+    A record that names a commit it did not test alone certifies nothing, so an
+    uncommitted edit or an untracked file (ignored files excepted) marks it dirty.
+    """
+    try:
+        head = subprocess.run(["git", "-C", str(repo), "rev-parse", "--verify", "HEAD"],
+                              capture_output=True, text=True, timeout=30)
+        if head.returncode != 0:
+            return None, None
+        status = subprocess.run(["git", "-C", str(repo), "status", "--porcelain"],
+                                capture_output=True, text=True, timeout=60)
+    except (OSError, subprocess.TimeoutExpired):
+        return None, None
+    if status.returncode != 0:
+        return head.stdout.strip(), None
+    return head.stdout.strip(), bool(status.stdout.strip())
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(
         description="Run this repository's GitHub Actions gates locally.",
@@ -1182,6 +1208,8 @@ def main() -> int:
     if not (repo / ".github" / "workflows").is_dir():
         print(f"ci-local: no .github/workflows under {repo}")
         return 1
+
+    head, dirty = checkout_state(repo)
 
     # An explicitly named job runs even if it is conditional — but it is still
     # planned in full. Clearing only the "conditional" verdict afterwards would
@@ -1280,6 +1308,12 @@ def main() -> int:
                 # FLAKY: each step in `flaky` failed, then passed on its one
                 # rerun. NONE: no job ran at all. Only `pass` is green.
                 "verdict": verdict,
+                # The commit this run judged, and whether the tree held more
+                # than it: a gate record for land-pr.py (see the docstring).
+                "head": head,
+                "dirty": dirty,
+                "exit": exit_code,
+                "ended": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
                 # /green's report contract asks how long the whole thing took.
                 # A stated field with no way to obtain it gets omitted or invented.
                 "seconds": round(sum(r.seconds for r in ran), 1),

@@ -1155,6 +1155,24 @@ assert_eq "$RC" "2" "a run of only an action-gated job is not green under --stri
 # shellcheck source=lib/ci-local-flaky.sh
 . "$REPO_ROOT/tests/lib/ci-local-flaky.sh"
 
+# ─── 8g. The JSON names the commit it judged ────────────────────────
+# land-pr.py merges a PR whose head a green record names, so a record must say
+# which commit it tested and whether the tree held more than that commit.
+section "the JSON is a gate record: head and dirty"
+REC="$SANDBOX/record-repo"; mkdir -p "$REC/.github/workflows"
+printf 'name: CI\non: [push]\njobs:\n  ok:\n    name: Ok\n    runs-on: ubuntu-latest\n    steps:\n      - name: Pass\n        run: "true"\n' \
+  > "$REC/.github/workflows/ci.yml"
+git -C "$REC" init -q && git -C "$REC" add -A \
+  && git -C "$REC" -c user.name=t -c user.email=t@example.invalid -c commit.gpgsign=false commit -q -m base
+REC_HEAD="$(git -C "$REC" rev-parse HEAD)"
+rec_field() { python3 "$RUNNER" --repo "$REC" --json 2>/dev/null \
+  | python3 -c "import json,sys; d=json.load(sys.stdin); print(d['head'], d['dirty'], d['exit'], bool(d['ended']))" 2>/dev/null; }
+assert_eq "$(rec_field)" "$REC_HEAD False 0 True" "a clean checkout's record names HEAD, not dirty, exit 0, ended"
+touch "$REC/untracked.txt"
+assert_eq "$(rec_field)" "$REC_HEAD True 0 True" "an untracked file marks the record dirty"
+HEADLESS=$(python3 "$RUNNER" --repo "$FAKE" --json 2>/dev/null | python3 -c "import json,sys; print(json.load(sys.stdin)['head'])" 2>/dev/null)
+assert_eq "$HEADLESS" "None" "outside git the record names no head"
+
 # ─── 9. Mutations: removing each guard turns this suite red ──────────
 # A clean run and a run with a guard missing print the same "ALL PASSED"
 # unless something removes the guard and looks. Each entry edits ONE guard out
@@ -1195,6 +1213,8 @@ PY
 
 mutation green "no-op control (a comment reworded)" \
   '# Report-only for one week, then the default' '# Report-only for one week,  then the default'
+mutation red "the dirty flag on the record" \
+  'return head.stdout.strip(), bool(status.stdout.strip())' 'return head.stdout.strip(), False'
 mutation red "the reasoned-first order (unmodelled tested before pull_request_target)" \
   '    triggers = workflow_triggers(on_block)
 ' '    if job.unmodelled:

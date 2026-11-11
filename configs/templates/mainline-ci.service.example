@@ -1,0 +1,25 @@
+# Post-merge testing of one repository: one tick of mainline-ci.py (configs/CLAUDE.md,
+# "Merge, then test: no queue, no re-gate"). Copy to ~/.config/systemd/user/mainline-ci-<repo>.service,
+# set REPO to a checkout the runner owns (it adds a worktree under its .git), then:
+#   systemctl --user daemon-reload && systemctl --user enable --now mainline-ci-<repo>.timer
+#   loginctl enable-linger "$USER"     # so the timer runs while you are logged out
+# A tick on a tree already tested exits 0 at once; a red tree is tested once, bisected and
+# recorded under <git common dir>/clade-mainline/ (red/<sha8>.json, history.jsonl, latest.json).
+# Exit 1 (red) and 3 (flaky) leave the unit failed on purpose, so `systemctl --user --failed` shows
+# them; 75 means another tick holds the lock.
+[Unit]
+Description=Post-merge gate of each new default-branch tree (mainline-ci.py)
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+Environment=REPO=%h/src/your-repo
+# The gate: ci-local.py --json by default; set MAINLINE_CI_GATE for a repository's own gate script.
+# Environment=MAINLINE_CI_GATE=./scripts/gate.sh
+ExecStart=/usr/bin/env python3 %h/.claude/scripts/mainline-ci.py tick --repo ${REPO} --blockers ${REPO}/.claude/blockers.md
+Nice=10
+# Covers the gate, its one rerun and up to --max-probes bisect runs.
+TimeoutStartSec=4h
+MemoryMax=8G
+SuccessExitStatus=75

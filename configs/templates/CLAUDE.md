@@ -69,6 +69,21 @@ These rules apply to ALL agents (Claude Code sessions) across all projects. They
   to pass its own CI. Never reuse a final aggregate branch's green result as
   the only evidence for every layer.
 
+## Merge, then test
+
+Clade's rule ("Merge, then test: no queue, no re-gate" in `~/.claude/CLAUDE.md`):
+- Gate a PR once, on its head: `python3 ~/.claude/scripts/ci-local.py --json > gate.json`
+  on a clean checkout of it, or this repository's own gate script.
+- Merge with `python3 ~/.claude/scripts/land-pr.py <pr> --record gate.json`: a green record
+  for the exact head plus a clean merge into the current default branch. Main moving is
+  never a reason to gate again; a conflict resolution is a new head and needs a new gate.
+- Test main after each merge: `~/.claude/scripts/mainline-ci.py tick` on a timer (examples in
+  Clade's `configs/templates/mainline-ci.*.example`) bisects a red tree to its merge; fix forward.
+- Versions are assigned at the release cut from pending notes (changesets, towncrier, scriv,
+  release-please), never bumped in a feature PR.
+- Leave "require branches to be up to date" and merge queues off unless main deploys on every
+  merge with no pre-deploy test.
+
 ## Communication
 - When blocked on something requiring human input: write to `.claude/blockers.md` and stop
   - Format: `## Blocker [datetime]\n[what you need]\n[what you tried]`

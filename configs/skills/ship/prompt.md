@@ -57,6 +57,15 @@ Do NOT block on this step — warn and continue.
 
 ### Step 4: Version Bump (skip with --no-bump)
 
+This is the release cut, the only place a version number is assigned
+(configs/CLAUDE.md, "Merge, then test"): feature PRs never bump it. When the
+repository keeps pending notes, cut with its tool instead of the manual steps
+below and commit what it writes: `npx changeset version` for `.changeset/`,
+`towncrier build --version X.Y.Z` or `scriv collect` for `changelog.d/` or
+`newsfragments/` fragments, or merge release-please's release PR. Steps 4-5's
+manual bump and commit-log changelog are the fallback for a repository with no
+pending notes.
+
 1. Read current version:
    - `pyproject.toml`: `version = "X.Y.Z"` under `[project]` or `[tool.poetry]`
    - `package.json`: `"version": "X.Y.Z"`

@@ -139,6 +139,57 @@ reporting its absence as a gap.
 completion before every push, and never chain it behind `echo` — that masks the
 exit code and turns a red run green.
 
+## Merge, then test: no queue, no re-gate
+
+CI is never the bottleneck. A PR is gated once, on its own head; main is
+tested after it merges.
+
+- **Presubmit is one gate on the PR head**: `ci-local.py --json` on a clean
+  checkout of that head (its JSON names `head` and `dirty`), or the
+  repository's own gate script.
+- **Merge when** that record is green for the exact head and the head merges
+  cleanly into the CURRENT default branch (`git merge-tree --write-tree
+  origin/main <head>` exits 0). `land-pr.py <pr> --record gate.json` checks
+  both, merges with `--match-head-commit <head>` and confirms `mergedAt`; each
+  refusal has its own exit code. A conflict resolution is new code: a new
+  head, so a new gate.
+- **Never re-gate because main moved** — no rebase, no "update branch", no
+  re-run of an unchanged head. Measured in a private repository on
+  2026-11-10: each PR ran about three full suites, its head plus re-gates
+  after main moved, at 17 min each on a 14-worker host.
+- **Test every new main tree after the merge.** `mainline-ci.py tick` on a
+  timer (`configs/templates/mainline-ci.{service,timer}.example`) runs the
+  gate once per new tree, re-runs a red one to tell a flake, bisects the
+  first-parent merges since the last green record (log2 n runs, at most
+  `--max-probes`) and writes `red/<sha8>.json` naming the culprit. Fix
+  forward. A red main does not stop other PRs while `mainline-ci.py status`
+  finds a green record inside its window (36 h by default).
+- **Narrowed presubmit selection is valid only while that backstop is
+  fresh**; without a fresh green, run the full gate. Selection is no
+  substitute for dropping re-gates: in the same repository, coverage-based
+  selection over 37 PRs still picked 91% of test-seconds under the safe rule,
+  because end-to-end tests reach every module.
+- **Versions are assigned at the release cut, from pending notes.** Each PR
+  adds a note — a `.changeset/*.md`, a towncrier or scriv fragment, or a
+  conventional-commit subject that release-please reads — and the cut (`/ship`)
+  assigns the number and writes the changelog. Never bump a version in a
+  feature PR: in that repository per-PR bumps made 28 renumber commits in one
+  day, each followed by another full gate.
+- **A queue is the exception.** A hosted merge queue, or "require branches to
+  be up to date before merging", serializes every PR behind the full gate of
+  the one ahead. Keep it only where a red main costs more than the wait: main
+  deploys on every merge with no pre-deploy test, or the merge rate is so low
+  that nothing ever waits. Otherwise turn both off; `land-pr.py` reports the
+  forge's refusal (exit 18) and never works around it.
+
+Sources: Anthropic, "Redesigning source control" — "A proper merge queue, for
+example, doesn't make much sense at agent scale ... we've invested in
+post-merge and pre-deploy automated testing." Google TAP (ICSE 2017): "we are
+unable to regression test each code change individually." Meta, "Predictive
+Test Selection" (arXiv 1810.05286): selection halved testing cost while still
+reporting over 99.9% of faulty changes. Those misses are why a narrowed
+presubmit needs the post-merge run.
+
 ## A self-test is not evidence until a mutation makes it fail
 
 Writing `--self-test` is the easy half. The half that matters is deleting one

@@ -1,0 +1,14 @@
+# Starts mainline-ci-<repo>.service every 10 minutes. A tick while another holds the lock exits 75;
+# a tick on a tree already tested exits 0 at once. Not Persistent: the next tick covers a missed one.
+# Without systemd, the same tick from cron:
+#   */10 * * * * cd "$HOME/src/your-repo" && python3 "$HOME/.claude/scripts/mainline-ci.py" tick --blockers .claude/blockers.md >> .git/mainline-ci-cron.log 2>&1
+[Unit]
+Description=Post-merge gate every 10 minutes (mainline-ci.py)
+
+[Timer]
+OnCalendar=*:0/10
+Persistent=false
+Unit=mainline-ci-your-repo.service
+
+[Install]
+WantedBy=timers.target
