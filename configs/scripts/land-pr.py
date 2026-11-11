@@ -10,7 +10,7 @@ tests every new main tree and traces a red one to the merge that broke it.
 
 Measured in a private repository on 2026-11-10: each PR ran about three full
 suites (its head, then re-gates after main moved) at 17 minutes each on a
-14-worker host, two of them re-gates of a head that had not changed.
+14-worker host: one on its head, the rest re-gates after main moved.
 
 Usage
 -----
