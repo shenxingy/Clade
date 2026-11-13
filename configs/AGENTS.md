@@ -1,12 +1,12 @@
 # Clade Ground Rules — vendor-neutral
 
-This file follows the AGENTS.md open standard so that every AGENTS.md-aware
-runtime reads the same text, regardless of vendor, model, or permission
-mode: Kimi Code (`~/.kimi-code/AGENTS.md`), OpenCode, Goose, and any other
-runtime that resolves the shared `~/.agents/AGENTS.md`. Vendor-specific
-channels (`~/.claude/CLAUDE.md`, the Codex managed block) carry adapted
-wording of the same rules; this file is the canonical source they adapt
-from. Edit it here and re-run `install.sh`.
+This file follows the AGENTS.md open standard so that OpenCode, Goose, and
+other runtimes resolving the shared `~/.agents/AGENTS.md` read the same text,
+regardless of vendor, model, or permission mode. Vendor-specific channels
+(`~/.claude/CLAUDE.md`, the Codex managed block, and Kimi Code's
+`~/.kimi-code/AGENTS.md` from `configs/KIMI_AGENTS.md`) carry adapted wording
+of the same rules; this file is the canonical source they adapt from. Edit the
+canonical or appropriate adapted source and re-run `install.sh`.
 
 ## Repository entry points across projects
 
