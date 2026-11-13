@@ -57,24 +57,47 @@ def _base_config(home: Path, extra: str | None = None) -> str:
     ]
     if extra is not None:
         root.append(extra)
-    guardian = (
-        f"{home}/.kimi-code/hooks/decision-to-kimi.sh "
-        f"{home}/.claude/hooks/pre-tool-guardian.sh"
-    )
     return "\n".join([
         *root,
         "",
-        "[[hooks]]",
-        'event = "PreToolUse"',
-        'matcher = "Bash"',
-        f'command = "{guardian}"',
-        "timeout = 5",
-        "",
+        *_clade_hook_tables(home),
         "[user-table]",
         'extra_skill_dirs = ["$HOME/custom"]',
         'other = "keep"',
         "",
     ])
+
+
+def _clade_hook_tables(home: Path) -> list[str]:
+    """Every [[hooks]] table install.sh writes, read from its own declarative list.
+
+    install.sh appends any of these that are missing, so a fixture without them
+    would change by those appended tables on every install, and each assertion
+    that the skill view leaves config.toml byte-identical would fail on a line
+    the view never wrote. Seeding all of them keeps those assertions about the
+    view. Parsed from install.sh rather than copied, so the two cannot drift.
+    """
+    text = (REPO_ROOT / "install.sh").read_text(encoding="utf-8")
+    start = text.index("_kimi_hook_present \"$_event\"")
+    body = text[text.index("<<'EOF'\n", start) + len("<<'EOF'\n"):]
+    body = body[:body.index("\nEOF\n")]
+    tables: list[str] = []
+    for row in body.splitlines():
+        event, matcher, hook, timeout, mode = row.split("^")
+        command = f"{home}/.kimi-code/hooks/decision-to-kimi.sh"
+        if mode == "once":
+            command += " --once-per-session"
+        command += f" {home}/.claude/hooks/{hook}"
+        tables += [
+            "[[hooks]]",
+            f'event = "{event}"',
+            f'matcher = "{matcher}"',
+            f'command = "{command}"',
+            f"timeout = {timeout}",
+            "",
+        ]
+    assert len(tables) == 12 * 6, "install.sh's hook list changed size; recheck this fixture"
+    return tables
 
 
 @pytest.fixture
