@@ -6,6 +6,7 @@ import hashlib
 import importlib.util
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -557,3 +558,25 @@ def test_text_only_config_rule_when_tomllib_is_unavailable(tmp_path, monkeypatch
         assert len(before_lines) == len(after_lines)
         changed = [i for i, pair in enumerate(zip(before_lines, after_lines)) if pair[0] != pair[1]]
         assert len(changed) == 1
+
+
+def test_kimi_agents_tool_map_matches_every_scanner_rule() -> None:
+    """KIMI_AGENTS.md's map is what a Kimi session reads; the scanner's RULES
+    are what classified the skills. One stated mapping, checked from both ends."""
+    spec = importlib.util.spec_from_file_location("kimi_skill_compat_rules", SCANNER)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    text = (REPO_ROOT / "configs" / "KIMI_AGENTS.md").read_text(encoding="utf-8")
+    section = text[text.index("### Clade Skills Written for Claude Code"):]
+    section = section[:section.index("\n## ")]
+    pairs = re.findall(r"`([^`]+)` → `([^`]+)`", section)
+    stated = dict(pairs)
+    assert len(stated) == len(pairs), "a Claude name is mapped twice"
+    # test_native_delegation_agents.py keeps these names out of the policy
+    # entirely, so the scanner's ScheduleWakeup → CronCreate rule is not stated.
+    unstated = {"ScheduleWakeup"}
+    mapped = {rule.primitive: rule.kimi.split()[0] for rule in module.RULES
+              if rule.kimi is not None and rule.primitive not in unstated}
+    assert len(mapped) >= 10, "an empty rule table would make this test vacuous"
+    assert stated == mapped
