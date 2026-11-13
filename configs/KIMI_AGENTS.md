@@ -166,6 +166,17 @@ lead or one direct subagent.
 - Cross-vendor delegation is explicit-only; use `ask-claude` or `ask-codex` only
   when the user asks for that vendor. Never silently launch another vendor's CLI.
 
+### Clade Skills Written for Claude Code
+
+Read a Claude Code name in a Clade skill as its Kimi tool:
+`TodoWrite` → `TodoList`, `WebFetch` → `FetchURL`, `Task` → `Agent`,
+`Explore` → `explore`, `general-purpose` → `coder`, `Plan` → `plan`,
+`BashOutput` → `TaskOutput`, `KillShell` → `TaskStop`, `SlashCommand` → `Skill`,
+`${CLAUDE_SKILL_DIR}` → `${KIMI_SKILL_DIR}`, `${CLAUDE_SESSION_ID}` → `${KIMI_SESSION_ID}`.
+A tool missing from this list cannot be called here. A skill that needs one
+without a fallback has model invocation disabled. If a user runs it with
+`/skill:<name>`, say which step cannot run before starting.
+
 ## Delivery Completion
 
 For any task that changes files or external state:
