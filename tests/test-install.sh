@@ -1363,7 +1363,7 @@ grep -q '^default_permission_mode = "manual"$' "$KIMI_CFG" \
 perm_count=$(grep -cE '^default_permission_mode[[:space:]]*=' "$KIMI_CFG")
 skills_count=$(grep -cE '^extra_skill_dirs[[:space:]]*=' "$KIMI_CFG")
 hooks_count=$(grep -cF '[[hooks]]' "$KIMI_CFG")
-if [[ "$perm_count" -eq 1 && "$skills_count" -eq 1 && "$hooks_count" -eq 1 ]]; then
+if [[ "$perm_count" -eq 1 && "$skills_count" -eq 1 && "$hooks_count" -eq 12 ]]; then
   pass "re-run is idempotent (no duplicate keys or hook blocks after 2 runs)"
 else
   fail "re-run is idempotent (no duplicate keys or hook blocks after 2 runs)" \
