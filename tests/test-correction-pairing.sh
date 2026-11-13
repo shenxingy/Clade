@@ -889,8 +889,8 @@ link_write_path rd "$REVERT_HOOK"     lib      "echo $LINK_FILL; git checkout --
 link_write_path rd "$RD_NOLIB"        fallback "echo $LINK_FILL; git checkout -- src/app.py"
 
 # The same inputs to both detectors, so the shared filter cannot diverge in
-# behaviour. The id keeps only [A-Za-z0-9-], the character set of the
-# private-session marker check; a transcript path is dropped, never trimmed,
+# behaviour. The id keeps only [A-Za-z0-9_-], the character set of the
+# private-session marker check plus Kimi's session_ prefix; a transcript path is dropped, never trimmed,
 # when it holds a control character, runs past 1,024 characters or is not a
 # string.
 LINK_1024="/$(printf '%*s' 1023 '' | tr ' ' a)"
@@ -902,9 +902,12 @@ link_cases() {   # <label> <extra-json> <expected [session_id, transcript_path]>
     assert_eq "$(link_of "$k" "$h" "$2")" "$3" "$k: $1"
   done
 }
-link_cases "a hostile session id keeps only [A-Za-z0-9-]" \
+link_cases "a hostile session id keeps only [A-Za-z0-9_-]" \
   "$(jq -nc --arg t "$LINK_TP" '{session_id:"../../a b;c\u0007", transcript_path:$t}')" \
   "$(jq -nc --arg t "$LINK_TP" '["abc", $t]')"
+link_cases "a Kimi session id keeps its underscores" \
+  "$(jq -nc --arg t "$LINK_TP" '{session_id:"session_kimi_01", transcript_path:$t}')" \
+  "$(jq -nc --arg t "$LINK_TP" '["session_kimi_01", $t]')"
 link_cases "a newline in the transcript path drops it" \
   "$(jq -nc --arg s "$LINK_SID" '{session_id:$s, transcript_path:"/tmp/a\nb.jsonl"}')" "[\"$LINK_SID\",null]"
 link_cases "a tab in the transcript path drops it" \
@@ -1042,6 +1045,7 @@ else anchor_lost "$_m"; fi
 _LINK_CTRL=$(jq -nc --arg s "$LINK_SID" '{session_id:$s, transcript_path:"/tmp/a\nb.jsonl"}')
 _LINK_LONG=$(jq -nc --arg s "$LINK_SID" --arg t "$LINK_1025" '{session_id:$s, transcript_path:$t}')
 _LINK_HOST=$(jq -nc --arg t "$LINK_TP" '{session_id:"../../a b;c\u0007", transcript_path:$t}')
+_LINK_KIMI=$(jq -nc --arg t "$LINK_TP" '{session_id:"session_kimi_01", transcript_path:$t}')
 for _k in cd rd; do
   if [[ "$_k" == cd ]]; then _src="$CORRECTION_HOOK"; else _src="$REVERT_HOOK"; fi
   _m="$_k's control-character guard"
@@ -1053,8 +1057,12 @@ for _k in cd rd; do
     assert_eq "$(link_of "$_k" "$M" "$_LINK_LONG")" "$(jq -nc --arg s "$LINK_SID" --arg t "$LINK_1025" '[$s, $t]')" "mutant without $_m: a 1,025-character path is kept"
   else anchor_lost "$_m"; fi
   _m="$_k's session-id character set"
-  if M=$(mutant "$_src" "m-$_k-sid.sh" 'map(select((. >= 48 and . <= 57) or (. >= 65 and . <= 90) or (. >= 97 and . <= 122) or . == 45))' 'map(.)'); then
+  if M=$(mutant "$_src" "m-$_k-sid.sh" 'map(select((. >= 48 and . <= 57) or (. >= 65 and . <= 90) or (. >= 97 and . <= 122) or . == 45 or . == 95))' 'map(.)'); then
     assert_eq "$(link_of "$_k" "$M" "$_LINK_HOST")" "$(jq -nc --arg t "$LINK_TP" '["../../a b;c\u0007", $t]')" "mutant without $_m: a hostile id reaches the record unfiltered"
+  else anchor_lost "$_m"; fi
+  _m="$_k's Kimi session-id underscore preservation"
+  if M=$(mutant "$_src" "m-$_k-kimi-sid.sh" ' or . == 95' ''); then
+    assert_eq "$(link_of "$_k" "$M" "$_LINK_KIMI")" "$(jq -nc --arg t "$LINK_TP" '["sessionkimi01", $t]')" "mutant without $_m: the underscores are stripped again"
   else anchor_lost "$_m"; fi
 done
 

@@ -526,7 +526,7 @@ fi
 RD_TAB=$'\t'
 _link=$(printf '%s' "$INPUT" | jq -r '
   [ (.session_id // "" | tostring | explode
-       | map(select((. >= 48 and . <= 57) or (. >= 65 and . <= 90) or (. >= 97 and . <= 122) or . == 45))
+       | map(select((. >= 48 and . <= 57) or (. >= 65 and . <= 90) or (. >= 97 and . <= 122) or . == 45 or . == 95))
        | implode),
     (.transcript_path // ""
        | if type == "string" and length <= 1024
