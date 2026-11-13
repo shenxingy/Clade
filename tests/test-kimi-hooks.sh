@@ -77,6 +77,456 @@ if [[ -n "${KIMI_ADAPTER_OVERRIDE:-}" ]]; then
   chmod +x "$RUN_HOME/.kimi-code/hooks/decision-to-kimi.sh"
 fi
 
+section "print-mode subagent timeout installation"
+TIMEOUT_HOME="$TMP_ROOT/subagent-timeout-home"
+TIMEOUT_CONFIG="$TIMEOUT_HOME/.kimi-code/config.toml"
+TIMEOUT_BASE="$TMP_ROOT/subagent-timeout-base.toml"
+TIMEOUT_EXPECTED="$TMP_ROOT/subagent-timeout-expected.toml"
+TIMEOUT_SKIP='subagent settings left unchanged'
+mkdir -p "$TIMEOUT_HOME/.kimi-code"
+python3 - "$RUN_HOME/.kimi-code/config.toml" "$TIMEOUT_CONFIG" "$RUN_HOME" "$TIMEOUT_HOME" <<'PY'
+from pathlib import Path
+import sys
+
+source, target, source_home, target_home = sys.argv[1:]
+text = Path(source).read_text(encoding="utf-8").replace(source_home, target_home)
+lines = []
+in_subagent = False
+for line in text.splitlines(keepends=True):
+    if line.strip() == "[subagent]":
+        in_subagent = True
+        continue
+    if in_subagent and line.lstrip().startswith("["):
+        in_subagent = False
+    if not in_subagent:
+        lines.append(line)
+for index, line in enumerate(lines):
+    if line.lstrip().startswith("["):
+        lines.insert(index, 'fixture_root = "unchanged"\n')
+        break
+else:
+    lines.append('fixture_root = "unchanged"\n')
+text = "".join(lines) + '\n[fixture_table]\nvalue = "unchanged"\n'
+Path(target).write_text(text, encoding="utf-8")
+PY
+cp "$TIMEOUT_CONFIG" "$TIMEOUT_BASE"
+
+reset_timeout_config() {
+  cp "$TIMEOUT_BASE" "$TIMEOUT_CONFIG"
+}
+timeout_root_form() {
+  python3 - "$TIMEOUT_CONFIG" "$1" <<'PY'
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+lines = path.read_text(encoding="utf-8").splitlines(keepends=True)
+for index, line in enumerate(lines):
+    if line.lstrip().startswith("["):
+        lines.insert(index, sys.argv[2] + "\n")
+        break
+else:
+    lines.append(sys.argv[2] + "\n")
+path.write_text("".join(lines), encoding="utf-8")
+PY
+}
+TIMEOUT_BIN="$TMP_ROOT/timeout-no-python-bin"
+mkdir -p "$TIMEOUT_BIN"
+for cmd in python python3; do
+  printf '#!/usr/bin/env bash\nexit 1\n' > "$TIMEOUT_BIN/$cmd"
+  chmod +x "$TIMEOUT_BIN/$cmd"
+done
+install_timeout_home() {
+  HOME="$TIMEOUT_HOME" KIMI_CODE_HOME="$TIMEOUT_HOME/.kimi-code" \
+    PATH="$TIMEOUT_BIN:$PATH" bash "$INSTALL_SH" </dev/null > "$1" 2>&1
+}
+assert_timeout_toml() {
+  if ! python3 -c 'import tomllib' >/dev/null 2>&1; then
+    printf '  - %s (tomllib unavailable; not run)\n' "$3"
+    return
+  fi
+  local errors
+  errors=$(python3 - "$1" "$2" 2>&1 <<'PY'
+from pathlib import Path
+import sys
+import tomllib
+
+try:
+    before = tomllib.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+    after = tomllib.loads(Path(sys.argv[2]).read_text(encoding="utf-8"))
+except Exception as exc:
+    print(f"TOML parse failed: {exc}")
+    raise SystemExit(0)
+
+errors = []
+extra_roots = set(after) - set(before) - {"subagent"}
+missing_roots = set(before) - set(after)
+if extra_roots:
+    errors.append(f"unexpected root additions: {sorted(extra_roots)}")
+if missing_roots:
+    errors.append(f"root keys or tables removed: {sorted(missing_roots)}")
+for key in set(before) & set(after) - {"subagent"}:
+    if before[key] != after[key]:
+        errors.append(f"root key or table changed: {key}")
+subagent = after.get("subagent")
+if not isinstance(subagent, dict) or subagent.get("timeout_ms") != 7200000:
+    errors.append("subagent.timeout_ms != 7200000")
+elif "subagent" in before:
+    old_subagent = before["subagent"]
+    extra = set(subagent) - set(old_subagent) - {"timeout_ms"}
+    missing = set(old_subagent) - set(subagent)
+    if extra:
+        errors.append(f"unexpected subagent keys: {sorted(extra)}")
+    if missing:
+        errors.append(f"subagent keys removed: {sorted(missing)}")
+    for key in set(old_subagent) & set(subagent):
+        if old_subagent[key] != subagent[key]:
+            errors.append(f"subagent key changed: {key}")
+if errors:
+    print("; ".join(errors))
+PY
+)
+  assert_eq "$TIMEOUT_RC|$errors" "0|" "$3"
+}
+assert_timeout_skip() {
+  cmp -s "$1" "$TIMEOUT_CONFIG"
+  TIMEOUT_CMP=$?
+  assert_eq "$TIMEOUT_RC|$TIMEOUT_CMP|$(grep -cF "$TIMEOUT_SKIP" "$2")" \
+    "0|0|1" "$3"
+}
+
+reset_timeout_config
+cp "$TIMEOUT_BASE" "$TIMEOUT_EXPECTED"
+printf '\n[subagent]\ntimeout_ms = 7200000\n' >> "$TIMEOUT_EXPECTED"
+install_timeout_home "$TMP_ROOT/timeout-absent-1.log"
+TIMEOUT_RC=$?
+cmp -s "$TIMEOUT_EXPECTED" "$TIMEOUT_CONFIG"
+TIMEOUT_CMP=$?
+assert_eq "$TIMEOUT_RC|$TIMEOUT_CMP" "0|0" \
+  "absent subagent table is appended with the 7200000 ms default"
+assert_timeout_toml "$TIMEOUT_BASE" "$TIMEOUT_CONFIG" \
+  "absent table: TOML parses and every original root key and table is unchanged"
+cp "$TIMEOUT_CONFIG" "$TIMEOUT_EXPECTED"
+install_timeout_home "$TMP_ROOT/timeout-absent-2.log"
+TIMEOUT_RC=$?
+cmp -s "$TIMEOUT_EXPECTED" "$TIMEOUT_CONFIG"
+TIMEOUT_CMP=$?
+assert_eq "$TIMEOUT_RC|$TIMEOUT_CMP|$(grep -cF "$TIMEOUT_SKIP" "$TMP_ROOT/timeout-absent-2.log")" \
+  "0|0|1" "second install is byte-identical and prints one preservation line"
+
+reset_timeout_config
+printf '\n[subagent] # existing table\nanswer = 42\n' >> "$TIMEOUT_CONFIG"
+cp "$TIMEOUT_CONFIG" "$TMP_ROOT/timeout-table-before.toml"
+cp "$TIMEOUT_CONFIG" "$TIMEOUT_EXPECTED"
+python3 - "$TIMEOUT_EXPECTED" <<'PY'
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+text = path.read_text(encoding="utf-8")
+old = "[subagent] # existing table\n"
+assert text.count(old) == 1
+path.write_text(text.replace(old, old + "timeout_ms = 7200000\n"), encoding="utf-8")
+PY
+install_timeout_home "$TMP_ROOT/timeout-table.log"
+TIMEOUT_RC=$?
+cmp -s "$TIMEOUT_EXPECTED" "$TIMEOUT_CONFIG"
+TIMEOUT_CMP=$?
+assert_eq "$TIMEOUT_RC|$TIMEOUT_CMP" "0|0" \
+  "existing table gains timeout_ms directly under its header only"
+assert_timeout_toml "$TMP_ROOT/timeout-table-before.toml" "$TIMEOUT_CONFIG" \
+  "existing table: its other keys and every original TOML value survive"
+
+reset_timeout_config
+printf '\n[subagent]\ntimeout_ms = 17\nanswer = 42\n' >> "$TIMEOUT_CONFIG"
+cp "$TIMEOUT_CONFIG" "$TIMEOUT_EXPECTED"
+install_timeout_home "$TMP_ROOT/timeout-user-table.log"
+TIMEOUT_RC=$?
+cmp -s "$TIMEOUT_EXPECTED" "$TIMEOUT_CONFIG"
+TIMEOUT_CMP=$?
+assert_eq "$TIMEOUT_RC|$TIMEOUT_CMP|$(grep -cF "$TIMEOUT_SKIP" "$TMP_ROOT/timeout-user-table.log")" \
+  "0|0|1" "user table timeout is byte-identical with one preservation line"
+
+reset_timeout_config
+timeout_root_form 'subagent.timeout_ms = 23'
+cp "$TIMEOUT_CONFIG" "$TIMEOUT_EXPECTED"
+install_timeout_home "$TMP_ROOT/timeout-dotted.log"
+TIMEOUT_RC=$?
+cmp -s "$TIMEOUT_EXPECTED" "$TIMEOUT_CONFIG"
+TIMEOUT_CMP=$?
+assert_eq "$TIMEOUT_RC|$TIMEOUT_CMP|$(grep -cF "$TIMEOUT_SKIP" "$TMP_ROOT/timeout-dotted.log")" \
+  "0|0|1" "dotted root timeout is byte-identical with one preservation line"
+
+reset_timeout_config
+timeout_root_form 'subagent = { timeout_ms = 29, answer = 42 }'
+cp "$TIMEOUT_CONFIG" "$TIMEOUT_EXPECTED"
+install_timeout_home "$TMP_ROOT/timeout-inline.log"
+TIMEOUT_RC=$?
+cmp -s "$TIMEOUT_EXPECTED" "$TIMEOUT_CONFIG"
+TIMEOUT_CMP=$?
+assert_eq "$TIMEOUT_RC|$TIMEOUT_CMP|$(grep -cF "$TIMEOUT_SKIP" "$TMP_ROOT/timeout-inline.log")" \
+  "0|0|1" "inline subagent table is byte-identical with one preservation line"
+
+reset_timeout_config
+cat >> "$TIMEOUT_CONFIG" <<'EOF'
+timeout_ms = 17
+subagent.timeout_ms = 23
+
+[unrelated_inline]
+subagent = { timeout_ms = 29 }
+EOF
+cp "$TIMEOUT_CONFIG" "$TMP_ROOT/timeout-unrelated-before.toml"
+cp "$TIMEOUT_CONFIG" "$TIMEOUT_EXPECTED"
+printf '\n[subagent]\ntimeout_ms = 7200000\n' >> "$TIMEOUT_EXPECTED"
+install_timeout_home "$TMP_ROOT/timeout-unrelated.log"
+TIMEOUT_RC=$?
+cmp -s "$TIMEOUT_EXPECTED" "$TIMEOUT_CONFIG"
+TIMEOUT_CMP=$?
+assert_eq "$TIMEOUT_RC|$TIMEOUT_CMP" "0|0" \
+  "unrelated-table timeout forms do not suppress the root subagent default"
+assert_timeout_toml "$TMP_ROOT/timeout-unrelated-before.toml" "$TIMEOUT_CONFIG" \
+  "unrelated-table forms: appended TOML parses and all original values survive"
+
+reset_timeout_config
+python3 - "$TIMEOUT_CONFIG" <<'PY'
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+data = path.read_bytes()
+assert data.endswith(b"\n")
+path.write_bytes(data[:-1])
+PY
+cp "$TIMEOUT_CONFIG" "$TMP_ROOT/timeout-no-newline-before.toml"
+cp "$TIMEOUT_CONFIG" "$TIMEOUT_EXPECTED"
+printf '\n\n[subagent]\ntimeout_ms = 7200000\n' >> "$TIMEOUT_EXPECTED"
+install_timeout_home "$TMP_ROOT/timeout-no-newline.log"
+TIMEOUT_RC=$?
+cmp -s "$TIMEOUT_EXPECTED" "$TIMEOUT_CONFIG"
+TIMEOUT_CMP=$?
+assert_eq "$TIMEOUT_RC|$TIMEOUT_CMP" "0|0" \
+  "missing trailing newline is terminated before the appended table"
+assert_timeout_toml "$TMP_ROOT/timeout-no-newline-before.toml" "$TIMEOUT_CONFIG" \
+  "missing trailing newline: TOML parses and original values survive"
+
+section "TOML-safe subagent timeout forms"
+reset_timeout_config
+timeout_root_form 'subagent.max_concurrency = 3'
+cp "$TIMEOUT_CONFIG" "$TIMEOUT_EXPECTED"
+install_timeout_home "$TMP_ROOT/timeout-root-dotted-other.log"
+TIMEOUT_RC=$?
+assert_timeout_skip "$TIMEOUT_EXPECTED" "$TMP_ROOT/timeout-root-dotted-other.log" \
+  "root dotted subagent key without timeout is byte-identical with one skip line"
+
+reset_timeout_config
+timeout_root_form '"subagent" . max_concurrency = 3'
+cp "$TIMEOUT_CONFIG" "$TIMEOUT_EXPECTED"
+install_timeout_home "$TMP_ROOT/timeout-root-dotted-double.log"
+TIMEOUT_RC=$?
+assert_timeout_skip "$TIMEOUT_EXPECTED" "$TMP_ROOT/timeout-root-dotted-double.log" \
+  "double-quoted root dotted subagent key is byte-identical with one skip line"
+
+reset_timeout_config
+timeout_root_form "'subagent' . timeout_ms = 5"
+cp "$TIMEOUT_CONFIG" "$TIMEOUT_EXPECTED"
+install_timeout_home "$TMP_ROOT/timeout-root-dotted-single.log"
+TIMEOUT_RC=$?
+assert_timeout_skip "$TIMEOUT_EXPECTED" "$TMP_ROOT/timeout-root-dotted-single.log" \
+  "single-quoted root dotted timeout with dot whitespace is byte-identical"
+
+for form in '"subagent" = { foo = 1 }' "'subagent' = { foo = 1 }"; do
+  reset_timeout_config
+  timeout_root_form "$form"
+  cp "$TIMEOUT_CONFIG" "$TIMEOUT_EXPECTED"
+  install_timeout_home "$TMP_ROOT/timeout-quoted-inline-${form:0:1}.log"
+  TIMEOUT_RC=$?
+  assert_timeout_skip "$TIMEOUT_EXPECTED" "$TMP_ROOT/timeout-quoted-inline-${form:0:1}.log" \
+    "quoted inline subagent form ${form:0:1} is byte-identical with one skip line"
+done
+
+reset_timeout_config
+printf '\n["subagent"]\nfoo = 1\n' >> "$TIMEOUT_CONFIG"
+cp "$TIMEOUT_CONFIG" "$TMP_ROOT/timeout-quoted-table-double-before.toml"
+install_home "$TIMEOUT_HOME" "$TMP_ROOT/timeout-quoted-table-double.log"
+TIMEOUT_RC=$?
+assert_timeout_toml "$TMP_ROOT/timeout-quoted-table-double-before.toml" "$TIMEOUT_CONFIG" \
+  "double-quoted subagent table gains a valid default through the tomllib guard"
+
+reset_timeout_config
+printf "\n['subagent']\nfoo = 1\n" >> "$TIMEOUT_CONFIG"
+cp "$TIMEOUT_CONFIG" "$TMP_ROOT/timeout-quoted-table-single-before.toml"
+install_timeout_home "$TMP_ROOT/timeout-quoted-table-single.log"
+TIMEOUT_RC=$?
+assert_timeout_toml "$TMP_ROOT/timeout-quoted-table-single-before.toml" "$TIMEOUT_CONFIG" \
+  "single-quoted subagent table gains a valid default without Python"
+
+reset_timeout_config
+printf '\n[ "subagent" ]\nfoo = 1\n' >> "$TIMEOUT_CONFIG"
+cp "$TIMEOUT_CONFIG" "$TMP_ROOT/timeout-quoted-table-spaced-before.toml"
+install_timeout_home "$TMP_ROOT/timeout-quoted-table-spaced.log"
+TIMEOUT_RC=$?
+assert_timeout_toml "$TMP_ROOT/timeout-quoted-table-spaced-before.toml" "$TIMEOUT_CONFIG" \
+  "whitespace inside quoted subagent table brackets is recognised"
+
+reset_timeout_config
+printf '\n[subagent]\n"timeout_ms" = 5\n' >> "$TIMEOUT_CONFIG"
+cp "$TIMEOUT_CONFIG" "$TIMEOUT_EXPECTED"
+install_timeout_home "$TMP_ROOT/timeout-quoted-key-double.log"
+TIMEOUT_RC=$?
+assert_timeout_skip "$TIMEOUT_EXPECTED" "$TMP_ROOT/timeout-quoted-key-double.log" \
+  "double-quoted timeout_ms user value is byte-identical with one skip line"
+
+reset_timeout_config
+printf "\n[subagent]\n'timeout_ms' = 5\n" >> "$TIMEOUT_CONFIG"
+cp "$TIMEOUT_CONFIG" "$TIMEOUT_EXPECTED"
+install_timeout_home "$TMP_ROOT/timeout-quoted-key-single.log"
+TIMEOUT_RC=$?
+assert_timeout_skip "$TIMEOUT_EXPECTED" "$TMP_ROOT/timeout-quoted-key-single.log" \
+  "single-quoted timeout_ms user value is byte-identical with one skip line"
+
+reset_timeout_config
+cat >> "$TIMEOUT_CONFIG" <<'EOF'
+x = """
+\"""
+[subagent]
+"""
+EOF
+cp "$TIMEOUT_CONFIG" "$TMP_ROOT/timeout-multiline-basic-before.toml"
+install_timeout_home "$TMP_ROOT/timeout-multiline-basic.log"
+TIMEOUT_RC=$?
+assert_timeout_toml "$TMP_ROOT/timeout-multiline-basic-before.toml" "$TIMEOUT_CONFIG" \
+  "multi-line basic strings, including escaped triple quotes, are not edited"
+
+reset_timeout_config
+cat >> "$TIMEOUT_CONFIG" <<'EOF'
+x = '''
+[subagent]
+'''
+EOF
+cp "$TIMEOUT_CONFIG" "$TMP_ROOT/timeout-multiline-literal-before.toml"
+install_timeout_home "$TMP_ROOT/timeout-multiline-literal.log"
+TIMEOUT_RC=$?
+assert_timeout_toml "$TMP_ROOT/timeout-multiline-literal-before.toml" "$TIMEOUT_CONFIG" \
+  "multi-line literal string headers are ignored and the default is appended"
+
+for kind in basic literal; do
+  reset_timeout_config
+  if [[ "$kind" == basic ]]; then
+    printf 'x = """\n[subagent]\n' >> "$TIMEOUT_CONFIG"
+  else
+    printf "x = '''\n[subagent]\n" >> "$TIMEOUT_CONFIG"
+  fi
+  cp "$TIMEOUT_CONFIG" "$TIMEOUT_EXPECTED"
+  install_timeout_home "$TMP_ROOT/timeout-unclosed-$kind.log"
+  TIMEOUT_RC=$?
+  assert_timeout_skip "$TIMEOUT_EXPECTED" "$TMP_ROOT/timeout-unclosed-$kind.log" \
+    "unclosed $kind multi-line string is byte-identical with one skip line"
+done
+
+# A multi-line array's element lines can start with `[`; none of them is a
+# table header, so the scanner tracks bracket depth outside strings.
+reset_timeout_config
+timeout_root_form 'matrix = [
+  ["a"],
+]
+subagent.max_concurrency = 3'
+cp "$TIMEOUT_CONFIG" "$TIMEOUT_EXPECTED"
+install_timeout_home "$TMP_ROOT/timeout-array-then-dotted.log"
+TIMEOUT_RC=$?
+assert_timeout_skip "$TIMEOUT_EXPECTED" "$TMP_ROOT/timeout-array-then-dotted.log" \
+  "root dotted subagent key after a multi-line array is still seen and skipped"
+
+reset_timeout_config
+timeout_root_form 'matrix = [
+  ["subagent"]
+]'
+cp "$TIMEOUT_CONFIG" "$TMP_ROOT/timeout-array-element-before.toml"
+install_timeout_home "$TMP_ROOT/timeout-array-element.log"
+TIMEOUT_RC=$?
+assert_timeout_toml "$TMP_ROOT/timeout-array-element-before.toml" "$TIMEOUT_CONFIG" \
+  "an array element spelled like [\"subagent\"] is not a table header"
+
+reset_timeout_config
+printf '\nmatrix = [\n  1,\n' >> "$TIMEOUT_CONFIG"
+cp "$TIMEOUT_CONFIG" "$TIMEOUT_EXPECTED"
+install_timeout_home "$TMP_ROOT/timeout-unclosed-array.log"
+TIMEOUT_RC=$?
+assert_timeout_skip "$TIMEOUT_EXPECTED" "$TMP_ROOT/timeout-unclosed-array.log" \
+  "unclosed array is byte-identical with one skip line"
+
+reset_timeout_config
+cat >> "$TIMEOUT_CONFIG" <<'EOF'
+x = 1 # """
+[ "subagent" ]
+foo = 1
+EOF
+cp "$TIMEOUT_CONFIG" "$TMP_ROOT/timeout-comment-delimiter-before.toml"
+install_timeout_home "$TMP_ROOT/timeout-comment-delimiter.log"
+TIMEOUT_RC=$?
+assert_timeout_toml "$TMP_ROOT/timeout-comment-delimiter-before.toml" "$TIMEOUT_CONFIG" \
+  "triple quotes in comments do not hide a following quoted table"
+
+reset_timeout_config
+printf '\n[[ "subagent" ]]\nfoo = 1\n' >> "$TIMEOUT_CONFIG"
+cp "$TIMEOUT_CONFIG" "$TIMEOUT_EXPECTED"
+install_timeout_home "$TMP_ROOT/timeout-subagent-array.log"
+TIMEOUT_RC=$?
+assert_timeout_skip "$TIMEOUT_EXPECTED" "$TMP_ROOT/timeout-subagent-array.log" \
+  "subagent array-of-tables is skipped rather than redefined"
+
+reset_timeout_config
+printf 'x = """\n""""""\n' >> "$TIMEOUT_CONFIG"
+cp "$TIMEOUT_CONFIG" "$TIMEOUT_EXPECTED"
+install_timeout_home "$TMP_ROOT/timeout-ambiguous-quotes.log"
+TIMEOUT_RC=$?
+assert_timeout_skip "$TIMEOUT_EXPECTED" "$TMP_ROOT/timeout-ambiguous-quotes.log" \
+  "ambiguous six-quote run is byte-identical with one skip line"
+
+reset_timeout_config
+printf 'x = "unterminated\n[subagent]\n"\n' >> "$TIMEOUT_CONFIG"
+cp "$TIMEOUT_CONFIG" "$TIMEOUT_EXPECTED"
+install_timeout_home "$TMP_ROOT/timeout-unclosed-single.log"
+TIMEOUT_RC=$?
+assert_timeout_skip "$TIMEOUT_EXPECTED" "$TMP_ROOT/timeout-unclosed-single.log" \
+  "unclosed single-line string is byte-identical with one skip line"
+
+if python3 -c 'import tomllib' >/dev/null 2>&1; then
+  reset_timeout_config
+  printf 'not valid TOML here\n' >> "$TIMEOUT_CONFIG"
+  cp "$TIMEOUT_CONFIG" "$TIMEOUT_EXPECTED"
+  install_home "$TIMEOUT_HOME" "$TMP_ROOT/timeout-guard-original.log"
+  TIMEOUT_RC=$?
+  cmp -s "$TIMEOUT_EXPECTED" "$TIMEOUT_CONFIG"
+  TIMEOUT_CMP=$?
+  assert_eq "$TIMEOUT_RC|$TIMEOUT_CMP|$(grep -cF 'original config.toml does not parse' "$TMP_ROOT/timeout-guard-original.log")" \
+    "0|0|1" "tomllib guard preserves an invalid original config"
+
+  for mode in parse root subagent subagent-value timeout-value; do
+    case "$mode" in
+      parse) expected='candidate config.toml does not parse' ;;
+      root) expected='candidate would change root key or table hooks' ;;
+      subagent) expected='candidate would add a subagent key other than timeout_ms' ;;
+      subagent-value) expected='candidate would change subagent key answer' ;;
+      timeout-value) expected='candidate does not set subagent.timeout_ms to 7200000' ;;
+    esac
+    reset_timeout_config
+    if [[ "$mode" == subagent-value ]]; then
+      printf '\n[subagent]\nanswer = 42\n' >> "$TIMEOUT_CONFIG"
+    fi
+    cp "$TIMEOUT_CONFIG" "$TIMEOUT_EXPECTED"
+    HOME="$TIMEOUT_HOME" KIMI_CODE_HOME="$TIMEOUT_HOME/.kimi-code" \
+      CLADE_TEST_KIMI_SUBAGENT_TIMEOUT_BAD_CANDIDATE="$mode" \
+      bash "$INSTALL_SH" </dev/null > "$TMP_ROOT/timeout-guard-$mode.log" 2>&1
+    TIMEOUT_RC=$?
+    cmp -s "$TIMEOUT_EXPECTED" "$TIMEOUT_CONFIG"
+    TIMEOUT_CMP=$?
+    assert_eq "$TIMEOUT_RC|$TIMEOUT_CMP|$(grep -cF "$expected" "$TMP_ROOT/timeout-guard-$mode.log")" \
+      "0|0|1" "tomllib guard rejects forced $mode candidate corruption"
+  done
+else
+  printf '  - tomllib candidate-guard controls (tomllib unavailable; not run)\n'
+fi
+
 git -C "$PROJ" init -q
 git -C "$PROJ" config user.email kimi-hooks@example.invalid
 git -C "$PROJ" config user.name kimi-hooks
