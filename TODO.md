@@ -3455,3 +3455,38 @@ was reconciled by hand the same day (12 of 32 files defective). Mostly condition
   behaviour); no link from a memory note to its writing session; no anchor
   suggestion mode. The 2026-10-24 global CLAUDE.md budget item above already covers
   the C8 finding (the installed file is 42,499 characters).
+
+## 2026-11-12 Kimi bridge follow-ups (#231, #232, skill scan + view)
+
+- [ ] 🔵 **`init-profile` is misclassified claude-only.** The scanner reads "the
+  SessionStart hook will inject" as the Claude hook lifecycle. Under Kimi,
+  `session-context.sh` is wired on the first UserPromptSubmit instead (#232), and it
+  loads `.claude/PROJECT_PROFILE.md` the same way. So the skill works there and is
+  needlessly hidden from the model. Fix: treat a SessionStart context injection that
+  Kimi delivers through `--once-per-session` as adapted. Keep `iloop` claude-only:
+  its Stop hook is not wired in Kimi, and Kimi allows one Stop continuation per turn.
+- [ ] 🔵 **`stop-check.sh` under headless `kimi -p` workers.** Kimi's single Stop
+  continuation could nudge a dispatched worker to commit despite a "do not commit"
+  brief. Not observed in the Kimi worker runs of 2026-11-12. Candidate: return early
+  under `CLADE_WORKER_TASK_ID`, as `correction-detector.sh` already does.
+- [ ] 🔵 **Kimi hook matchers are unanchored regexes** (`matchHooks.ts`), so
+  `Edit|Write` also matches any tool whose name contains either word. That is
+  harmless with today's built-ins. Anchor as `^(Edit|Write)$` after confirming
+  matchHooks applies the pattern unchanged.
+- [ ] 🔵 **`--once-per-session` sentinels accumulate** in the runtime dir, one per
+  Kimi session, and nothing removes them. `session-end-cleanup.sh` is already wired on
+  SessionEnd and could delete its own session's sentinel.
+- [ ] 🔵 **`rule-injector.sh` and `post-edit-check.sh` are not ported.** Kimi's
+  PostToolUse is fire-and-forget, and only UserPromptSubmit injects context. Their
+  output could be queued and delivered on the next prompt. Unbuilt: measure whether
+  the path-scoped channel survives its own 2026-11-16 re-measure first.
+- [ ] 🔵 **Upstream: print-mode subagents time out at 0 ms.**
+  `applyPrintModeConfigDefaults` fills `subagent.timeoutMs` with 0, and the Agent
+  tool arms `setTimeout` with it. No existing report was found in
+  MoonshotAI/kimi-code issues on 2026-11-12. The related #3187 covers
+  `bash_task_timeout_s`. The report is drafted but not filed: it needs the owner's
+  yes. Retire Clade's config workaround once it is fixed.
+- [ ] 🔵 **Unverified live:** `clade-explorer`'s tool allowlist refusing a write, the
+  single Stop continuation, interactive-TUI rendering of `<hook_result>`, the skill
+  view under Git Bash on Windows (symlinks), and a real Python 3.9 install (only
+  simulated by hiding `tomllib`).
