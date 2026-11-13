@@ -324,10 +324,9 @@ fi
 
 # Deploy the vendor-neutral AGENTS.md ground rules (canonical source:
 # configs/AGENTS.md). AGENTS.md is the open cross-vendor instruction
-# standard, so this one text reaches every AGENTS.md-aware runtime: the
-# shared ~/.agents/AGENTS.md (OpenCode, Goose, and other AAIF-convention
-# tools) and — in the Kimi bridge below — ~/.kimi-code/AGENTS.md, which
-# Kimi Code reads natively as global instructions. Merged as a marked
+# standard, so this one text reaches the shared ~/.agents/AGENTS.md
+# (OpenCode, Goose, and other AAIF-convention tools). The Kimi bridge below
+# installs the adapted configs/KIMI_AGENTS.md instead. Merged as a marked
 # block, never replacing user-authored instructions in those files.
 mkdir -p "$HOME/.agents"
 _merge_managed_block "$HOME/.agents/AGENTS.md" "$AGENTS_BEGIN" "$AGENTS_END" \
@@ -797,11 +796,11 @@ if [[ -d "$KIMI_DIR" ]]; then
 
   # Kimi Code reads $KIMI_CODE_HOME/AGENTS.md natively as its global
   # instruction file (docs: customization/agents.html "Instruction Files").
-  # Ship the same canonical block as ~/.agents/AGENTS.md, merged so
-  # user-authored Kimi instructions survive the install.
+  # Ship the Kimi-adapted block rather than the shared canonical text,
+  # merged so user-authored Kimi instructions survive the install.
   _merge_managed_block "$KIMI_DIR/AGENTS.md" "$AGENTS_BEGIN" "$AGENTS_END" \
-    "$SCRIPT_DIR/configs/AGENTS.md"
-  echo "  Installed ~/.kimi-code/AGENTS.md (vendor-neutral ground rules)"
+    "$SCRIPT_DIR/configs/KIMI_AGENTS.md"
+  echo "  Installed ~/.kimi-code/AGENTS.md (Kimi-adapted ground rules)"
 
   KIMI_CONFIG="$KIMI_DIR/config.toml"
   if [[ -f "$KIMI_CONFIG" ]]; then

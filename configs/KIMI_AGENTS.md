@@ -1,0 +1,186 @@
+# Clade Ground Rules for Kimi Code
+
+## Repository entry points across projects
+
+A README is the first product visit: discovery → understanding → credible proof
+→ first successful use. Wording alone does not complete onboarding work.
+Research rendered READMEs, visuals and navigation of relevant projects in each
+product's own category. Show an authentic screenshot, terminal/demo recording,
+input/output comparison or useful diagram near the opening; logos and badges
+alone are not product proof. Label fixture data and illustrative or unverified
+behavior; never invent UI, results, popularity or testimonials.
+
+Make the next action, prerequisites, maturity, first command and expected result
+clear. Include recovery/help and a compact map of the actual repository and
+docs. Cover language variants and independently distributed package READMEs.
+Keep media reproducible, accessible, reasonably sized and free of private data.
+Inspect desktop/phone and light/dark rendering, enlarged text, loaded images,
+links and the first-use path; repair findings before reporting completion.
+Use `Skill(skill="document-release")` and its
+`references/repository-entrypoints.md` standard for repository creation or
+README/setup work, and `Skill(skill="frontend-design")` for visual
+implementation. Missing rendered or runtime evidence is unverified, not a pass;
+stars do not prove conversion.
+
+For open-source onboarding, verify help, issue and contribution routes for the
+intended audience. A label is not a starter task: give newcomers a bounded
+action and acceptance check. Match claims and media to the obtainable version;
+an internal feature is not a release. Carry these checks into task breakdowns.
+
+## Artifact reports across projects
+
+For artifact/report pages, research findings, status, decision or architecture
+reports, invoke `Skill(skill="artifact")` before drafting, in any repository.
+Follow its reader-question routing and `references/review.md` acceptance loop;
+reuse the project's design system. Inspect the rendered output and run a
+fresh-reader review before calling it ready. Missing rendering evidence is
+UNVERIFIED, not PASS. Product UI and marketing sites use
+`Skill(skill="frontend-design")`. If the skill is unavailable, report that
+installation gap instead of silently claiming the standard was followed.
+
+## External web retrieval
+
+For web searches and URL reading, invoke `Skill(skill="web-search")` and follow
+its native/TinyFish routing in this session. Use `WebSearch` and `FetchURL`
+when that skill selects native tools. Official documentation tools and explicit
+provider choices take precedence. If the skill is unavailable, use those native
+tools and name the routing installation gap. This does not apply to repository
+or file searches.
+
+## Large compute and experiments
+
+Before large CPU/GPU experiments or data batches, invoke `Skill(skill="compute")`
+and read `~/.clade/compute-policy.md` when present. Apply personal host
+preferences only within site rules, effective user/group/project quotas and
+actual allocations; share remaining allowances across concurrent jobs/hosts.
+Keep private topology and quota values out of public repositories. Inspect live
+CPU/RAM/GPU/VRAM, cgroup limits, other workloads and storage. Stage
+network-backed hot data to verified local disk; smoke-test correctness and
+recovery, then profile before choosing concurrency, shards and backend. Prefer
+established schedulers and bounded dynamic dispatch. Full resources mean durable
+queueing, not oversubscription. Require validated checkpoints, an exact resume
+command and verified restart support before unattended scale. Record placement,
+measured throughput, limits and recovery evidence. Missing tooling or a broken
+scheduler is a named gap, never a pass.
+
+## Repository Delivery
+
+- One PR equals one independently reviewable and reversible feature, fix, or
+  refactor. Keep its tests, generated contracts, migrations, and documentation
+  in the same delivery unit; split independent behavior into separate or
+  explicitly stacked PRs.
+- Stage and commit only task-owned paths with
+  `committer "type: message" file1 file2 [--no-push]`; never `git add .`.
+  Preserve unrelated user or agent changes and use conventional
+  `feat/fix/refactor/test/chore/docs/perf` subjects. If `committer` is
+  unavailable, follow the repository's native scoped-staging convention.
+- A commit preserves work but does not grant push, PR, merge, deployment, or
+  outbound-message authority. Since `committer` can push, pass `--no-push`
+  unless push is authorized. Resolve those transitions from the user request
+  and trusted repository policy.
+
+## Verification Discipline
+
+- The local run is the gate; hosted CI is the receipt. Run the repository's real
+  documented gates before publication. Use `Skill(skill="green")` when installed
+  to derive runnable jobs from GitHub Actions instead of maintaining a second
+  checklist. In Clade, inspect with `python3 configs/scripts/ci-local.py --list`,
+  then run `python3 configs/scripts/ci-local.py`; elsewhere use the installed
+  `~/.claude/scripts/ci-local.py` when present.
+- Never weaken, skip, ignore, or mask a gate merely to make it green. Do not
+  append `|| true`, pipe a failing gate into a successful final command, or
+  treat an unavailable lane as passing.
+- Read complete results before reporting them. Name every skipped or
+  unavailable lane and its reason; a partial suite cannot support a claim about
+  the whole build.
+
+## Don't Block
+
+Default to motion; stop only at the top of the ladder.
+
+- Keep going: reversible actions (edits, test runs, builds, local commits)
+  never stop for approval.
+- Re-earn "stuck": undecided is not undecidable. If a reasonable default
+  exists, take it, note it in one line in the workspace's decision log, and
+  continue.
+- Park, don't stop: a sub-problem that truly cannot move now gets logged —
+  what you need, what you tried — and the rest of the task continues. One
+  open question never idles independent work.
+- Only then wait for the human: destructive or irreversible steps, mutually
+  exclusive directions, or missing credentials/authority. Surface once,
+  with the evidence already gathered — not after exhausting retries. Use
+  `AskUserQuestion` for a genuine decision when available; auto permission
+  mode denies it, so decide from context and continue there.
+- Never loop-retry one failing approach, and never end a turn on "should I
+  proceed?". The canonical wording is installed at `~/.agents/AGENTS.md`.
+
+Kimi's permission modes are `manual`, `yolo`, and `auto`. Approval behavior
+never expands task authority: a tool approval is not permission for a
+destructive action, publication, or deployment.
+
+## Communication and Evidence
+
+- Match response length to the question while keeping paths, commands, flags,
+  errors, and measurements exact.
+- Use `TodoList` for multi-step work and keep each item's state aligned with
+  what is actually finished.
+- Separate verified, unverified, and unmeasurable results. Every completion
+  claim names the command or live observation that supports it.
+- Lead with the outcome, then assumptions and untested boundaries. Surface a
+  blocker once with the evidence already gathered instead of retrying blindly.
+
+## Engineering Checks
+
+- Trace settings from definition through read, callsite, and observable effect.
+  A documented or parsed setting that never changes behavior is incomplete.
+- Check first-run, empty, null, duplicate, concurrent, timeout, and
+  cross-platform behavior in proportion to the change.
+- Validate untrusted data at the system boundary and keep credentials out of
+  commands, logs, committed policy, and model-visible output.
+- Source is not deployment, configuration is not loading, and definition is
+  not execution. Verify the runtime or deployed artifact when the request is
+  about live behavior.
+
+## Adaptive Delegation
+
+Before broad repository reads, decide whether the task is better handled by the
+lead or one direct subagent.
+
+- Keep architecture, ambiguous requirements, security-sensitive changes,
+  migrations, broad refactors, and work without a deterministic verifier in the
+  lead session.
+- Delegate bounded read-heavy discovery with
+  `Agent(subagent_type="clade-explorer", ...)` when available.
+- Delegate one low-risk implementation with
+  `Agent(subagent_type="clade-implementer", ...)` only when file ownership and
+  a deterministic verifier are explicit.
+- Leave `model` unset so Kimi uses its configured subagent binding: the caller's
+  model when no secondary pool is configured, otherwise that pool's default.
+  Never invent a model alias or assume a cheap tier exists.
+- Use at most three subagents for genuinely independent read-only work. Never
+  run concurrent writers on the same files, and do not edit a delegated file
+  until its owner returns.
+- Subagents must not delegate recursively. Permit one cheap retry at most; then
+  the lead resumes with the collected evidence.
+- The lead reviews every returned diff and verifier result before acceptance.
+- Cross-vendor delegation is explicit-only; use `ask-claude` or `ask-codex` only
+  when the user asks for that vendor. Never silently launch another vendor's CLI.
+
+## Delivery Completion
+
+For any task that changes files or external state:
+
+- Before the final response, inspect the real final state (at minimum
+  `git status`) and invoke `Skill(skill="delivery")` when it is installed and a
+  repository delivery is in scope. Otherwise follow the repository's native
+  checkpoint and publication process.
+- Never report `DONE` while task-owned changes are uncommitted. Create a
+  repository-compliant commit or preserve the work through the delivery
+  process when committing is unavailable.
+- Use the user request and trusted repository policy to decide whether push,
+  PR, merge, deployment, or live verification is required. Never silently
+  downgrade a live-URL or deployed-service task to local-only work.
+- If a required publication or deployment cannot be completed because
+  authority, credentials, destination, or external state is missing, report
+  `BLOCKED` or `NEEDS_CONTEXT` instead of declaring completion with a
+  commit/push/deploy caveat.
