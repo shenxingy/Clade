@@ -2,12 +2,14 @@
 
 ← Back to [README](../README.md)
 
-# Kimi Code hook compatibility
+# Kimi Code compatibility: hooks and skills
 
 Clade's Kimi bridge runs the existing Claude hook scripts through
 `configs/kimi-hooks/decision-to-kimi.sh`; it does not maintain a second copy of
 their logic. This page records the protocol evidence and the disposition of
-every command or prompt wired in `configs/settings-hooks.json`.
+every command or prompt wired in `configs/settings-hooks.json`, then how Kimi
+is given Clade's skills without being offered the ones it cannot run
+([Skill view](#skill-view)).
 
 The evidence below was read in the installed **Kimi Code 2.6.0** bundled
 source, not inferred from Claude Code or from hook documentation. Where the two
@@ -19,6 +21,7 @@ runtimes differ, the 2.6.0 source is the authority for this matrix.
 2. [Port matrix](#port-matrix)
 3. [Installed behavior](#installed-behavior)
 4. [Attribution and verification](#attribution-and-verification)
+5. [Skill view](#skill-view)
 
 ## Protocol evidence
 
@@ -176,3 +179,52 @@ No live Kimi process is launched by the suite. A post-install live run remains
 necessary to verify end-to-end delivery in the actual UI/model loop, especially
 first-prompt `<hook_result>` rendering, the single Stop continuation, and the
 absence of a Notification producer on the installed build.
+
+## Skill view
+
+Kimi 2.6.0 scans each directory in `extra_skill_dirs` and follows symlinked
+child directories (`features/skill/workspace/environmentSkillDiscovery.ts`). It
+lists every skill whose metadata does not disable model invocation
+(`catalog/registry.ts::listInvocableSkills`; `disableModelInvocation`,
+`disable-model-invocation` and `disable_model_invocation` are aliases in
+`catalog/parser.ts::METADATA_ALIASES`). A skill with model invocation disabled
+can still be run by hand with `/skill:<name>`.
+
+`install.sh` used to point `extra_skill_dirs` at `~/.claude/skills`, so Kimi was
+offered all of them, including the ones that need Claude-only machinery. It now
+builds a view instead:
+
+1. `configs/scripts/kimi-skill-compat.py --json` classifies each skill from the
+   primitives it uses: **native** (no Claude-specific primitive), **adapted**
+   (only primitives with a Kimi equivalent, e.g. `TodoWrite` → `TodoList`,
+   `WebFetch` → `FetchURL`, `Task` → `Agent`), **degraded** (a primitive with no
+   Kimi equivalent, used only behind an "if available", optional or fallback
+   guard), or **claude-only** (such a primitive used without a guard: Workflow,
+   Monitor, `claude -p`, the Claude hook lifecycle). Mentions in front matter,
+   comments or prose comparing the runtimes are not uses. On this tree: 114
+   native, 13 adapted, 6 degraded, 15 claude-only of 148. The scan is static
+   triage, not proof that a skill runs.
+2. `configs/scripts/kimi-skill-view.py` writes `~/.kimi-code/clade-skills/`,
+   owned through a `.clade-managed` marker; a directory there without the
+   marker is left alone, and so is the config. Every non-claude-only skill,
+   including a user skill the scan has never seen, is a symlink to its
+   directory in `~/.claude/skills`. A claude-only skill is a real directory
+   holding a copy of its `SKILL.md` with `disableModelInvocation: true` added to
+   the front matter, plus symlinks to the rest of its files. `~/.claude/skills`
+   is only read: it may be a symlink into the dotfiles sync store, and the
+   tests hold it byte-identical. Removals unlink entries and never follow a
+   symlink. A claude-only `SKILL.md` without a front matter is left out of the
+   view, because Kimi rejects a directory skill whose first line is not `---`
+   or that lacks `name` or `description` (`catalog/parser.ts::parseSkillText`).
+3. Only after the view builds does `extra_skill_dirs` change: it is inserted
+   when absent, and migrated only from the exact one-line value an earlier
+   install wrote. A quoted key, a multi-line array, a nested array or any other
+   value is the user's and stays byte-identical. On Python 3.11+ the original
+   and the updated TOML are both parsed before the write, and every other root
+   key and table must be unchanged; on an older Python only that textual rule
+   applies. Without symlink support or a working Python, the view is skipped
+   and the config is left as it was.
+
+`orchestrator/tests/test_kimi_skill_compat.py` drives `install.sh` in a
+temporary HOME, including a skill whose classification changes between
+installs.
