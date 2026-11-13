@@ -3495,8 +3495,8 @@ was reconciled by hand the same day (12 of 32 files defective). Mostly condition
   the injected "record the lesson" note and wrote a project-local
   `.claude/corrections/rules.md`. Candidate: have whatever launches a Kimi worker
   export `CLADE_WORKER_TASK_ID`, or have the Kimi adapter mark `-p` sessions.
-- [ ] 🔵 **Unverified live:** `clade-explorer`'s tool allowlist refusing a write, the
-  single Stop continuation, interactive-TUI rendering of `<hook_result>`, a hand-typed
-  `/skill:<name>` for a hidden skill in the TUI (print mode does not parse it), the skill
-  view under Git Bash on Windows (symlinks), and a real Python 3.9 install (only
-  simulated by hiding `tomllib`).
+- [ ] 🔵 **Unverified live:** the single Stop continuation, interactive-TUI rendering of
+  `<hook_result>`, a hand-typed `/skill:<name>` for a hidden skill in the TUI (print
+  mode does not parse it), the skill view under Git Bash on Windows (symlinks), and a
+  real Python 3.9 install (only simulated by hiding `tomllib`). `clade-explorer`'s
+  allowlist was verified live on 2026-11-13 (`docs/kimi.md`).

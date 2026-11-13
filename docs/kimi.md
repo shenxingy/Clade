@@ -276,6 +276,9 @@ throwaway directory. Results:
 | After the skill view is deployed (#234), claude-only skills (`loop`, `batch-tasks`, `orchestrate`, `init-profile`, `iloop`, `blog`, `seo`) are absent from the model's skill list | yes; `commit`, `review` and `delivery` are listed |
 | `Skill(skill="loop")` from the model | refused: "can only be triggered by the user (model invocation is disabled)" |
 | `Skill(skill="commit")` from the model | loaded |
+| After #235 is deployed (2026-11-13), asked without tools, the model maps `TodoWrite`, `WebFetch` and `${CLAUDE_SKILL_DIR}` | `TodoList`, `FetchURL`, `${KIMI_SKILL_DIR}`, citing "Clade Skills Written for Claude Code" (the map is in context; following it in a skill run is not measured) |
+| After #236 is deployed (2026-11-13), with `KIMI_SUBAGENT_TIMEOUT_MS` unset, an Agent call to `clade-explorer` under `kimi -p` | yes: it read a file and returned its second line |
+| `clade-explorer` asked to create a file | no file created; it answered that it has no file-writing or command tool and listed `FetchURL`, `Glob`, `Grep`, `Read`, `ReadMediaFile`, `WebSearch` |
 
 The last failure hit the built-in `explore` too, so the agent definitions are
 not the cause. Print mode's `applyPrintModeConfigDefaults` sets an unset
@@ -286,7 +289,6 @@ writes Kimi's own default into `config.toml` instead; see
 
 Still unverified live:
 
-- `clade-explorer`'s allowlist refusing a write (the agent never started);
 - the single Stop continuation;
 - interactive-TUI rendering of `<hook_result>`;
 - the absence of a Notification producer;
