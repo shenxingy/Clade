@@ -7,8 +7,9 @@
 Clade's Kimi bridge runs the existing Claude hook scripts through
 `configs/kimi-hooks/decision-to-kimi.sh`; it does not maintain a second copy of
 their logic. This page records the protocol evidence and the disposition of
-every command or prompt wired in `configs/settings-hooks.json`, then how Kimi
-is given Clade's skills without being offered the ones it cannot run
+every command or prompt wired in `configs/settings-hooks.json`, the agents and
+instructions Kimi is given ([Installed behavior](#installed-behavior)), then how
+Kimi is given Clade's skills without being offered the ones it cannot run
 ([Skill view](#skill-view)).
 
 The evidence below was read in the installed **Kimi Code 2.6.0** bundled
@@ -159,6 +160,26 @@ PostToolUse/Bash rather than PreToolUse/Bash, and `session-context.sh` is
 deliberately on UserPromptSubmit rather than SessionStart, for the source
 reasons in rows 10 and 2.
 
+The same section installs Kimi's agents and standing instructions:
+
+- `configs/kimi-agents/*.md` is copied to `~/.kimi-code/agents/`:
+  - `ask-claude` and `ask-codex` are cross-vendor bridges, used only when the
+    user asks for that vendor;
+  - `clade-explorer` is read-only (`Read`, `ReadMediaFile`, `Grep`, `Glob`,
+    `FetchURL`, `WebSearch`);
+  - `clade-implementer` is the bounded-implementer contract (`Read`, `Bash`,
+    `Write`, `Edit`, `Grep`, `Glob`).
+- Both `clade-*` agents declare `subagents: []`, so they cannot delegate
+  further, and both inherit the caller's model. Kimi enforces an agent's
+  `tools` allowlist (`isToolActive`).
+- `configs/KIMI_AGENTS.md` is merged into `~/.kimi-code/AGENTS.md` as the managed
+  block. User text around it is kept. The block maps the Claude Code names used
+  in Clade skills (`TodoWrite`, `WebFetch`, `Task`, `${CLAUDE_SKILL_DIR}`, …) to
+  Kimi's tools. The pairs must equal the scanner's mapped rules in
+  `configs/scripts/kimi-skill-compat.py` (`ScheduleWakeup` → `CronCreate`
+  aside, because the policy never names that tool), and
+  `orchestrator/tests/test_kimi_skill_compat.py` fails when they drift.
+
 ## Subagents under `kimi -p`
 
 Kimi Code 2.6.0's non-interactive print mode can make every `Agent` call fail
@@ -240,10 +261,35 @@ once-only context, both memory-sync entries, all Claude block forms, plain
 prompt context, fail-open behavior, legacy migration, reinstall idempotency,
 user-entry preservation, and missing-config behavior.
 
-No live Kimi process is launched by the suite. A post-install live run remains
-necessary to verify end-to-end delivery in the actual UI/model loop, especially
-first-prompt `<hook_result>` rendering, the single Stop continuation, and the
-absence of a Notification producer on the installed build.
+No live Kimi process is launched by the suite. A live run after install,
+on 2026-11-12, used Kimi Code 2.6.0 headless (`kimi -p`, `kimi-code/k3.1-pro`) in a
+throwaway directory. Results:
+
+| Check | Result |
+|---|---|
+| First prompt carries the `session-context.sh` `<hook_result>` block | yes |
+| A database-migration command (`alembic` + `upgrade head`) | denied, with `pre-tool-guardian.sh`'s message |
+| Write `.eslintrc.json` | denied, with `linter-config-guard.sh`'s message |
+| Write an ordinary file | allowed |
+| Agent tool lists `clade-explorer` and `clade-implementer` | yes, beside `plan`, `coder`, `explore` and the two bridges |
+| An Agent call to `clade-explorer` runs | **no**: "Agent timed out after 0 hours" |
+| After the skill view is deployed (#234), claude-only skills (`loop`, `batch-tasks`, `orchestrate`, `init-profile`, `iloop`, `blog`, `seo`) are absent from the model's skill list | yes; `commit`, `review` and `delivery` are listed |
+| `Skill(skill="loop")` from the model | refused: "can only be triggered by the user (model invocation is disabled)" |
+| `Skill(skill="commit")` from the model | loaded |
+
+The last failure hit the built-in `explore` too, so the agent definitions are
+not the cause. Print mode's `applyPrintModeConfigDefaults` sets an unset
+`subagent.timeoutMs` to 0, and the Agent tool arms `setTimeout` with that 0.
+Setting `KIMI_SUBAGENT_TIMEOUT_MS` made `explore` complete.
+
+Still unverified live:
+
+- `clade-explorer`'s allowlist refusing a write (the agent never started);
+- the single Stop continuation;
+- interactive-TUI rendering of `<hook_result>`;
+- the absence of a Notification producer;
+- a hand-typed `/skill:<name>` for a hidden skill in the TUI (see
+  [Skill view](#skill-view)).
 
 ## Skill view
 
@@ -253,7 +299,12 @@ lists every skill whose metadata does not disable model invocation
 (`catalog/registry.ts::listInvocableSkills`; `disableModelInvocation`,
 `disable-model-invocation` and `disable_model_invocation` are aliases in
 `catalog/parser.ts::METADATA_ALIASES`). A skill with model invocation disabled
-can still be run by hand with `/skill:<name>`.
+can still be run by hand with `/skill:<name>` in the interactive TUI or over
+ACP. Those are the only two paths that parse a slash command:
+`resolveUserInput` in the TUI and `detectSlashIntent` in
+`acp-server/src/session.ts`. Both build their command map with no
+model-invocation filter. Print mode (`kimi -p`) parses neither, so there the
+text reaches the model as an ordinary prompt.
 
 `install.sh` used to point `extra_skill_dirs` at `~/.claude/skills`, so Kimi was
 offered all of them, including the ones that need Claude-only machinery. It now
