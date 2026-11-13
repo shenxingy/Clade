@@ -1019,7 +1019,10 @@ echo "  Skills:   $(ls -d "$CLAUDE_DIR/skills/"*/ 2>/dev/null | wc -l) skills"
 echo "  Scripts:  $(ls "$CLAUDE_DIR/scripts/"*.sh 2>/dev/null | wc -l) scripts"
 echo "  Commands: $(ls "$CLAUDE_DIR/commands/"*.md 2>/dev/null | wc -l) commands"
 if [[ -d "$HOME/.kimi-code" ]]; then
-  echo "  Kimi:     $(ls "$HOME/.kimi-code/agents/"*.md 2>/dev/null | wc -l) bridge agents, $(ls "$HOME/.kimi-code/hooks/"*.sh 2>/dev/null | wc -l) bridge hooks (skill view: $HOME/.kimi-code/clade-skills)"
+  # Count wirings, not adapter files: one decision-to-kimi.sh carries all twelve.
+  _kimi_wired="$(grep -c "^command = \".*$CLAUDE_DIR/hooks/" "$HOME/.kimi-code/config.toml" 2>/dev/null)"
+  echo "  Kimi:     $(ls "$HOME/.kimi-code/agents/"*.md 2>/dev/null | wc -l) bridge agents, ${_kimi_wired:-0} Clade hooks wired in config.toml (skill view: $HOME/.kimi-code/clade-skills)"
+  unset _kimi_wired
 fi
 echo ""
 echo "Next steps:"

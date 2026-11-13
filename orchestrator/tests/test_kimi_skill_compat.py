@@ -217,9 +217,11 @@ def test_install_builds_view_without_touching_claude_store(install_sandbox) -> N
     store_before = _tree_state(store)
     config_before = config.read_bytes()
 
-    _run_install(repo, env)
+    second = _run_install(repo, env)
     assert _tree_state(store) == store_before, "Claude's sync store changed byte-for-byte"
     assert config.read_bytes() == config_before
+    # The summary counts wirings in config.toml, not the one adapter file.
+    assert "12 Clade hooks wired in config.toml" in second.stdout, second.stdout[-800:]
     assert _tree_state(repo / "configs" / "skills") == source_before
 
     view = home / ".kimi-code" / "clade-skills"
