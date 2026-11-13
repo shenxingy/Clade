@@ -3487,6 +3487,7 @@ was reconciled by hand the same day (12 of 32 files defective). Mostly condition
   `bash_task_timeout_s`. The report is drafted but not filed: it needs the owner's
   yes. Retire Clade's config workaround once it is fixed.
 - [ ] 🔵 **Unverified live:** `clade-explorer`'s tool allowlist refusing a write, the
-  single Stop continuation, interactive-TUI rendering of `<hook_result>`, the skill
+  single Stop continuation, interactive-TUI rendering of `<hook_result>`, a hand-typed
+  `/skill:<name>` for a hidden skill in the TUI (print mode does not parse it), the skill
   view under Git Bash on Windows (symlinks), and a real Python 3.9 install (only
   simulated by hiding `tomllib`).

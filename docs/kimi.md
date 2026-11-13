@@ -208,6 +208,9 @@ throwaway directory. Results:
 | Write an ordinary file | allowed |
 | Agent tool lists `clade-explorer` and `clade-implementer` | yes, beside `plan`, `coder`, `explore` and the two bridges |
 | An Agent call to `clade-explorer` runs | **no**: "Agent timed out after 0 hours" |
+| After the skill view is deployed (#234), claude-only skills (`loop`, `batch-tasks`, `orchestrate`, `init-profile`, `iloop`, `blog`, `seo`) are absent from the model's skill list | yes; `commit`, `review` and `delivery` are listed |
+| `Skill(skill="loop")` from the model | refused: "can only be triggered by the user (model invocation is disabled)" |
+| `Skill(skill="commit")` from the model | loaded |
 
 The last failure hit the built-in `explore` too, so the agent definitions are
 not the cause. Print mode's `applyPrintModeConfigDefaults` sets an unset
@@ -219,7 +222,9 @@ Still unverified live:
 - `clade-explorer`'s allowlist refusing a write (the agent never started);
 - the single Stop continuation;
 - interactive-TUI rendering of `<hook_result>`;
-- the absence of a Notification producer.
+- the absence of a Notification producer;
+- a hand-typed `/skill:<name>` for a hidden skill in the TUI (see
+  [Skill view](#skill-view)).
 
 ## Skill view
 
@@ -229,7 +234,12 @@ lists every skill whose metadata does not disable model invocation
 (`catalog/registry.ts::listInvocableSkills`; `disableModelInvocation`,
 `disable-model-invocation` and `disable_model_invocation` are aliases in
 `catalog/parser.ts::METADATA_ALIASES`). A skill with model invocation disabled
-can still be run by hand with `/skill:<name>`.
+can still be run by hand with `/skill:<name>` in the interactive TUI or over
+ACP. Those are the only two paths that parse a slash command:
+`resolveUserInput` in the TUI and `detectSlashIntent` in
+`acp-server/src/session.ts`. Both build their command map with no
+model-invocation filter. Print mode (`kimi -p`) parses neither, so there the
+text reaches the model as an ordinary prompt.
 
 `install.sh` used to point `extra_skill_dirs` at `~/.claude/skills`, so Kimi was
 offered all of them, including the ones that need Claude-only machinery. It now
