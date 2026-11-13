@@ -280,7 +280,9 @@ throwaway directory. Results:
 The last failure hit the built-in `explore` too, so the agent definitions are
 not the cause. Print mode's `applyPrintModeConfigDefaults` sets an unset
 `subagent.timeoutMs` to 0, and the Agent tool arms `setTimeout` with that 0.
-Setting `KIMI_SUBAGENT_TIMEOUT_MS` made `explore` complete.
+Setting `KIMI_SUBAGENT_TIMEOUT_MS` made `explore` complete. `install.sh` now
+writes Kimi's own default into `config.toml` instead; see
+[Subagents under `kimi -p`](#subagents-under-kimi--p).
 
 Still unverified live:
 
