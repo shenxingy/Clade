@@ -822,7 +822,6 @@ if [[ -d "$KIMI_DIR" ]]; then
       ' "$KIMI_CONFIG" > "$KIMI_CONFIG.clade-tmp" && mv "$KIMI_CONFIG.clade-tmp" "$KIMI_CONFIG"
     }
     _kimi_root_insert 'default_permission_mode = "yolo"'
-    _kimi_root_insert "extra_skill_dirs = [\"$CLAUDE_DIR/skills\"]"
     unset -f _kimi_root_insert
 
     # [[hooks]] is an array-of-tables, not a root scalar: a new entry is
@@ -843,7 +842,7 @@ if [[ -d "$KIMI_DIR" ]]; then
     fi
     unset _KIMI_GUARDIAN_CMD
 
-    echo "  Configured: default_permission_mode (yolo if unset), extra_skill_dirs -> $CLAUDE_DIR/skills"
+    echo "  Configured: default_permission_mode (yolo if unset); extra_skill_dirs is handled after the Kimi skill view is built"
   fi
   unset KIMI_CONFIG
 
@@ -877,6 +876,32 @@ if [[ -d "$KIMI_DIR" ]]; then
     unset _kimi_sl_out
   fi
   unset _KIMI_USAGE_HELPER
+
+  # Kimi gets a Clade-owned view, never a mutated copy of Claude's live skills.
+  # Ordinary and unknown user skills are symlinks. Only claude-only SKILL.md
+  # files are materialized, with disableModelInvocation inserted when the source
+  # has no disable key. The view controls extra_skill_dirs only after it builds.
+  if [[ -n "$PYTHON" \
+    && -f "$SCRIPT_DIR/configs/scripts/kimi-skill-compat.py" \
+    && -f "$SCRIPT_DIR/configs/scripts/kimi-skill-view.py" ]]; then
+    _KIMI_COMPAT_REPORT="$(mktemp)"
+    if "$PYTHON" "$SCRIPT_DIR/configs/scripts/kimi-skill-compat.py" \
+      --root "$SCRIPT_DIR/configs/skills" --json > "$_KIMI_COMPAT_REPORT"; then
+      if ! "$PYTHON" "$SCRIPT_DIR/configs/scripts/kimi-skill-view.py" \
+        --report "$_KIMI_COMPAT_REPORT" \
+        --source "$CLAUDE_DIR/skills" \
+        --view "$KIMI_DIR/clade-skills" \
+        --config "$KIMI_DIR/config.toml"; then
+        echo "  Skipped: Kimi skill view failed; extra_skill_dirs left unchanged"
+      fi
+    else
+      echo "  Skipped: Kimi skill view (compatibility scan failed); extra_skill_dirs left unchanged"
+    fi
+    rm -f "$_KIMI_COMPAT_REPORT"
+    unset _KIMI_COMPAT_REPORT
+  else
+    echo "  Skipped: Kimi skill view (no working Python or scanner); extra_skill_dirs left unchanged"
+  fi
 else
   echo "Kimi Code CLI not detected (~/.kimi-code missing) — skipping Kimi bridge"
   echo "  (install Kimi Code (@moonshot-ai/kimi-code) globally, then re-run install.sh, to enable it)"
@@ -950,7 +975,7 @@ echo "  Skills:   $(ls -d "$CLAUDE_DIR/skills/"*/ 2>/dev/null | wc -l) skills"
 echo "  Scripts:  $(ls "$CLAUDE_DIR/scripts/"*.sh 2>/dev/null | wc -l) scripts"
 echo "  Commands: $(ls "$CLAUDE_DIR/commands/"*.md 2>/dev/null | wc -l) commands"
 if [[ -d "$HOME/.kimi-code" ]]; then
-  echo "  Kimi:     $(ls "$HOME/.kimi-code/agents/"*.md 2>/dev/null | wc -l) bridge agents, $(ls "$HOME/.kimi-code/hooks/"*.sh 2>/dev/null | wc -l) bridge hooks (+ all $(ls -d "$CLAUDE_DIR/skills/"*/ 2>/dev/null | wc -l) skills via extra_skill_dirs)"
+  echo "  Kimi:     $(ls "$HOME/.kimi-code/agents/"*.md 2>/dev/null | wc -l) bridge agents, $(ls "$HOME/.kimi-code/hooks/"*.sh 2>/dev/null | wc -l) bridge hooks (skill view: $HOME/.kimi-code/clade-skills)"
 fi
 echo ""
 echo "Next steps:"

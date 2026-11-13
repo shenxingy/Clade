@@ -1148,9 +1148,9 @@ fi
 grep -q '^default_permission_mode = "yolo"$' "$KIMI_CFG" \
   && pass "default_permission_mode set to yolo" \
   || fail "default_permission_mode set to yolo"
-grep -qF "extra_skill_dirs = [\"$HOME/.claude/skills\"]" "$KIMI_CFG" \
-  && pass "extra_skill_dirs points at this machine's ~/.claude/skills" \
-  || fail "extra_skill_dirs points at this machine's ~/.claude/skills"
+grep -qF "extra_skill_dirs = [\"$HOME/.kimi-code/clade-skills\"]" "$KIMI_CFG" \
+  && pass "extra_skill_dirs points at this machine's managed Kimi skill view" \
+  || fail "extra_skill_dirs points at this machine's managed Kimi skill view"
 # Original sections must survive untouched — this is a targeted insert, not a rewrite.
 grep -q '^\[providers\."managed:kimi-code"\]$' "$KIMI_CFG" \
   && pass "pre-existing [providers...] section preserved" \
