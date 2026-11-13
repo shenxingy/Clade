@@ -1,0 +1,178 @@
+**English only**（中文版尚未提供 — no Chinese version yet）
+
+← Back to [README](../README.md)
+
+# Kimi Code hook compatibility
+
+Clade's Kimi bridge runs the existing Claude hook scripts through
+`configs/kimi-hooks/decision-to-kimi.sh`; it does not maintain a second copy of
+their logic. This page records the protocol evidence and the disposition of
+every command or prompt wired in `configs/settings-hooks.json`.
+
+The evidence below was read in the installed **Kimi Code 2.6.0** bundled
+source, not inferred from Claude Code or from hook documentation. Where the two
+runtimes differ, the 2.6.0 source is the authority for this matrix.
+
+## Table of Contents
+
+1. [Protocol evidence](#protocol-evidence)
+2. [Port matrix](#port-matrix)
+3. [Installed behavior](#installed-behavior)
+4. [Attribution and verification](#attribution-and-verification)
+
+## Protocol evidence
+
+Source labels used in the matrix are relative to `packages/agent-core-v2/src/`
+in the 2.6.0 bundle:
+
+| Label | Bundled source location |
+|---|---|
+| AH | `features/externalHooks/agent/agentExternalHooksService.ts` |
+| SH | `features/externalHooks/session/sessionExternalHooksService.ts` |
+| RH | `features/externalHooks/internal/runHook.ts` |
+| MH | `features/externalHooks/internal/matchHooks.ts` |
+| UH | `features/externalHooks/internal/userPrompt.ts` |
+| HT | `features/externalHooks/internal/types.ts` and `features/externalHooks/configSection.ts` |
+| Edit | `agent/tools/edit/edit.ts` (`EditInputSchema`) |
+| Write | `agent/tools/os/write/writeTool.ts` and the adjacent `WriteInputSchema` |
+| Bash | `agent/tools/os/bash/bash.ts` (`BashInputSchema`) |
+| Lifecycle | `workspace/sessionLifecycle/sessionLifecycleService.ts` (`createSessionId`) |
+
+- **Configuration.** `[[hooks]]` accepts only `event`, `matcher`, `command`, and
+  `timeout`; timeout is 1–600 seconds and defaults to 30. There is no Claude
+  `type: "prompt"`, `async`, or `asyncRewake` field (HT, `HookDefSchema`; RH,
+  `DEFAULT_TIMEOUT_SECONDS`). Matchers are JavaScript regular expressions (MH,
+  `matches$1`).
+- **Input.** `runMatchedHooks` adds `hookEventName`, `sessionId`, and `cwd`, then
+  `toHookInputData` converts keys to snake_case. Thus `hook_event_name` is
+  present even though that literal does not appear in the bundle. Tool events
+  also carry `tool_name`, `tool_input`, and `tool_call_id`; Stop carries
+  `stop_hook_active` (MH; AH, `runPreToolUse` and `runStop`). No external-hook
+  call site supplies `transcriptPath`, so the adapter adds
+  `transcript_path: null`.
+- **Prompt parts.** UserPromptSubmit sends `prompt` as an array produced by
+  `input.map(fromCorePart)`, not as a string. Its matcher value is the text
+  parts joined with spaces (AH, `runPromptSubmitHook`; MH,
+  `matcherValueText`). The adapter joins text parts with newlines for the
+  Claude hooks and ignores non-text parts.
+- **Edit/Write paths.** Both schemas call the file argument `path`, not
+  `file_path` (Edit; Write). The adapter preserves `path` and adds the Claude
+  `file_path` alias. Bash already uses `command` (Bash).
+- **Results.** Exit 2 blocks with stderr. Exit 0 plus
+  `hookSpecificOutput.permissionDecision: "deny"` blocks with
+  `permissionDecisionReason`; `message` at the top level or in
+  `hookSpecificOutput` is the non-blocking message. Other exits fail open (RH,
+  `resultFromExitCode` and `structuredOutput`). The Claude fields
+  `additionalContext`, `systemMessage`, `updatedInput`, and
+  `updatedPermissions` are not Kimi result fields in this bundle.
+- **Where a message reaches the model.** UserPromptSubmit injects non-blocking
+  messages in `<hook_result>` parts, using `message` or plain non-JSON stdout
+  (UH, `renderUserPromptHookResult` and `userPromptHookMessage`). PreToolUse and
+  Stop consume only a block reason (AH, `runPreToolUse` and `runStop`). Stop
+  permits one continuation per turn (`stopHookContinuationUsed`). PostToolUse,
+  PostToolUseFailure, PostCompact, PermissionRequest, and PermissionResult are
+  fire-and-forget (AH, `fireAndForget`, `notifyPostToolUse`,
+  `registerPermissionHooks`, and `notifyPostCompact`). SessionStart awaits the
+  hooks but discards every result (SH, `triggerSessionStart`).
+- **Session ids and events.** Kimi creates `session_<UUID>` ids (Lifecycle).
+  SessionStart is not triggered for `fork` or `reclaimed`; compaction has
+  separate PreCompact/PostCompact events rather than Claude's
+  `SessionStart(source=compact)` path (SH, constructor; AH,
+  `registerFullCompactionHooks`). Notification is declared in the event schema,
+  but the 2.6.0 bundle contains no `trigger("Notification")`,
+  `triggerBlock("Notification")`, or `fireAndForgetTrigger("Notification")`
+  call site. TaskCompleted is not declared at all (HT).
+
+## Port matrix
+
+“Ported” keeps the Claude event. “Ported with adaptation” changes the event,
+delivery, or persisted-attribution handling. “Not applicable” means the
+runtime-specific feature is outside this portable set, not that the script is
+intrinsically unable to run. All installed rows execute through the general
+adapter, including its input normalization and result translation.
+
+| # | Claude event | Claude matcher | Hook wiring | Kimi status | Reason and Kimi source |
+|---:|---|---|---|---|---|
+| 1 | SessionStart | `startup\|clear\|fork` | `session-baseline.sh` | **ported** | Data-only baseline needs no model channel. Kimi wiring uses `startup\|clear`: fork/reclaimed does not emit SessionStart (SH, constructor and `triggerSessionStart`). |
+| 2 | SessionStart | `startup\|clear\|fork` | `session-context.sh` | **ported with adaptation** | SessionStart results are discarded (SH), so a once-per-session-id runtime sentinel delivers the same text on the first UserPromptSubmit, whose message is injected (UH). |
+| 3 | SessionStart | `startup\|clear\|fork` | `memory-staleness.sh` | **not portable** | It requires a transcript path to find memory and SessionStart supplies no context channel. Kimi supplies neither (MH; SH). |
+| 4 | SessionStart | `startup` | `sync-pull.sh` | **not applicable** | Claude dotfiles-store bootstrap and Claude project-memory adoption are outside this hook port. Only the write-triggered `memory-sync.sh` side is in scope. |
+| 5 | SessionStart | `startup` | `sync-health.sh` | **not portable** | Its useful stdout findings are discarded with SessionStart results (SH); logging alone would not deliver the advertised context. |
+| 6 | SessionStart | `startup` | `commit-archeology.sh` | **not portable** | Plain stdout has no SessionStart model channel (SH, `triggerSessionStart`). |
+| 7 | SessionStart | `compact` | `post-compact-reinject.sh` | **not portable** | Kimi does not use SessionStart for compaction, and PostCompact output is fire-and-forget (SH; AH, `notifyPostCompact`). |
+| 8 | SessionEnd | — | `session-end-cleanup.sh` | **ported** | SessionEnd awaits the hook and the cleanup needs only its filesystem side effect (SH, `triggerSessionEnd`). |
+| 9 | PreToolUse | `Bash` | `pre-tool-guardian.sh` | **ported** | The legacy command string is retained. Deny and rewrite-refusal become Kimi blocks (AH, `runPreToolUse`; RH). Kimi has no PreToolUse advisory channel, so the guardian's non-blocking wait warning is not delivered. |
+| 10 | PreToolUse | `Bash` | `revert-detector.sh` | **ported with adaptation** | Moved to PostToolUse/Bash. Kimi PreToolUse is synchronous, while PostToolUse is fire-and-forget: the data-only detector does not delay every Bash call and needs no output (AH, `runPreToolUse` and `notifyPostToolUse`). |
+| 11 | PreToolUse | `Workflow` | `workflow-preflight.sh` | **not portable** | Kimi 2.6.0 has no registered Workflow tool (the bundle's `registerAgentToolService` names include Bash, Read, Edit, Write, Agent, and AskUserQuestion, but not Workflow). |
+| 12 | PreToolUse | `Edit\|Write` | `linter-config-guard.sh` | **ported** | The adapter maps `tool_input.path` to `file_path`; deny is a Kimi block (Edit; Write; RH). |
+| 13 | PreToolUse | `AskUserQuestion` | `ask-while-live.sh` | **not portable** | The tool exists and deny would work, but this guard fails open without Claude's transcript and process-record formats. Kimi supplies no `transcriptPath` (MH; AH). |
+| 14 | PostToolUse | `Edit\|Write` | `post-edit-check.sh` | **not portable** | Its exit-2 findings depend on Claude `asyncRewake`; Kimi PostToolUse is fire-and-forget and has no wake channel (AH, `notifyPostToolUse`). |
+| 15 | PostToolUse | `Edit\|Write` | `post-tool-use-lint.sh` | **not portable** | An exit-2 result on fire-and-forget PostToolUse cannot deliver the lint failure to the model (AH; RH). |
+| 16 | PostToolUse | `Edit\|Write` | `rule-injector.sh` | **not portable** | Its only product is additional context, which PostToolUse never delivers (AH, `fireAndForget`). |
+| 17 | PostToolUse | `Edit\|Write` | `edit-shadow-detector.sh` | **ported** | Fire-and-forget is the desired data-only behavior; the adapter supplies `file_path` from Kimi's `path` (AH; Edit; Write). |
+| 18 | PostToolUse | `Edit\|Write` | `worker-checkpoint.sh` | **not applicable** | It is armed only by Clade's Claude worker environment (`CLADE_WORKER_SHADOW_DIR`), not by an interactive Kimi session. |
+| 19 | PostToolUse | `Edit\|Write` | `memory-sync.sh` | **ported** | Sync is a filesystem side effect and needs no result channel; `path` is normalized (AH; Edit; Write). |
+| 20 | PostToolUse | `Edit\|Write` | `doc-align-check.sh` | **not portable** | `systemMessage` is unsupported and fire-and-forget output reaches no model (AH; RH). |
+| 21 | PostToolUse | `Edit\|Write` | `skill-suggest.sh` | **not portable** | Its additionalContext suggestion is discarded by PostToolUse (AH, `fireAndForget`). |
+| 22 | PostToolUse | `Bash` | `failure-detector.sh` | **not portable** | Its debugging context is fire-and-forget. Kimi also supplies a string `tool_output`, not Claude's `tool_result` with an exit code (AH, `notifyPostToolUse`). |
+| 23 | PostToolUse | `Bash` | `rule-injector.sh` | **not portable** | Same lost context channel as row 16 (AH, `fireAndForget`). |
+| 24 | PostToolUse | `Bash` | `memory-sync.sh` | **ported** | The same data-only sync command is wired separately for Bash; event + matcher + command is therefore the idempotency key (AH). |
+| 25 | PostToolUse | `Bash` | `worker-checkpoint.sh` | **not applicable** | Same Claude-worker-only arming environment as row 18. |
+| 26 | PostToolUse | `*` | `mailbox-drain.sh` | **not portable** | AdditionalContext is discarded, and the orchestrator's Claude-worker mailbox environment is not a Kimi channel (AH). |
+| 27 | PostToolUse | `*` | `context-warning-drain.sh` | **not portable** | AdditionalContext is discarded; draining the one-shot file would falsely claim delivery (AH). |
+| 28 | Stop | — | `iloop-hook.sh` | **not portable** | An iterative loop cannot fit Kimi's single Stop continuation per turn, and the hook also requires Claude's transcript path (AH, `runStop`; MH). |
+| 29 | Stop | — | `stop-completeness-check` (`type: prompt`) | **not portable** | Kimi's strict hook schema has command hooks only; there is no prompt hook field (HT, `HookDefSchema`). |
+| 30 | Stop | — | `stop-check.sh` | **ported with adaptation** | Exit 2 becomes a Kimi block and the baseline is wired. One continuation per turn is compatible with the guard's circuit breaker (AH, `runStop`; RH). |
+| 31 | PreCompact | — | `precompact-state-save` (`type: prompt`) | **not portable** | Prompt hooks are not representable in Kimi's `[[hooks]]` schema (HT). |
+| 32 | PreCompact | — | `pre-compact.sh` | **not portable** | PreCompact awaits the script but ignores its output, and the companion post-compact context has no delivery channel (AH, `runPreCompact` and `notifyPostCompact`). |
+| 33 | Notification | `permission_prompt\|idle_prompt` | `notify-telegram.sh` | **not portable** | Notification is schema-declared but has no producer call site in the 2.6.0 bundle; Claude's two matcher values are not emitted (HT; AH). |
+| 34 | TaskCompleted | — | `verify-task-completed.sh` | **not portable** | Kimi declares TaskStarted, not TaskCompleted (HT, `HOOK_EVENT_TYPES`). |
+| 35 | UserPromptSubmit | — | `correction-detector.sh` | **ported with adaptation** | Prompt parts become a string, additionalContext becomes Kimi `message`, and the history filter preserves the `session_` underscore (AH; UH; Lifecycle). |
+| 36 | UserPromptSubmit | — | `prompt-tracker.sh` | **not applicable** | The same prompt/message adaptation could work, but this optional analytics hook is deliberately outside the requested correction-and-secret portable set; it is not wired. |
+| 37 | UserPromptSubmit | — | `secret-scanner.sh` | **ported with adaptation** | Prompt parts become a string and the non-blocking credential note becomes Kimi `message` (AH; UH). |
+| 38 | PostToolUseFailure | — | `post-tool-use-failure.sh` | **not portable** | Failure recovery hints are additionalContext on a fire-and-forget event (AH, `notifyPostToolUse`). |
+| 39 | PermissionRequest | — | `permission-request.sh` | **not portable** | PermissionRequest is fire-and-forget, so it cannot auto-allow; Kimi also has no `updatedPermissions` result field (AH, `registerPermissionHooks`; RH). |
+
+Totals: **7 ported, 5 ported with adaptation, 23 not portable, 4 not
+applicable** — 39 wirings accounted for, with 12 installed entries.
+
+## Installed behavior
+
+`install.sh` §11c keeps one declarative `(event, matcher, hook, timeout)` list,
+with a once-only mode for session context. It appends an entry only when the
+exact event + matcher + command tuple is absent. This has three important
+consequences:
+
+- reinstalling does not duplicate entries;
+- a user-written entry is never rewritten or removed;
+- a machine holding only the original guardian command keeps that exact
+  command and gains the other 11 entries, with no replacement or orphaned
+  adapter command.
+
+A missing `~/.kimi-code` or missing `config.toml` still means no Kimi
+configuration is created. `revert-detector.sh` is deliberately on
+PostToolUse/Bash rather than PreToolUse/Bash, and `session-context.sh` is
+deliberately on UserPromptSubmit rather than SessionStart, for the source
+reasons in rows 10 and 2.
+
+## Attribution and verification
+
+Kimi's `session_<UUID>` survives intact in correction and revert history. The
+shared correction shadow already accepted underscores; the two history-record
+filters now accept them too, without changing the treatment of Claude UUIDs or
+hostile path characters. A missing transcript path is persisted as JSON
+`null`, not dereferenced and not fabricated.
+
+`tests/test-kimi-hooks.sh` installs into a temporary HOME and executes the
+exact commands read from the resulting TOML through `bash -c`, matching Kimi's
+`hostProcess.spawn(..., {shell: true})`. Its classifier mirrors RH's exit and
+JSON parsing. It covers block and allow cases for both PreToolUse guards,
+prompt arrays, session attribution, correction pairing and cleanup, Stop,
+once-only context, both memory-sync entries, all Claude block forms, plain
+prompt context, fail-open behavior, legacy migration, reinstall idempotency,
+user-entry preservation, and missing-config behavior.
+
+No live Kimi process is launched by the suite. A post-install live run remains
+necessary to verify end-to-end delivery in the actual UI/model loop, especially
+first-prompt `<hook_result>` rendering, the single Stop continuation, and the
+absence of a Notification producer on the installed build.

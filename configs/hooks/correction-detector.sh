@@ -235,8 +235,8 @@ PROMPT_SAFE="$(_cd_redact_prompt "$PROMPT")"
 # spawns one process fewer than the `jq | tr` pair it replaces, and the common
 # path (a prompt that is not a correction, which exited above) spawns nothing.
 #
-# session_id keeps that check's character set exactly: [A-Za-z0-9-], everything
-# else deleted. transcript_path is kept only as a string of at most 1024
+# session_id keeps that check's character set plus Kimi's session_ underscore:
+# [A-Za-z0-9_-], everything else deleted. transcript_path is kept only as a string of at most 1024
 # characters with no control character (C0, DEL, C1). Anything else is DROPPED,
 # not trimmed: a trimmed path names a file that does not exist. Unknown is null
 # in the record. revert-detector.sh carries the same filter, and
@@ -244,7 +244,7 @@ PROMPT_SAFE="$(_cd_redact_prompt "$PROMPT")"
 _CD_TAB=$'\t'
 _CD_LINK=$(printf '%s' "$INPUT" | jq -r '
   [ (.session_id // "" | tostring | explode
-       | map(select((. >= 48 and . <= 57) or (. >= 65 and . <= 90) or (. >= 97 and . <= 122) or . == 45))
+       | map(select((. >= 48 and . <= 57) or (. >= 65 and . <= 90) or (. >= 97 and . <= 122) or . == 45 or . == 95))
        | implode),
     (.transcript_path // ""
        | if type == "string" and length <= 1024

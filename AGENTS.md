@@ -60,6 +60,6 @@ for a decision you can make yourself:
    credentials/authority. Surface it once, with evidence.
 
 Never loop-retry one failing approach, and never end a turn on "should I
-proceed?". The canonical wording lives in `configs/AGENTS.md`; the
-installer also deploys it to `~/.agents/AGENTS.md` and
-`~/.kimi-code/AGENTS.md` for every AGENTS.md-aware runtime.
+proceed?". The canonical wording lives in `configs/AGENTS.md` and is deployed
+to `~/.agents/AGENTS.md`; Kimi Code receives the adapted
+`configs/KIMI_AGENTS.md` in `~/.kimi-code/AGENTS.md`.

@@ -146,9 +146,10 @@ The canonical wording of the shared policy lives in `configs/AGENTS.md`, the
 kit's AGENTS.md open-standard file, rather than in any vendor's channel.
 `install.sh` merges the same marked block into the cross-tool location
 `~/.agents/AGENTS.md` (read by OpenCode, Goose, and other AAIF-convention
-runtimes) and, when the Kimi bridge is active, into `~/.kimi-code/AGENTS.md`,
-which Kimi Code reads natively as its global instruction file. Each vendor
-channel (Claude's `~/.claude/CLAUDE.md`, this Codex block) adapts that text
+runtimes). When the Kimi bridge is active, it instead merges the adapted
+`configs/KIMI_AGENTS.md` into `~/.kimi-code/AGENTS.md`, which Kimi Code reads
+natively as its global instruction file. Each vendor channel (Claude's
+`~/.claude/CLAUDE.md`, this Codex block, and Kimi's block) adapts that text
 instead of restating it from scratch.
 
 Every generated native skill also ends with the same delivery boundary: a

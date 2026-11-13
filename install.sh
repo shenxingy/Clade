@@ -324,10 +324,9 @@ fi
 
 # Deploy the vendor-neutral AGENTS.md ground rules (canonical source:
 # configs/AGENTS.md). AGENTS.md is the open cross-vendor instruction
-# standard, so this one text reaches every AGENTS.md-aware runtime: the
-# shared ~/.agents/AGENTS.md (OpenCode, Goose, and other AAIF-convention
-# tools) and — in the Kimi bridge below — ~/.kimi-code/AGENTS.md, which
-# Kimi Code reads natively as global instructions. Merged as a marked
+# standard, so this one text reaches the shared ~/.agents/AGENTS.md
+# (OpenCode, Goose, and other AAIF-convention tools). The Kimi bridge below
+# installs the adapted configs/KIMI_AGENTS.md instead. Merged as a marked
 # block, never replacing user-authored instructions in those files.
 mkdir -p "$HOME/.agents"
 _merge_managed_block "$HOME/.agents/AGENTS.md" "$AGENTS_BEGIN" "$AGENTS_END" \
@@ -797,11 +796,11 @@ if [[ -d "$KIMI_DIR" ]]; then
 
   # Kimi Code reads $KIMI_CODE_HOME/AGENTS.md natively as its global
   # instruction file (docs: customization/agents.html "Instruction Files").
-  # Ship the same canonical block as ~/.agents/AGENTS.md, merged so
-  # user-authored Kimi instructions survive the install.
+  # Ship the Kimi-adapted block rather than the shared canonical text,
+  # merged so user-authored Kimi instructions survive the install.
   _merge_managed_block "$KIMI_DIR/AGENTS.md" "$AGENTS_BEGIN" "$AGENTS_END" \
-    "$SCRIPT_DIR/configs/AGENTS.md"
-  echo "  Installed ~/.kimi-code/AGENTS.md (vendor-neutral ground rules)"
+    "$SCRIPT_DIR/configs/KIMI_AGENTS.md"
+  echo "  Installed ~/.kimi-code/AGENTS.md (Kimi-adapted ground rules)"
 
   KIMI_CONFIG="$KIMI_DIR/config.toml"
   if [[ -f "$KIMI_CONFIG" ]]; then
@@ -824,23 +823,68 @@ if [[ -d "$KIMI_DIR" ]]; then
     _kimi_root_insert 'default_permission_mode = "yolo"'
     unset -f _kimi_root_insert
 
-    # [[hooks]] is an array-of-tables, not a root scalar: a new entry is
-    # always safe to APPEND at EOF (unlike the bare keys above, a `[[hooks]]`
-    # header always starts its own table regardless of what precedes it).
-    # Idempotency is keyed on the exact `command` value — never re-append the
-    # same hook, and never touch a hooks entry the user added by hand.
-    _KIMI_GUARDIAN_CMD="$KIMI_DIR/hooks/decision-to-kimi.sh $CLAUDE_DIR/hooks/pre-tool-guardian.sh"
-    if ! grep -qF "command = \"$_KIMI_GUARDIAN_CMD\"" "$KIMI_CONFIG"; then
-      {
-        printf '\n[[hooks]]\n'
-        printf 'event = "PreToolUse"\n'
-        printf 'matcher = "Bash"\n'
-        printf 'command = "%s"\n' "$_KIMI_GUARDIAN_CMD"
-        printf 'timeout = 5\n'
-      } >> "$KIMI_CONFIG"
-      echo "  Configured: PreToolUse/Bash hook -> Clade's dangerous-command guardian (translated via decision-to-kimi.sh)"
-    fi
-    unset _KIMI_GUARDIAN_CMD
+    # One declarative portable-hook list. PostToolUse keeps the data-only
+    # detectors off Kimi's synchronous PreToolUse path; its fire-and-forget
+    # delivery is exactly what they need. SessionStart discards context, so
+    # session-context runs once on the first prompt instead.
+    #
+    # Idempotency needs event + matcher + command: memory-sync intentionally
+    # uses the SAME command on Edit|Write and on Bash. Append only, and skip an
+    # exact entry whether Clade or the user wrote it. In particular, the old
+    # guardian command remains byte-for-byte identical across re-installs.
+    _kimi_hook_present() {
+      awk -v want_event="$1" -v want_matcher="$2" -v want_command="$3" '
+        function value(line) {
+          sub(/^[^=]*=[[:space:]]*/, "", line)
+          sub(/[[:space:]]+$/, "", line)
+          return line
+        }
+        function check() {
+          if (event == "\"" want_event "\"" && matcher == "\"" want_matcher "\"" \
+              && command == "\"" want_command "\"") found = 1
+        }
+        /^\[\[hooks\]\][[:space:]]*$/ {
+          check(); event = ""; matcher = "\"\""; command = ""; inside = 1; next
+        }
+        /^\[/ { if (inside) { check(); inside = 0 } }
+        inside && /^event[[:space:]]*=/ { event = value($0); next }
+        inside && /^matcher[[:space:]]*=/ { matcher = value($0); next }
+        inside && /^command[[:space:]]*=/ { command = value($0); next }
+        END { check(); exit(found ? 0 : 1) }
+      ' "$KIMI_CONFIG"
+    }
+
+    while IFS='^' read -r _event _matcher _hook _timeout _mode; do
+      [[ -n "$_event" ]] || continue
+      _KIMI_HOOK_CMD="$KIMI_DIR/hooks/decision-to-kimi.sh"
+      [[ "$_mode" != once ]] || _KIMI_HOOK_CMD="$_KIMI_HOOK_CMD --once-per-session"
+      _KIMI_HOOK_CMD="$_KIMI_HOOK_CMD $CLAUDE_DIR/hooks/$_hook"
+      if ! _kimi_hook_present "$_event" "$_matcher" "$_KIMI_HOOK_CMD"; then
+        {
+          printf '\n[[hooks]]\n'
+          printf 'event = "%s"\n' "$_event"
+          printf 'matcher = "%s"\n' "$_matcher"
+          printf 'command = "%s"\n' "$_KIMI_HOOK_CMD"
+          printf 'timeout = %s\n' "$_timeout"
+        } >> "$KIMI_CONFIG"
+        echo "  Configured: $_event/${_matcher:-*} -> $_hook"
+      fi
+    done <<'EOF'
+PreToolUse^Bash^pre-tool-guardian.sh^5^
+PreToolUse^Edit|Write^linter-config-guard.sh^5^
+UserPromptSubmit^^secret-scanner.sh^5^
+UserPromptSubmit^^correction-detector.sh^5^
+PostToolUse^Edit|Write^edit-shadow-detector.sh^5^
+PostToolUse^Bash^revert-detector.sh^5^
+SessionStart^startup|clear^session-baseline.sh^5^
+SessionEnd^^session-end-cleanup.sh^5^
+UserPromptSubmit^^session-context.sh^10^once
+Stop^^stop-check.sh^10^
+PostToolUse^Edit|Write^memory-sync.sh^10^
+PostToolUse^Bash^memory-sync.sh^10^
+EOF
+    unset -f _kimi_hook_present
+    unset _KIMI_HOOK_CMD _event _matcher _hook _timeout _mode
 
     echo "  Configured: default_permission_mode (yolo if unset); extra_skill_dirs is handled after the Kimi skill view is built"
   fi

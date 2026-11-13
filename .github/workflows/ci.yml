@@ -459,6 +459,12 @@ jobs:
       - name: Run hook provenance tests
         run: bash tests/test-hook-provenance.sh
 
+      # Kimi 2.6.0 hook protocol through the exact installed TOML commands:
+      # prompt-part arrays, path→file_path, block/context translation, the
+      # correction loop, once-per-session context, and installer migration.
+      - name: Run Kimi hook compatibility tests
+        run: bash tests/test-kimi-hooks.sh
+
       # Project auto-memory reaches the sync store: a real memory dir is
       # adopted (verified copy, link back, commit), store entries link at
       # Claude Code's own slug in ~/.claude, $CLAUDE_CONFIG_DIR and every

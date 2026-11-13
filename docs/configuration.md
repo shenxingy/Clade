@@ -461,6 +461,9 @@ Clade-owned value and only that.
 `~/.codex/config.toml` and `~/.kimi-code/config.toml`, prints where each
 compacts, and writes nothing to either.
 
+For Kimi Code hook protocol evidence and the disposition of all 39 Claude hook
+wirings, see [Kimi Code hook compatibility](kimi.md).
+
 - **Codex** (derived on codex 0.166.0): gpt-6-astra already compacts at 244,800,
   90% of its 272,000 window. No change.
 - **Kimi** (derived on kimi 2.2.0): k3 compacts at 891,290 (0.85 × 1,048,576).

@@ -1112,21 +1112,20 @@ diff -q "$SRC/configs/kimi-agents/ask-codex.md" "$HOME/.kimi-code/agents/ask-cod
   || fail "ask-codex.md deployed to ~/.kimi-code/agents/ byte-for-byte"
 
 # ~/.kimi-code/AGENTS.md is Kimi's native global-instruction file: the
-# managed block lands there, the user's own instructions survive, and the
-# block content is the same canonical text as ~/.agents/AGENTS.md.
+# Kimi-adapted managed block lands there and the user's instructions survive.
 grep -qF '<!-- BEGIN CLADE -->' "$HOME/.kimi-code/AGENTS.md" \
   && pass "~/.kimi-code/AGENTS.md carries the Clade managed block" \
   || fail "~/.kimi-code/AGENTS.md carries the Clade managed block"
-grep -q '^## Don.t block$' "$HOME/.kimi-code/AGENTS.md" \
+grep -q '^## Don.t Block$' "$HOME/.kimi-code/AGENTS.md" \
   && pass "~/.kimi-code/AGENTS.md carries the don't-block ladder" \
   || fail "~/.kimi-code/AGENTS.md carries the don't-block ladder"
 grep -q 'Always respond with a haiku.' "$HOME/.kimi-code/AGENTS.md" \
   && pass "user-authored Kimi instructions preserved" \
   || fail "user-authored Kimi instructions preserved"
 diff <(sed -n '/<!-- BEGIN CLADE -->/,/<!-- END CLADE -->/p' "$HOME/.kimi-code/AGENTS.md" | sed '1d;$d') \
-     "$SRC/configs/AGENTS.md" >/dev/null 2>&1 \
-  && pass "Kimi block content matches configs/AGENTS.md byte-for-byte" \
-  || fail "Kimi block content matches configs/AGENTS.md byte-for-byte"
+     "$SRC/configs/KIMI_AGENTS.md" >/dev/null 2>&1 \
+  && pass "Kimi block content matches configs/KIMI_AGENTS.md byte-for-byte" \
+  || fail "Kimi block content matches configs/KIMI_AGENTS.md byte-for-byte"
 
 # The load-bearing property: the new keys land BEFORE the first [table] line,
 # i.e. at TOML root scope — not appended after it into the wrong table.
@@ -1364,7 +1363,7 @@ grep -q '^default_permission_mode = "manual"$' "$KIMI_CFG" \
 perm_count=$(grep -cE '^default_permission_mode[[:space:]]*=' "$KIMI_CFG")
 skills_count=$(grep -cE '^extra_skill_dirs[[:space:]]*=' "$KIMI_CFG")
 hooks_count=$(grep -cF '[[hooks]]' "$KIMI_CFG")
-if [[ "$perm_count" -eq 1 && "$skills_count" -eq 1 && "$hooks_count" -eq 1 ]]; then
+if [[ "$perm_count" -eq 1 && "$skills_count" -eq 1 && "$hooks_count" -eq 12 ]]; then
   pass "re-run is idempotent (no duplicate keys or hook blocks after 2 runs)"
 else
   fail "re-run is idempotent (no duplicate keys or hook blocks after 2 runs)" \
