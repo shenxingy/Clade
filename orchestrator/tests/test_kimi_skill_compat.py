@@ -62,6 +62,7 @@ def _base_config(home: Path, extra: str | None = None) -> str:
         *root,
         "",
         *_clade_hook_tables(home),
+        *_clade_subagent_table(),
         "[user-table]",
         'extra_skill_dirs = ["$HOME/custom"]',
         'other = "keep"',
@@ -99,6 +100,19 @@ def _clade_hook_tables(home: Path) -> list[str]:
         ]
     assert len(tables) == 12 * 6, "install.sh's hook list changed size; recheck this fixture"
     return tables
+
+
+def _clade_subagent_table() -> list[str]:
+    """The [subagent] table install.sh appends when config.toml has none.
+
+    Same reason as the hook tables above: without it every install appends the
+    table, and the view's byte-identical assertions fail on lines the view
+    never wrote. The value is read from install.sh's own append line.
+    """
+    text = (REPO_ROOT / "install.sh").read_text(encoding="utf-8")
+    match = re.search(r"printf '\\n\[subagent\]\\ntimeout_ms = (\d+)\\n'", text)
+    assert match, "install.sh no longer appends [subagent] timeout_ms; recheck this fixture"
+    return ["[subagent]", f"timeout_ms = {match.group(1)}", ""]
 
 
 @pytest.fixture

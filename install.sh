@@ -823,6 +823,191 @@ if [[ -d "$KIMI_DIR" ]]; then
     _kimi_root_insert 'default_permission_mode = "yolo"'
     unset -f _kimi_root_insert
 
+    # Kimi 2.6.0's applyPrintModeConfigDefaults (agent/task/printDefaults.ts)
+    # fills subagent.timeoutMs with 0 at memory scope when it is unset.
+    # SubagentTool (agent/tools/agent/agentTool.ts) passes that value directly
+    # to setTimeout, so `kimi -p` aborts every Agent call immediately. Writing
+    # resolveSubagentTimeoutMs's own 7200000 default keeps interactive behavior
+    # unchanged while preventing the print-mode zero. Swarm is not changed:
+    # features/swarm/session/agentRunBatch.ts treats timeout <= 0 as no timer.
+    # retire-when: Kimi's Agent tool treats 0 as no limit, or printDefaults stops writing 0.
+    _kimi_subagent_timeout_commit() {
+      local candidate="$1" problem
+      # Test-only corruption controls for the tomllib guard; inert in normal installs.
+      case "${CLADE_TEST_KIMI_SUBAGENT_TIMEOUT_BAD_CANDIDATE:-}" in
+        parse)
+          printf '[subagent]\n' >> "$candidate"
+          ;;
+        root)
+          printf '\n[[hooks]]\nevent = "Stop"\nmatcher = ""\ncommand = "test"\ntimeout = 1\n' >> "$candidate"
+          ;;
+        subagent)
+          printf 'unexpected = true\n' >> "$candidate"
+          ;;
+        subagent-value)
+          awk '{ print ($0 == "answer = 42" ? "answer = 43" : $0) }' \
+            "$candidate" > "$candidate.change" && mv "$candidate.change" "$candidate"
+          ;;
+        timeout-value)
+          awk '{ print ($0 == "timeout_ms = 7200000" ? "timeout_ms = 7200001" : $0) }' \
+            "$candidate" > "$candidate.change" && mv "$candidate.change" "$candidate"
+          ;;
+      esac
+      if [[ -n "$PYTHON" ]] && "$PYTHON" -c 'import tomllib' >/dev/null 2>&1; then
+        if ! problem=$("$PYTHON" - "$KIMI_CONFIG" "$candidate" 2>&1 <<'PY'
+from pathlib import Path
+import sys
+import tomllib
+
+def fail(message):
+    print(message)
+    raise SystemExit(1)
+
+try:
+    with Path(sys.argv[1]).open("rb") as handle:
+        original = tomllib.load(handle)
+except Exception as exc:
+    fail(f"original config.toml does not parse: {exc}")
+try:
+    with Path(sys.argv[2]).open("rb") as handle:
+        candidate = tomllib.load(handle)
+except Exception as exc:
+    fail(f"candidate config.toml does not parse: {exc}")
+
+for key in (set(original) | set(candidate)) - {"subagent"}:
+    if key not in original or key not in candidate or original[key] != candidate[key]:
+        fail(f"candidate would change root key or table {key}")
+old_subagent = original.get("subagent", {})
+new_subagent = candidate.get("subagent")
+if not isinstance(old_subagent, dict) or not isinstance(new_subagent, dict):
+    fail("candidate would change the subagent value type")
+for key in old_subagent:
+    if key not in new_subagent or old_subagent[key] != new_subagent[key]:
+        fail(f"candidate would change subagent key {key}")
+if set(new_subagent) - set(old_subagent) != {"timeout_ms"}:
+    fail("candidate would add a subagent key other than timeout_ms")
+if new_subagent.get("timeout_ms") != 7200000:
+    fail("candidate does not set subagent.timeout_ms to 7200000")
+PY
+        ); then
+          rm -f "$candidate"
+          echo "  Skipped: subagent.timeout_ms ($problem); subagent settings left unchanged"
+          return 0
+        fi
+      fi
+      mv "$candidate" "$KIMI_CONFIG"
+      echo "  Configured: subagent.timeout_ms = 7200000 (Kimi default; print mode no longer gets 0)"
+    }
+    _kimi_subagent_timeout() {
+      local state candidate
+      state=$(awk '
+        function scan(line,    i, c, quote, run) {
+          for (i = 1; i <= length(line); i++) {
+            c = substr(line, i, 1)
+            if (mode == "single_basic") {
+              if (c == "\\") { i++; continue }
+              if (c == "\"") mode = "normal"
+              continue
+            }
+            if (mode == "single_literal") {
+              if (c == "\047") mode = "normal"
+              continue
+            }
+            if (mode == "multi_basic" || mode == "multi_literal") {
+              quote = mode == "multi_basic" ? "\"" : "\047"
+              if (mode == "multi_basic" && c == "\\") { i++; continue }
+              if (c == quote && substr(line, i, 3) == quote quote quote) {
+                run = 0
+                while (substr(line, i + run, 1) == quote) run++
+                if (run > 5) { bad = 1; return }
+                mode = "normal"
+                i += run - 1
+              }
+              continue
+            }
+            if (c == "#") return
+            if (c == "\"" || c == "\047") {
+              if (substr(line, i, 3) == c c c) {
+                mode = c == "\"" ? "multi_basic" : "multi_literal"
+                i += 2
+              } else {
+                mode = c == "\"" ? "single_basic" : "single_literal"
+              }
+            } else if (c == "[") {
+              depth++
+            } else if (c == "]") {
+              if (--depth < 0) bad = 1
+            }
+          }
+          if (mode == "single_basic" || mode == "single_literal") bad = 1
+        }
+        BEGIN {
+          mode = "normal"
+          root = 1
+          names = "(subagent|\"subagent\"|\047subagent\047)"
+          keys = "(timeout_ms|\"timeout_ms\"|\047timeout_ms\047)"
+          table_re = "^[[:space:]]*\\[[[:space:]]*" names "[[:space:]]*\\][[:space:]]*(#.*)?$"
+          array_re = "^[[:space:]]*\\[\\[[[:space:]]*" names "[[:space:]]*\\]\\][[:space:]]*(#.*)?$"
+          dotted_re = "^[[:space:]]*" names "[[:space:]]*\\."
+          assignment_re = "^[[:space:]]*" names "[[:space:]]*="
+          timeout_re = "^[[:space:]]*" keys "[[:space:]]*="
+        }
+        {
+          # depth > 0 is a line inside a multi-line array, where an element
+          # such as `  ["a"],` would otherwise read as a table header.
+          if (mode == "normal" && depth == 0) {
+            if ($0 ~ /^[[:space:]]*\[/) {
+              root = 0
+              in_subagent = 0
+              if ($0 ~ array_re) {
+                root_subagent = 1
+              } else if ($0 ~ table_re) {
+                in_subagent = 1
+                if (!insert_line) insert_line = NR
+              }
+            } else {
+              if (root && ($0 ~ dotted_re || $0 ~ assignment_re)) root_subagent = 1
+              if (in_subagent && $0 ~ timeout_re) set = 1
+            }
+          }
+          scan($0)
+        }
+        END {
+          if (bad || mode != "normal" || depth != 0) print "unsafe"
+          else if (set || root_subagent) print "set"
+          else if (insert_line) print "insert:" insert_line
+          else print "append"
+        }
+      ' "$KIMI_CONFIG")
+      case "$state" in
+        set)
+          echo "  Skipped: subagent.timeout_ms or a root subagent value already exists; subagent settings left unchanged"
+          ;;
+        unsafe)
+          echo "  Skipped: subagent.timeout_ms (unclosed or ambiguous TOML string or array); subagent settings left unchanged"
+          ;;
+        insert:*)
+          candidate="$KIMI_CONFIG.clade-tmp"
+          awk -v at="${state#insert:}" '
+            NR == at { print; print "timeout_ms = 7200000"; next }
+            { print }
+          ' "$KIMI_CONFIG" > "$candidate"
+          _kimi_subagent_timeout_commit "$candidate"
+          ;;
+        append)
+          candidate="$KIMI_CONFIG.clade-tmp"
+          cp "$KIMI_CONFIG" "$candidate"
+          if [[ -n "$(tail -c 1 "$KIMI_CONFIG")" ]]; then
+            printf '\n' >> "$candidate"
+          fi
+          printf '\n[subagent]\ntimeout_ms = 7200000\n' >> "$candidate"
+          _kimi_subagent_timeout_commit "$candidate"
+          ;;
+      esac
+    }
+    _kimi_subagent_timeout
+    unset -f _kimi_subagent_timeout _kimi_subagent_timeout_commit
+
     # One declarative portable-hook list. PostToolUse keeps the data-only
     # detectors off Kimi's synchronous PreToolUse path; its fire-and-forget
     # delivery is exactly what they need. SessionStart discards context, so

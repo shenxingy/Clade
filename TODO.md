@@ -3485,7 +3485,16 @@ was reconciled by hand the same day (12 of 32 files defective). Mostly condition
   tool arms `setTimeout` with it. No existing report was found in
   MoonshotAI/kimi-code issues on 2026-11-12. The related #3187 covers
   `bash_task_timeout_s`. The report is drafted but not filed: it needs the owner's
-  yes. Retire Clade's config workaround once it is fixed.
+  yes. Clade's workaround is `install.sh` writing `[subagent] timeout_ms = 7200000`
+  (`docs/kimi.md#subagents-under-kimi--p`); retire it once Kimi treats 0 as no limit.
+- [ ] 🔵 **Hand-launched Kimi workers trip the correction detector.** A `kimi -p`
+  worker started outside `run-tasks-parallel.sh` has no `CLADE_WORKER_TASK_ID`, so
+  `correction-detector.sh` reads its brief as an owner prompt. On 2026-11-13 a
+  review brief containing "wrong" was written to `~/.claude/corrections/history.jsonl`
+  as an explicit correction (session `session_e995a546…`). The worker then obeyed
+  the injected "record the lesson" note and wrote a project-local
+  `.claude/corrections/rules.md`. Candidate: have whatever launches a Kimi worker
+  export `CLADE_WORKER_TASK_ID`, or have the Kimi adapter mark `-p` sessions.
 - [ ] 🔵 **Unverified live:** `clade-explorer`'s tool allowlist refusing a write, the
   single Stop continuation, interactive-TUI rendering of `<hook_result>`, a hand-typed
   `/skill:<name>` for a hidden skill in the TUI (print mode does not parse it), the skill

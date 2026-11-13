@@ -21,8 +21,9 @@ runtimes differ, the 2.6.0 source is the authority for this matrix.
 1. [Protocol evidence](#protocol-evidence)
 2. [Port matrix](#port-matrix)
 3. [Installed behavior](#installed-behavior)
-4. [Attribution and verification](#attribution-and-verification)
-5. [Skill view](#skill-view)
+4. [Subagents under `kimi -p`](#subagents-under-kimi--p)
+5. [Attribution and verification](#attribution-and-verification)
+6. [Skill view](#skill-view)
 
 ## Protocol evidence
 
@@ -179,6 +180,70 @@ The same section installs Kimi's agents and standing instructions:
   aside, because the policy never names that tool), and
   `orchestrator/tests/test_kimi_skill_compat.py` fails when they drift.
 
+## Subagents under `kimi -p`
+
+Kimi Code 2.6.0's non-interactive print mode can make every `Agent` call fail
+immediately with `Agent timed out after 0 hours`. Interactive `kimi` is not
+affected. The print entry calls `applyPrintModeConfigDefaults`
+(`agent/task/printDefaults.ts`), whose `fillSectionDefault` writes
+`subagent.timeoutMs = 0` at memory scope when the user has not set a value.
+`resolveSubagentTimeoutMs` (`session/subagent/configSection.ts`) normally
+defaults to 7,200,000 ms, but the explicit zero wins. `SubagentTool`
+(`agent/tools/agent/agentTool.ts`) then passes it to `setTimeout` without a
+zero-value guard. TOML's `timeout_ms` becomes `timeoutMs` through
+`snakeToCamel` (`app/config/toml.ts`).
+
+For an existing `~/.kimi-code/config.toml`, `install.sh` therefore writes
+Kimi's normal default explicitly:
+
+```toml
+[subagent]
+timeout_ms = 7200000
+```
+
+It inserts the key under an existing bare or quoted `[subagent]` header, or
+appends the table when absent. Reinstalling is idempotent, and the step needs
+no Python. Because 7,200,000 ms is Kimi's own default, interactive behavior
+does not change. Print mode's zero is meant to mean **no limit**: swarm
+honours it and only `SubagentTool` does not, so this workaround caps a
+`kimi -p` subagent at two hours where print mode intends no limit; a larger
+`timeout_ms` raises the cap.
+
+The installer skips, with one message and no write:
+
+- an existing bare, double-quoted, or single-quoted `timeout_ms` key;
+- **any** root dotted key whose first segment is `subagent`, even when it is
+  not `timeout_ms`, with any TOML quoting and whitespace around the dot;
+- a root inline `subagent = { … }` table or other root assignment, including
+  quoted spellings;
+- a `subagent` array-of-tables;
+- an unclosed single- or multi-line string or array, or an ambiguous quote run;
+- an original or candidate TOML parse failure, or a candidate that fails the
+  value-preservation check.
+
+Root dotted and inline definitions are skipped rather than rewritten to keep
+their layout intact and avoid redefining the table. If yours is skipped for
+that reason, add `subagent.timeout_ms = 7200000` beside your other `subagent`
+keys yourself. Header detection ignores multi-line basic (`"""`) and literal
+(`'''`) string contents, and lines inside a multi-line array, whose elements
+can start with `[`. When Python
+3.11+ is available, the installer parses the original and a temporary
+candidate, rejects any parse failure or change to another root value or an
+existing subagent value, and only then renames the candidate. Without
+`tomllib`, the conservative awk scanner alone decides.
+
+Choose a different limit in that table, or override it for one print run:
+
+```bash
+KIMI_SUBAGENT_TIMEOUT_MS=600000 kimi -p '…'
+```
+
+Print defaults also set `swarm.timeoutMs` to zero, but swarm does not have the
+same failure: `linkAttemptSignals` (`features/swarm/session/agentRunBatch.ts`)
+treats `timeout <= 0` as no timer. The installer therefore leaves swarm
+configuration untouched. This swarm finding comes from the 2.6.0 source, not
+a live swarm run.
+
 ## Attribution and verification
 
 Kimi's `session_<UUID>` survives intact in correction and revert history. The
@@ -215,7 +280,9 @@ throwaway directory. Results:
 The last failure hit the built-in `explore` too, so the agent definitions are
 not the cause. Print mode's `applyPrintModeConfigDefaults` sets an unset
 `subagent.timeoutMs` to 0, and the Agent tool arms `setTimeout` with that 0.
-Setting `KIMI_SUBAGENT_TIMEOUT_MS` made `explore` complete.
+Setting `KIMI_SUBAGENT_TIMEOUT_MS` made `explore` complete. `install.sh` now
+writes Kimi's own default into `config.toml` instead; see
+[Subagents under `kimi -p`](#subagents-under-kimi--p).
 
 Still unverified live:
 
