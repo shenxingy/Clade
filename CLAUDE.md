@@ -261,8 +261,9 @@ python3 configs/scripts/regen-codex-plugin.py --check
   either: `correction-detector.sh` resolved the id only for its private-session
   check, after the append. It now resolves both from the hook input before the
   append, in the one `jq` call that check reuses, so the common path (no
-  correction) spawns nothing new. The id keeps `[A-Za-z0-9-]`; a transcript path
-  with a control character or over 1,024 characters is dropped, never trimmed.
+  correction) spawns nothing new. The id keeps `[A-Za-z0-9_-]` (the underscore
+  covers Kimi's `session_…` ids); a transcript path with a control character or
+  over 1,024 characters is dropped, never trimmed.
   Unknown is `null`, and records written before this change lack both keys.
   The two hooks carry the filter verbatim (pinned by the test suite), and both
   write paths (`cp_append_history` and the no-lib `jq >>`) are tested.
@@ -939,12 +940,12 @@ python3 configs/scripts/check-sibling-facts.py
 #     did not run at all.
 bash configs/scripts/checks.sh shellcheck configs/hooks/*.sh configs/hooks/lib/*.sh configs/scripts/*.sh install.sh
 
-# 12. Every suite the `shell-tests` job runs — all 35, not a convenient subset
+# 12. Every suite the `shell-tests` job runs — all 36, not a convenient subset
 #     (`loop` also runs test-loop-holdout.sh, and sources test-loop-env.sh, through
 #     tests/lib/loop-fixture.sh — neither has a step of its own)
 for t in loop checks commit-archeology skill-routing pr-scope-policy audit worktree-env \
          rule-injector mailbox-drain correction-pairing sync-store hooks hook-provenance \
-         sync-link-projects sync-link-projects-remote sync-health memory-sync-breaker \
+         kimi-hooks sync-link-projects sync-link-projects-remote sync-health memory-sync-breaker \
          post-edit-check session-context session-scorecard post-compact-reinject \
          memory-staleness \
          context-warning-drain ensure-dev-server quiet-run scan-health \
@@ -1008,7 +1009,7 @@ commit too.**
 On push/PR to `main`, four workflow files fire:
 
 - `ci.yml` — `syntax-check` (28 gates), `pytest` (suite + 2 offline evals),
-  `shell-tests` (35 suites), `install-test`. `run_hack_eval.py` scores
+  `shell-tests` (36 suites), `install-test`. `run_hack_eval.py` scores
   `judge_diversity.test_integrity` against the labelled reward-hack corpus in
   `evals/hack_cases/` — read its README before changing either, because that
   gate's floor and ceiling are measured, not chosen.
