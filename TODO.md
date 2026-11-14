@@ -84,6 +84,10 @@ Phases 1–14 complete.
 - Opt in to the reframe pilot (judge up to 8 of your own asks), or decline it:
   [§ 2026-11-09 Rieseberg ambition](#2026-11-09-rieseberg-ambition-follow-ups),
   "Pilot the reframe procedure by hand".
+- Move the CI checklist and the orchestrator architecture map out of CLAUDE.md into
+  `docs/`, retargeting the gates that pin them (nothing deleted), or keep them:
+  [§ 2026-11-14 harness weight](#2026-11-14-harness-weight-research-follow-ups),
+  "Owner decision: relocate".
 
 **Needs the owner at a machine, a login, or an outward step**
 
@@ -1439,6 +1443,12 @@ built is written and **unrun**.
   instructions, which is not an unattended change, and the local version was
   not checkable (`claude --version` was gated; a 2026-09-22 session banner in
   history.jsonl showed 2.1.278).
+  **2026-11-14:** the installed 2.1.283 has it (the binary carries the
+  `prompt-audit` subcommand). Plain `/doctor` also proposes trims: it "cuts content
+  Claude can derive from the codebase, such as directory layouts, dependency lists,
+  and architecture overviews" (code.claude.com/docs/en/memory). Add this
+  repository's own CLAUDE.md (90,726 chars) to the run. Why it matters now:
+  `docs/research/2026-11-14-harness-weight.md`.
 - [ ] 🟡 **`pre-tool-guardian.sh` does not block fetch-and-execute** (`curl …
   | sh`, `wget -O- … | bash`, `bash <(curl …)`), the execution step of the
   June 2026 agentjacking attack (a crafted Sentry event made Claude Code,
@@ -1764,6 +1774,17 @@ uncommitted edits sat in the checkout of an unrelated branch for four days. Queu
   `~/.claude/corrections/promoted-archive.md`). Since #134, `auto-audit.sh`
   refuses any promotion past a 40,000-byte budget. That caps growth, but it is
   still not a half-life: nothing re-validates a rule that is already in.
+  **2026-11-14:** the ablation now has a shape, from Anthropic and OpenAI's own
+  method (one component at a time, re-run the same evals; a radical cut lost
+  performance and hid what was load-bearing). Replay set: the 8 known-answer
+  fixes the queued model-tier A/B already uses
+  (`docs/research/2026-10-23-workflow-effort-and-reader-ab.md`). Arms: the full
+  layer, then minus one group at a time: the auto-promoted rules (10,670 chars in
+  the project CLAUDE.md, 9,902 in the global one), the context-injecting hooks,
+  the Stop prompt hook. Retire only past the preset floor (two net solves,
+  ledgered 2026-11-05). Opt-in spend. The global file has grown back from 38,458
+  to 45,907 chars since the consolidation: lessons are still added faster than
+  they are retired. See `docs/research/2026-11-14-harness-weight.md`.
 
 ## 2026-10-18 instruction-budget follow-ups
 
@@ -3500,3 +3521,52 @@ was reconciled by hand the same day (12 of 32 files defective). Mostly condition
   mode does not parse it), the skill view under Git Bash on Windows (symlinks), and a
   real Python 3.9 install (only simulated by hiding `tomllib`). `clade-explorer`'s
   allowlist was verified live on 2026-11-13 (`docs/kimi.md`).
+
+## 2026-11-14 harness-weight research follow-ups
+
+From `docs/research/2026-11-14-harness-weight.md`: what Anthropic, OpenAI and
+Google say about a heavy harness, read against Clade. The owner asked for research
+only and for nothing to be deleted; every item here proposes, none removes.
+
+- [ ] 🟡 **Owner decision: relocate, don't delete, the two gate-pinned blocks of
+  CLAUDE.md.** The CI checklist (24,569 chars) and the dormant orchestrator's
+  architecture map (Orchestrator Layer plus Key File Map, 12,191 chars) are 40.5%
+  of the 90,726-char project file that every Clade session loads. Anthropic's
+  `/doctor` cuts "architecture overviews", arXiv:2602.11988 found repository
+  overviews "are not helpful", and OpenAI keeps AGENTS.md as "the table of
+  contents" with `docs/` as the system of record. Proposal: move both blocks
+  verbatim to `docs/`, leave one pointer line each, and retarget every gate that
+  reads them: `check-ci-checklist.py` (its `CLAUDE_MD` constant and the prose job
+  counts), `check-arch-map.py` (`--doc`), and the three judge-diversity pins in
+  `check-asserted-numbers.py`; `check-runnable-paths.py` already scans `docs/`.
+  Acceptance: every gate green against the new location, each moved paragraph
+  present verbatim in `docs/` (diff-checked), project CLAUDE.md about 54k chars.
+  Unbuilt: it changes what every Clade session sees, which is the owner's call.
+- [ ] 🔵 **Sort the context-injecting hooks into rule vs preference, then measure
+  them.** Anthropic's Claude Code docs: a rule that "can't have exceptions" belongs
+  in a hook; "if you have hooks for things that are only preferences, delete them
+  and let Claude decide." Over 30 days (main thread, 467 transcripts) the
+  injectors fired: `post-tool-use-failure` 1,315, `rule-injector` 1,076,
+  `post-compact-reinject` 355, `session-context` 176, `correction-detector` 108,
+  `skill-suggest` 86, `workflow-preflight` 68, `prompt-tracker` 41; the Stop
+  prompt hook judged 3,140 turn ends. A fire is not an effect. Label each one
+  first, then put the preference ones into the half-life ablation as an arm.
+- [ ] 🔵 **State each instruction once.** The project CLAUDE.md says the general
+  rules are "NOT repeated here", then repeats the 1500-line cap with the reason
+  the global file retired ("Read tool default = 2000 lines"); the
+  `pipeline()`-over-`parallel()` rule is in both files. Left for the owner's
+  `/doctor prompt-audit` pass rather than edited here, because the owner asked for
+  no deletions in this round.
+- [ ] 🔵 **Move the Workflow-script rules behind progressive disclosure.** 2,853
+  chars of them sit in the always-loaded global file (`configs/CLAUDE.md`
+  § Adaptive Delegation) and matter only while a Workflow script is written.
+  Clade already has a narrower channel: `workflow-preflight.sh` runs on every
+  Workflow call (68 context injections in 30 days). Candidate, not decided: the
+  preflight fires after the script is written, not before, so rules that shape the
+  script's design would arrive late; and the project CLAUDE.md "Code Rules" section
+  points at the current location.
+- [ ] 🔵 **Re-run the harness-weight check at the next frontier model release.**
+  Anthropic: "when a new model lands, it is generally good practice to
+  re-examine a harness, stripping away pieces that are no longer load-bearing to
+  performance and adding new pieces". Re-measure the always-loaded total
+  (145,352 chars on 2026-11-14) and run the ablation above if it exists.
