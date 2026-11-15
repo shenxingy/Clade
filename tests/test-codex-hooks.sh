@@ -272,7 +272,8 @@ PY
 SPACE_OUT=$(printf '%s' '{"hook_event_name":"PreToolUse","cwd":"/repo","tool_name":"Bash","tool_input":{"command":"true"}}' | \
   HOME="$SPACE_HOME" bash -c "$SPACE_CMD" 2>/dev/null)
 SPACE_HOOK_RC=$?
-assert_eq "$SPACE_RC|$SPACE_HOOK_RC|$SPACE_OUT" "0|0|" "a HOME containing spaces installs and executes a quoted hook command"
+# ${SPACE_CMD:+wired}: with no command, `bash -c ""` exits 0 and the case would pass on a tree that wires nothing.
+assert_eq "$SPACE_RC|${SPACE_CMD:+wired}|$SPACE_HOOK_RC|$SPACE_OUT" "0|wired|0|" "a HOME containing spaces installs and executes a quoted hook command"
 
 # Codex-shaped payload builders, from schema.rs:279-297,324-343,499-524,567-602.
 tool_payload() {
@@ -689,6 +690,7 @@ run_payload Stop stop-check.sh "$(stop_payload "$STOP_SID" false)" \
 assert_contains "$(jq -r '.reason' <<< "$RUN_OUT")" "uncommitted change" "Stop continuation carries the real reason"
 run_payload Stop stop-check.sh "$(stop_payload "$STOP_SID" true)" \
   "stop_hook_active=true escapes a repeated Stop block" ALLOW
+assert_file "$SHADOW_FILE" "the shadow still exists before SessionEnd, so its removal is observable"
 run_payload SessionEnd session-end-cleanup.sh "$(end_payload "$SID")" \
   "SessionEnd cleanup has no protocol output" ALLOW
 assert_no_file "$SHADOW_FILE" "SessionEnd removes the ending session's shadow"
