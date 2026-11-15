@@ -77,8 +77,9 @@ codex plugin marketplace add shenxingy/Clade
 codex plugin add clade@clade
 ```
 
-Open the project you want to work on in a new Codex thread. In Codex chat, run `/hooks` and inspect Clade's two
-hook definitions before trusting them. Then use `$clade:verify` on a small task.
+Open the project you want to work on in a new Codex thread. In Codex chat, run `/hooks` and inspect the plugin's two
+hook definitions before trusting them. If you also ran `./install.sh`, review its ten portable user-hook wirings too;
+the installer never changes hook trust. Then use `$clade:verify` on a small task.
 The plugin is generated from `configs/`; maintainers can check it with:
 
 ```bash

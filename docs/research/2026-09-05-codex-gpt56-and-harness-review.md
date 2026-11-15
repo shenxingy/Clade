@@ -484,6 +484,12 @@ independently from different directions. Beside it:
   `configs/codex-migration.json` is now stale — the real remaining obstacle is
   that the correction pipeline writes into `~/.claude/corrections/` and reads a
   Claude-shaped transcript, not that the events are missing.
+  *Update 2026-11-14:* superseded. The plugin still wires its two, and
+  `install.sh` now appends ten portable hook wirings to `~/.codex/hooks.json`
+  (port matrix in [docs/codex.md](../codex.md)). The handler claim held only
+  for the config schema: at rust-v0.169.0 discovery skips `prompt` and `agent`
+  handlers as "not supported yet"
+  (`codex-rs/hooks/src/engine/discovery.rs:782-795`).
 - **`PreModelSwitch` / `PostModelSwitch` now exist.** They matter here mainly
   because `docs/research/2026-08-29-ecosystem-audit.md` records them as
   fabricated features that do not exist. That record was right when written and

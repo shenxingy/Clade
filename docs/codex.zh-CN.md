@@ -15,8 +15,10 @@ codex plugin marketplace add shenxingy/Clade
 codex plugin add clade@clade
 ```
 
-安装后启动新的 Codex thread。首次使用时运行 `/hooks`，检查 Clade 的两个
-hook definitions，并在内容与仓库一致时信任它们。
+安装后启动新的 Codex thread。首次使用时运行 `/hooks`，检查 plugin 的两个
+hook definitions，并在内容与仓库一致时信任它们。如果还运行了 `./install.sh`，
+它会在 `~/.codex/hooks.json` 追加十个 portable user-hook wiring；这些新条目也需要
+在 `/hooks` 中检查，安装器不会写入 trust state。
 
 从本地 checkout 开发：
 
@@ -66,6 +68,12 @@ Windows 环境实测。
   repository guidance 和 delivery completion，不修改仓库
 - `PreToolUse` safety hook：阻止灾难性删除、破坏性 SQL、数据库 migration 和
   shared branch force push；feature branch force push 会改写为 `--force-with-lease`
+
+另外，`./install.sh` 会把 portable hook adapter 安装到
+`~/.codex/clade-hooks/`，并向 `~/.codex/hooks.json` 追加十个 user-level wiring：
+linter 配置保护、secret/correction 检测、correction-pairing 状态、stop 清洁检查、
+session cleanup 与 memory sync。它不会重复安装 plugin 已有的两个 hook，也不会
+重排用户条目或修改 trust state；新增条目仍需在 `/hooks` 中检查。
 
 Codex 从 `SKILL.md` 加载可执行 workflow；Clade 原来的 Claude distribution
 执行 `prompt.md`。Generator 会合并两份 canonical source，并应用 Codex

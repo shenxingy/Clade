@@ -16,8 +16,11 @@ codex plugin marketplace add shenxingy/Clade
 codex plugin add clade@clade
 ```
 
-Start a new Codex thread after installation. Run `/hooks` once, review the two
-Clade hook definitions, and trust them if they match the checked-in files.
+Start a new Codex thread after installation. Run `/hooks` once, review the
+plugin's two Clade hook definitions, and trust them if they match the checked-in
+files. If you also ran `./install.sh`, `/hooks` includes ten portable user-hook
+wirings appended to `~/.codex/hooks.json`; review those new entries too. The
+installer never writes trust state to `config.toml`.
 
 For local development from a Clade checkout:
 
@@ -79,6 +82,15 @@ The plugin under `plugins/clade/` contains:
   migrations, and force-pushes to shared branches. Feature-branch force pushes
   are rewritten to `--force-with-lease`.
 
+Separately, `./install.sh` installs `configs/codex-hooks/decision-to-codex.sh`
+as `~/.codex/clade-hooks/decision-to-codex.sh` and appends ten portable command
+hook wirings to `~/.codex/hooks.json`. This user-level bridge adds the linter
+config guard, secret and correction detection, correction-pairing state, stop
+cleanliness, session cleanup, and memory sync without running either plugin hook
+a second time. Existing groups stay at their original indices, a no-op reinstall
+does not rewrite the file, and new or configuration-changed entries still
+require the owner's review in `/hooks`.
+
 Codex loads executable workflow instructions from `SKILL.md`, while Clade's
 original Claude distribution executes `prompt.md`. The generator combines both
 canonical sources and applies Codex compatibility rules:
@@ -126,6 +138,76 @@ Evidence First and Terse invariants are therefore carried as durable Codex
 guidance, without claiming system-prompt equivalence. Claude lifecycle
 orchestration and the MCP bridge stay outside the native plugin until they have
 real native semantics.
+
+### Portable hook matrix
+
+All source citations below are to `rust-v0.169.0`. The adapter translates
+`apply_patch` into one Write/Edit payload per affected path. Add carries `content`;
+Update carries removed/added lines as `old_string`/`new_string`; Delete is an Edit
+with empty `old_string` and `new_string`, because a delete hunk has no body
+(`codex-rs/apply-patch/src/parser.rs:13`); Move calls the hook for both source and destination
+and supplies `old_file_path` and `new_file_path`. Paths are resolved against the
+payload's `cwd`. This is necessary because Codex keeps `tool_name=apply_patch`
+and puts the raw patch in `tool_input.command`
+(`codex-rs/core/src/tools/handlers/apply_patch.rs:370-418`). The Edit and Write
+matcher aliases select that call without changing its stdin name
+(`codex-rs/core/src/tools/hook_names.rs:27-38`).
+
+Codex runs command strings through a login shell, so installed paths are quoted
+(`codex-rs/hooks/src/engine/command_runner.rs:444-470`). It discovers the user
+file at `<CODEX_HOME>/hooks.json`
+(`codex-rs/hooks/src/engine/discovery.rs:390-430`). Only trusted or managed
+handlers enter the runnable set (`discovery.rs:917-925`); this also applies to
+`codex exec` unless its explicit dangerous trust-bypass flag is set. The trust
+hash covers the normalized event/group/handler configuration, not the wrapped
+hook file's bytes (`discovery.rs:972-998`). The installer therefore leaves both
+trust and `config.toml` untouched.
+
+Async handlers are scheduled rather than awaited
+(`codex-rs/hooks/src/engine/dispatcher.rs:123-153`) and cannot apply control
+effects (`engine/mod.rs:194-208`). Their stdout is parsed, not wholly discarded:
+context/warning/error entries survive in completion reporting, while Stop and
+Feedback entries are removed (`engine/command_runner.rs:119-165`). SessionEnd is forced synchronous
+and its timeout is capped at three seconds (`discovery.rs:678-684,946-968`).
+
+| `configs/settings-hooks.json` hook | Codex disposition | Evidence or exclusion reason |
+|---|---|---|
+| `session-baseline` | **Ported:** SessionStart `^(startup|clear|fork)$`, sync, 5 s | Codex supplies all three source values (`events/session_start.rs:23-40`) and the session id/cwd needed for the baseline (`schema.rs:499-511`). |
+| `session-context` | **Plugin-owned** | `plugins/clade/hooks/hooks.json` already runs the Python port; install.sh must not duplicate it. |
+| `memory-staleness` | Excluded | Reads Claude memory/index state; not part of the reviewed portable correction/safety subset. |
+| `memory-sync-pull` | Excluded | Startup pulling is a separate sync policy with a 30 s budget; only the established post-write push triggers are ported. |
+| `sync-health` | Excluded | Claude sync-store reporting needs a separate Codex context/noise policy; it is not a portable data-only detector. |
+| `commit-archeology` | Excluded | Repository-specific advisory context is outside this unit and needs its own context-budget review. |
+| `post-compact-reinject` | Excluded | Depends on the Claude compact-state pipeline and the excluded PreCompact checkpoint below. |
+| `session-end-cleanup` | **Ported:** SessionEnd, no matcher, sync, 3 s | SessionEnd supplies `session_id` (`schema.rs:515-524`); Codex forces sync and caps the timeout at 3 s (`discovery.rs:678-684,946-968`). |
+| `pre-tool-guardian` | **Plugin-owned** | The plugin already runs `pre_tool_guardian.py` on `^Bash$`; wiring the shell hook again would run the guardian twice. |
+| `revert-detector` | **Ported:** PreToolUse `^Bash$`, async, 5 s | Shell `tool_input.command` is a string (`core/src/tools/handlers/unified_exec/exec_command.rs:336-346`). PreToolUse async is supported, preserving Claude's pre-command, data-only recording (`dispatcher.rs:143-153`). |
+| `workflow-preflight` | Excluded | Claude Workflow has no Codex matcher alias in the reviewed tool table (`core/src/tools/hook_names.rs:27-51`). |
+| `linter-config-guard` | **Ported:** PreToolUse `^(Edit|Write)$`, sync, 5 s | Edit/Write aliases match apply_patch (`events/common.rs:158-166`); synchronous deny blocks the call (`events/pre_tool_use.rs:119-150`). |
+| `ask-while-live` | Excluded | Claude's AskUserQuestion and transcript background-task model are not Codex's `request_user_input` contract; no alias is declared (`core/src/tools/hook_names.rs:27-51`). |
+| `post-edit-check` | Excluded in this unit | Its delivery needs Claude `asyncRewake`; Codex drops async Feedback (`command_runner.rs:147-165`). The rule/check channel is also due for re-measurement on 2026-11-16 in TODO.md. |
+| `post-tool-use-lint` | Excluded | Its per-profile `verify_cmd` and 30 s synchronous edit-path policy need a separate Codex configuration and latency design. |
+| `rule-injector` (Edit/Write and Bash) | Excluded in this unit | TODO.md re-measures the path-scoped rule channel on 2026-11-16; do not expand that overlapping channel before the measurement. |
+| `edit-shadow-detector` | **Ported:** PostToolUse `^(Edit|Write)$`, async, 5 s | PostToolUse carries the same apply_patch command and aliases (`apply_patch.rs:403-418`); the adapter writes one absolute-path shadow record per affected path. |
+| `worker-checkpoint` (Edit/Write and Bash) | Excluded | Worker-only snapshots remain launcher-armed through `CLADE_WORKER_SHADOW_DIR`; this unit installs no global Codex worker checkpoint policy. |
+| `memory-sync-edit` and `memory-sync-bash` | **Ported:** PostToolUse `^(Edit|Write)$` and `^Bash$`, async, 10 s | Both Codex tool shapes are available (`apply_patch.rs:403-418`; `exec_command.rs:336-346`); async preserves the existing fire-and-forget trigger. |
+| `doc-align-check` | Excluded | Its advisory doc-drift delivery is not part of the reviewed data-only subset and needs a separate notification-policy decision. |
+| `skill-suggest` | Excluded | Claude's skill catalog and suggestion rules differ from the curated `$clade:*` plugin catalog; a native mapping is required first. |
+| `failure-detector` | Excluded | Claude-specific failure/output parsing has not been validated against Codex's `tool_response` shapes (`schema.rs:324-343`). |
+| `mailbox-drain` | Excluded | Orchestrator-worker-only mailbox delivery remains with its launcher, not a global Codex user hook. |
+| `context-warning-drain` | Excluded | Orchestrator-worker-only context warnings remain with their producer and launcher. |
+| `iloop-continue` | Excluded | Claude iloop lifecycle and prompt re-feeding are not a native Codex loop contract. |
+| `stop-completeness-check` | Excluded | Codex 0.169.0 explicitly skips prompt handlers (`discovery.rs:782-799`). |
+| `stop-uncommitted-guard` (`stop-check.sh`) | **Ported:** Stop, no matcher, sync, 10 s | Stop input includes `stop_hook_active` (`schema.rs:587-602`); a block creates continuation feedback and resumes the turn with the flag set (`events/stop.rs:245-275`; `core/src/session/turn.rs:824-842`). |
+| `precompact-state-save` | Excluded | Prompt handlers are unsupported (`discovery.rs:782-799`). |
+| `precompact-script` | Excluded | Its Claude compact-state counterpart and post-compaction re-injection pipeline are not ported. |
+| `telegram-notify` | Excluded | Notification is not among Codex's command-hook output event contracts (`schema.rs:102-125`). |
+| `verify-task-completed` | Excluded | TaskCompleted is not a Codex 0.169.0 hook event (`schema.rs:102-125`). |
+| `correction-detector` | **Ported:** UserPromptSubmit, sync, 5 s | Codex supplies a string `prompt`, session id, cwd and transcript path (`events/user_prompt_submit.rs:82-94`); `additionalContext` is accepted (`schema.rs:430-450`). |
+| `prompt-tracker` | Excluded | Its Claude transcript analytics and loop-detection state require a separate Codex storage/consumer contract. |
+| `secret-scanner` | **Ported:** UserPromptSubmit, sync, 5 s | Same string prompt and `additionalContext` support as correction-detector (`user_prompt_submit.rs:82-94`; `schema.rs:430-450`). |
+| `post-tool-use-failure` | Excluded | PostToolUseFailure is not a Codex 0.169.0 hook event (`schema.rs:102-125`). |
+| `permission-request` | Excluded | Codex rejects `updatedPermissions`, which this Claude hook uses to persist approvals (`schema.rs:199-218`; `output_parser.rs:401-410`). |
 
 ## State and Guidance
 
@@ -295,9 +377,11 @@ provider-agnostic) and per-machine usage is tracked separately by `ccusage`.
 ## Compatibility Boundary
 
 Claude-specific agents, the provider switcher, cross-machine usage aggregation,
-and correction-learning hooks still depend on the Claude CLI layer. They remain
-outside the native plugin rather than being presented as native while secretly
-invoking Claude.
+prompt-based completion checks, and Claude orchestration loops still depend on
+the Claude CLI layer. Correction-learning command hooks now run through the
+user-level Codex adapter documented above; they are not presented as plugin
+hooks and do not invoke Claude. The remaining incompatible surfaces stay
+outside the native plugin.
 
 Worker **command construction, model resolution, and cancellation** are now
 provider-neutral (see above); the remaining Codex-worker gaps before the

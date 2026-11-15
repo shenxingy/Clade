@@ -18,6 +18,17 @@ fi
 CLAUDE_DIR="$HOME/.claude"
 CODEX_DIR="$HOME/.codex"
 
+# Python resolution: on Windows, `python3` resolves to the Microsoft Store
+# stub — it EXISTS on PATH but exits "Permission denied", so `command -v`
+# alone is not enough. Probe with an actual run; real Windows installs ship
+# `python`, not `python3`.
+PYTHON=""
+if python3 -c pass &>/dev/null; then
+  PYTHON="python3"
+elif python -c pass &>/dev/null; then
+  PYTHON="python"
+fi
+
 echo "Installing Claude Code customizations..."
 echo "Source: $SCRIPT_DIR"
 echo "Target: $CLAUDE_DIR"
@@ -107,6 +118,43 @@ if [[ -f "$CODEX_OVERRIDE" && -s "$CODEX_OVERRIDE" ]]; then
   echo ""
 fi
 
+# Codex 0.169.0 discovers <CODEX_HOME>/hooks.json and runs command strings via
+# a login shell (rust-v0.169.0:codex-rs/hooks/src/engine/discovery.rs:390 and
+# engine/command_runner.rs:444). Keep Clade's adapter out of Codex's own hooks/
+# namespace, then append groups after all user groups so existing trust indices
+# still address the same handlers. The plugin alone owns session-context and the
+# destructive-Bash guardian; neither is wired again here.
+echo "Installing Codex portable hooks..."
+mkdir -p "$CODEX_DIR/clade-hooks"
+cp "$SCRIPT_DIR/configs/codex-hooks/decision-to-codex.sh" "$CODEX_DIR/clade-hooks/"
+chmod +x "$CODEX_DIR/clade-hooks/decision-to-codex.sh"
+CODEX_HOOK_COUNT=""
+if [[ -z "$PYTHON" ]]; then
+  echo "  WARNING: Codex hooks unchanged (no working Python); hooks.json was not written"
+elif _codex_hook_output=$("$PYTHON" "$SCRIPT_DIR/configs/scripts/codex-hooks-merge.py" \
+    --target "$CODEX_DIR/hooks.json" \
+    --adapter "$CODEX_DIR/clade-hooks/decision-to-codex.sh" \
+    --claude-hooks "$CLAUDE_DIR/hooks" <<'EOF'
+PreToolUse	^(Edit|Write)$	linter-config-guard.sh	5	sync
+UserPromptSubmit		secret-scanner.sh	5	sync
+UserPromptSubmit		correction-detector.sh	5	sync
+PostToolUse	^(Edit|Write)$	edit-shadow-detector.sh	5	async
+PreToolUse	^Bash$	revert-detector.sh	5	async
+SessionStart	^(startup|clear|fork)$	session-baseline.sh	5	sync
+SessionEnd		session-end-cleanup.sh	3	sync
+Stop		stop-check.sh	10	sync
+PostToolUse	^(Edit|Write)$	memory-sync.sh	10	async
+PostToolUse	^Bash$	memory-sync.sh	10	async
+EOF
+  ); then
+  printf '  %s\n' "$_codex_hook_output"
+  CODEX_HOOK_COUNT=$(printf '%s\n' "$_codex_hook_output" \
+    | sed -n 's/^Codex hooks: \([0-9][0-9]*\) wired,.*/\1/p')
+else
+  echo "  WARNING: Codex hooks unchanged (merger failed); hooks.json was not written"
+fi
+unset _codex_hook_output
+
 # Merge a Clade-managed block into an instruction file without ever touching
 # content outside the markers. Same guarantees as the Codex merge above: a
 # well-formed existing block is replaced in place; a file without the block
@@ -192,17 +240,6 @@ for skill_dir in "$SCRIPT_DIR/configs/skills/"/*/; do
   find "$skill_target" -type f \( -name '*.pyc' -o -name '*.pyo' \) -delete 2>/dev/null || true
   echo "  Installed skill: $skill_name"
 done
-
-# Python resolution: on Windows, `python3` resolves to the Microsoft Store
-# stub — it EXISTS on PATH but exits "Permission denied", so `command -v`
-# alone is not enough. Probe with an actual run; real Windows installs ship
-# `python`, not `python3`.
-PYTHON=""
-if python3 -c pass &>/dev/null; then
-  PYTHON="python3"
-elif python -c pass &>/dev/null; then
-  PYTHON="python"
-fi
 
 # Preflight: validate skill frontmatter (warn-only — CI is the hard gate)
 if [[ -n "$PYTHON" ]]; then
@@ -1199,7 +1236,7 @@ echo ""
 echo "Installed components:"
 echo "  Hooks:    $(ls "$CLAUDE_DIR/hooks/"*.sh 2>/dev/null | wc -l) scripts"
 echo "  Agents:   $(ls "$CLAUDE_DIR/agents/"*.md 2>/dev/null | wc -l) definitions"
-echo "  Codex:    $(ls "$CODEX_DIR/agents/"*.toml 2>/dev/null | wc -l) agent definitions"
+echo "  Codex:    $(ls "$CODEX_DIR/agents/"*.toml 2>/dev/null | wc -l) agent definitions, ${CODEX_HOOK_COUNT:-unavailable} Clade hook wirings in hooks.json"
 echo "  Skills:   $(ls -d "$CLAUDE_DIR/skills/"*/ 2>/dev/null | wc -l) skills"
 echo "  Scripts:  $(ls "$CLAUDE_DIR/scripts/"*.sh 2>/dev/null | wc -l) scripts"
 echo "  Commands: $(ls "$CLAUDE_DIR/commands/"*.md 2>/dev/null | wc -l) commands"

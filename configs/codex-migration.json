@@ -25,9 +25,9 @@
     {
       "id": "hooks",
       "claude_source": "configs/settings-hooks.json",
-      "codex_target": "plugins/clade/hooks/hooks.json",
+      "codex_target": "configs/codex-hooks/decision-to-codex.sh",
       "status": "native-subset",
-      "reason": "Only session context and destructive-command protection have native Codex event and trust semantics; Claude-only lifecycle hooks stay excluded."
+      "reason": "The plugin owns session context and destructive-command protection; install.sh also appends ten reviewed portable command-hook wirings to ~/.codex/hooks.json through the Codex adapter. Unsupported events, prompt hooks, and runtime-specific lifecycle hooks remain excluded."
     },
     {
       "id": "output-styles",
