@@ -3503,11 +3503,14 @@ was reconciled by hand the same day (12 of 32 files defective). Mostly condition
   the path-scoped channel survives its own 2026-11-16 re-measure first.
 - [ ] 🔵 **Upstream: print-mode subagents time out at 0 ms.**
   `applyPrintModeConfigDefaults` fills `subagent.timeoutMs` with 0, and the Agent
-  tool arms `setTimeout` with it. No existing report was found in
-  MoonshotAI/kimi-code issues on 2026-11-12. The related #3187 covers
-  `bash_task_timeout_s`. The report is drafted but not filed: it needs the owner's
-  yes. Clade's workaround is `install.sh` writing `[subagent] timeout_ms = 7200000`
-  (`docs/kimi.md#subagents-under-kimi--p`); retire it once Kimi treats 0 as no limit.
+  tool arms `setTimeout` with it. A 2026-11-12 search of MoonshotAI/kimi-code
+  issues missed the existing report, #4943 (a Windows reproduction). So on
+  2026-11-14, with the owner's yes, the drafted report went in as a comment on
+  #4943 rather than a duplicate issue. The comment covers the cause, the Linux
+  checks and a suggested fix. The related #3187 covers `bash_task_timeout_s`.
+  Clade's workaround is `install.sh` writing `[subagent] timeout_ms = 7200000`
+  (`docs/kimi.md#subagents-under-kimi--p`). Retire it once Kimi treats 0 as no
+  limit; watch #4943 for that.
 - [ ] 🔵 **Hand-launched Kimi workers trip the correction detector.** A `kimi -p`
   worker started outside `run-tasks-parallel.sh` has no `CLADE_WORKER_TASK_ID`, so
   `correction-detector.sh` reads its brief as an owner prompt. On 2026-11-13 a
