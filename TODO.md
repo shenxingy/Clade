@@ -3537,6 +3537,19 @@ was reconciled by hand the same day (12 of 32 files defective). Mostly condition
     Clade wrote, so the installer cannot tell its own line from a user's
     `timeout_ms = 7200000`. The context policy's state file is the precedent for
     such a record.
+  - **Print defaults drop an environment override equal to its default (2026-11-15).**
+    - **What happens.** `KIMI_SUBAGENT_TIMEOUT_MS=7200000` and
+      `KIMI_CODE_SWARM_TIMEOUT_MS=7200000` both come back 0. On main, where 0 means
+      no limit, either one gives no limit instead of two hours. Upstream's own
+      test names say an environment override is never overridden.
+    - **How it was confirmed.** Two cases were added to upstream's
+      `applyPrintModeConfigDefaults` tests and run on main `f082f04`.
+      `docs/kimi.md` has the details.
+    - **Reported.** It is explained in a comment on #4943, posted with the owner's
+      yes. No upstream issue or PR tracks it, so filing one, or a fix PR with the
+      two cases, is the owner's call.
+    - **Clade is not affected.** Its workaround is a `config.toml` value, which
+      print defaults keep.
 - [ ] 🔵 **Hand-launched Kimi workers trip the correction detector.** A `kimi -p`
   worker started outside `run-tasks-parallel.sh` has no `CLADE_WORKER_TASK_ID`, so
   `correction-detector.sh` reads its brief as an owner prompt. On 2026-11-13 a
