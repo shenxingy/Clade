@@ -102,6 +102,9 @@ Phases 1–14 complete.
   hosts".
 - Approve, or open yourself, the upstream Kimi CLI PR that adds plan usage to the
   status-line snapshot: [§ Tech Debt](#tech-debt), "Kimi footer quota".
+- Review the ten Clade hooks with `/hooks` in the Codex TUI, then watch one live
+  session: [§ 2026-11-14 Codex hook bridge](#2026-11-14-codex-hook-bridge-follow-ups-239),
+  "Owner: trust the ten hooks with `/hooks`".
 - Recruit representative users for the browser project/task flow trial:
   [§ GUI-first local web trial](#gui-first-local-web-trial--2026-11-02).
 
@@ -3570,3 +3573,35 @@ only and for nothing to be deleted; every item here proposes, none removes.
   re-examine a harness, stripping away pieces that are no longer load-bearing to
   performance and adding new pieces". Re-measure the always-loaded total
   (145,352 chars on 2026-11-14) and run the ablation above if it exists.
+
+## 2026-11-14 Codex hook bridge follow-ups (#239)
+
+`install.sh` wires ten Clade hooks into `~/.codex/hooks.json` through
+`configs/codex-hooks/decision-to-codex.sh`. These are what #239 could not verify,
+or chose not to build.
+
+- [ ] 🟡 **Owner: trust the ten hooks with `/hooks`, then watch one live session.**
+  `install.sh` writes no trust state, so Codex skips the hooks until they are
+  reviewed (`codex-rs/hooks/src/engine/discovery.rs:915-926` at `rust-v0.169.0`).
+  The live run in #239 passed them as session flags with
+  `--dangerously-bypass-hook-trust`, so the installed wiring has not yet run under
+  real trust. Acceptance: in a trusted session a `.ruff.toml` write is denied, and
+  a turn that ends on an unclean tree gets one Stop continuation.
+- [ ] 🔵 **A reinstall re-adds a Clade group the user deleted.**
+  `codex-hooks-merge.py` appends every Clade group it does not find and keeps no
+  record of a deliberate removal. The Kimi merger (`_kimi_hook_present` in
+  `install.sh`) does the same. The context policy already solves this shape: it
+  records ownership in `~/.claude/.clade-context-state.json` and does not re-add a
+  key the user deleted.
+- [ ] 🔵 **No uninstall.** `uninstall.sh` mentions neither Codex nor Kimi, so it
+  leaves the ten groups and `~/.codex/clade-hooks/` in place, and the Kimi
+  `[[hooks]]` entries too. Rollback today is by hand: delete the groups whose
+  command starts with `"$HOME/.codex/clade-hooks/decision-to-codex.sh"`.
+- [ ] 🔵 **Four ported hooks are verified hermetically only:** `correction-detector`,
+  `revert-detector`, `memory-sync` and `session-end-cleanup`. A live Codex run
+  would write test records into the owner's correction history and sync store,
+  and a scratch `HOME` loses the Codex login. Needs a way to point those writes at
+  scratch paths for one live run.
+- [ ] 🔵 **macOS untested.** `tests/test-codex-hooks.sh` has run only on Linux. The
+  adapter and the merger target bash 3.2 and a BSD userland like every shipped
+  hook; run the suite on the Mac before calling that true.
