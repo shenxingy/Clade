@@ -780,8 +780,12 @@ python3 configs/scripts/keep-sessions.py --self-test
 #     test_self_tests_can_fire.py loads into its MUTATIONS.
 python3 configs/scripts/harness-usage.py --self-test
 
-# 3. Shell syntax check (hooks, scripts, installer)
-bash -n configs/hooks/*.sh configs/codex-hooks/*.sh configs/scripts/*.sh install.sh
+# 3. Shell syntax check (hooks, scripts, installer). One file per `bash -n`: it
+#    parses only its first argument, so `bash -n a.sh b.sh` never reads b.sh.
+for f in configs/hooks/*.sh configs/hooks/lib/*.sh configs/codex-hooks/*.sh \
+         configs/scripts/*.sh install.sh; do
+  bash -n "$f" || echo "FAILED: $f"
+done
 
 # 4. mcp-package derived-copy drift gate — mcp-package/skills/ is generated
 #    from configs/skills/ via the mcp-package/skills.list manifest. After
