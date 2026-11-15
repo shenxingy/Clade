@@ -3583,6 +3583,9 @@ or chose not to build.
 - [ ] 🟡 **Owner: trust the ten hooks with `/hooks`, then watch one live session.**
   `install.sh` writes no trust state, so Codex skips the hooks until they are
   reviewed (`codex-rs/hooks/src/engine/discovery.rs:915-926` at `rust-v0.169.0`).
+  Since 2026-11-14 they are installed on aries, castor and lynx. Trust is kept
+  per machine, in that machine's `~/.codex/config.toml`, so review them on each
+  host where Codex is used.
   The live run in #239 passed them as session flags with
   `--dangerously-bypass-hook-trust`, so the installed wiring has not yet run under
   real trust. Acceptance: in a trusted session a `.ruff.toml` write is denied, and
