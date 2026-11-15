@@ -290,6 +290,32 @@ BASH_BIN="$(command -v bash)"
 OUT="$(PATH="/nonexistent" "$BASH_BIN" "$CHECKS" shellcheck /dev/null 2>&1; echo "rc=$?")" || true
 assert_contains "$OUT" "rc=0" "missing shellcheck binary degrades to a skip, not a failure"
 
+# CI's shellcheck step names its files by hand, so a new directory of shell
+# scripts goes unlinted until someone remembers it: configs/kimi-hooks/ shipped
+# two adapters for two months before any lint step named it. Expand the step's
+# own arguments and compare them with every tracked shell file. Exempt: tests/
+# (each suite runs in shell-tests), orchestrator/ (the dormant layer in
+# docs/layers.json) and docs/ (dated research scripts).
+uncovered_shell_files() {  # $1: the arguments after `checks.sh shellcheck`
+  local linted
+  # $1 is a list of globs, and expanding it is the point.
+  # shellcheck disable=SC2086
+  linted="$(cd "$REPO_ROOT" && for f in $1; do [[ -f "$f" ]] && printf '%s\n' "$f"; done)"
+  git -C "$REPO_ROOT" ls-files -- '*.sh' ':!:tests/' ':!:orchestrator/' ':!:docs/' \
+    | grep -vxF -f <(printf '%s\n' "$linted") || true
+}
+CI_SC_ARGS="$(grep -m1 -E '^[[:space:]]+bash configs/scripts/checks\.sh shellcheck ' \
+  "$REPO_ROOT/.github/workflows/ci.yml" | sed 's/.*checks\.sh shellcheck //')"
+if [[ -n "$(git -C "$REPO_ROOT" ls-files -- '*.sh' 2>/dev/null)" ]]; then
+  assert_eq "" "$(uncovered_shell_files "$CI_SC_ARGS" | tr '\n' ' ')" \
+    "CI's shellcheck step lints every tracked shell file outside tests/, orchestrator/ and docs/"
+  # Negative control: without the Kimi adapters in the list, the check names them.
+  assert_contains "$(uncovered_shell_files "${CI_SC_ARGS//configs\/kimi-hooks\/\*.sh/}")" \
+    "configs/kimi-hooks/decision-to-kimi.sh" "the coverage check names a file the step stops linting"
+else
+  echo "  (not a git checkout — shellcheck coverage check skipped)"
+fi
+
 # ─── committer.sh gate wiring ────────────────────────────────────────
 echo "── committer.sh pre-commit gate ──"
 

@@ -783,7 +783,8 @@ python3 configs/scripts/harness-usage.py --self-test
 # 3. Shell syntax check (hooks, scripts, installer). One file per `bash -n`: it
 #    parses only its first argument, so `bash -n a.sh b.sh` never reads b.sh.
 for f in configs/hooks/*.sh configs/hooks/lib/*.sh configs/codex-hooks/*.sh \
-         configs/scripts/*.sh install.sh; do
+         configs/kimi-hooks/*.sh configs/scripts/*.sh install.sh uninstall.sh \
+         .claude/pre-commit.sh; do
   bash -n "$f" || echo "FAILED: $f"
 done
 
@@ -939,10 +940,10 @@ python3 configs/scripts/check-sibling-facts.py
 
 # 11. Shellcheck (CI installs shellcheck; local may not). The `bash` prefix is
 #     required — checks.sh is mode 100644, so invoking it directly exits 126 —
-#     and the file list must match CI's, which is every hook and script plus
-#     the installer. The line here used to be neither: it ran one file, and
-#     did not run at all.
-bash configs/scripts/checks.sh shellcheck configs/hooks/*.sh configs/hooks/lib/*.sh configs/codex-hooks/*.sh configs/scripts/*.sh install.sh
+#     and the file list must match CI's, which is every hook, adapter and
+#     script plus install.sh, uninstall.sh and .claude/pre-commit.sh. The line
+#     here used to be neither: it ran one file, and did not run at all.
+bash configs/scripts/checks.sh shellcheck configs/hooks/*.sh configs/hooks/lib/*.sh configs/codex-hooks/*.sh configs/kimi-hooks/*.sh configs/scripts/*.sh install.sh uninstall.sh .claude/pre-commit.sh
 
 # 12. Every suite the `shell-tests` job runs — all 37, not a convenient subset
 #     (`loop` also runs test-loop-holdout.sh, and sources test-loop-env.sh, through
