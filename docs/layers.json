@@ -17,6 +17,7 @@
         "configs/scripts",
         "configs/agents",
         "configs/codex-agents",
+        "configs/codex-hooks",
         "configs/kimi-agents",
         "configs/kimi-hooks",
         "configs/output-styles",
