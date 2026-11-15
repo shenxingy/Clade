@@ -57,7 +57,7 @@ jobs:
       - name: Shell syntax check (hooks)
         run: |
           echo "Checking shell syntax..."
-          find configs/hooks/ configs/codex-hooks/ -name "*.sh" | while read f; do
+          find configs/hooks/ configs/codex-hooks/ configs/kimi-hooks/ -name "*.sh" | while read f; do
             bash -n "$f" && echo "OK: $f" || exit 1
           done
 
@@ -69,11 +69,13 @@ jobs:
 
       # Same script committer.sh runs locally before every commit — one gate,
       # shared local/CI (checks.sh skips silently when shellcheck is missing,
-      # so install it explicitly to keep this a hard gate here)
+      # so install it explicitly to keep this a hard gate here). The file list is
+      # by hand; tests/test-checks.sh fails when a tracked shell file outside
+      # tests/, orchestrator/ and docs/ is missing from it.
       - name: Shellcheck gate (shared checks.sh)
         run: |
           command -v shellcheck >/dev/null || sudo apt-get install -y shellcheck
-          bash configs/scripts/checks.sh shellcheck configs/hooks/*.sh configs/hooks/lib/*.sh configs/codex-hooks/*.sh configs/scripts/*.sh install.sh
+          bash configs/scripts/checks.sh shellcheck configs/hooks/*.sh configs/hooks/lib/*.sh configs/codex-hooks/*.sh configs/kimi-hooks/*.sh configs/scripts/*.sh install.sh uninstall.sh .claude/pre-commit.sh
 
       - name: Install test (dry run)
         run: |
