@@ -253,9 +253,25 @@ not a user value, and `isUnset` (`agent/task/printDefaults.ts`) counts it as
 unset when it equals the registered default, so print mode writes 0 over it.
 Any other positive value is kept. That is why the issue 4943 reporter's
 `KIMI_SUBAGENT_TIMEOUT_MS=7200000` alone still failed on Windows, while
-`600000` worked on Linux here on 2026-11-13. The mechanism was read from the
-2.6.2 bundle and the installed 2.6.0 binary, not run, and the two live runs also
-differ in platform.
+`600000` worked on Linux here on 2026-11-13.
+
+The trap was confirmed by running code on 2026-11-15, on kimi-code main
+`f082f04`, which already has the zero-timeout fix. Two cases were added to
+upstream's own `applyPrintModeConfigDefaults` tests in
+`test/app/config/config.test.ts`. Both came back 0:
+
+- `KIMI_SUBAGENT_TIMEOUT_MS=7200000`;
+- `KIMI_CODE_SWARM_TIMEOUT_MS=7200000`, whose registered default is also
+  7,200,000.
+
+The upstream suite's existing cases passed. So did two controls: a value one
+below the default, and `timeout_ms = 7200000` in `config.toml`. Upstream's
+tests say print defaults never override an environment override, but they
+only try non-default values.
+
+With the fix, 0 means no limit. So on main, either variable set to exactly
+7200000 gives no limit instead of two hours. A comment on issue 4943 explains
+this upstream.
 
 Print defaults also set `swarm.timeoutMs` to zero, but swarm does not have the
 same failure: `linkAttemptSignals` (`features/swarm/session/agentRunBatch.ts`)
