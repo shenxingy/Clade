@@ -3504,7 +3504,8 @@ was reconciled by hand the same day (12 of 32 files defective). Mostly condition
   PostToolUse is fire-and-forget, and only UserPromptSubmit injects context. Their
   output could be queued and delivered on the next prompt. Unbuilt: measure whether
   the path-scoped channel survives its own 2026-11-16 re-measure first.
-- [ ] 🔵 **Upstream: print-mode subagents time out at 0 ms.**
+- [ ] 🔵 **Upstream: print-mode subagents time out at 0 ms. Fixed on kimi-code
+  main, in no stable release yet.**
   `applyPrintModeConfigDefaults` fills `subagent.timeoutMs` with 0, and the Agent
   tool arms `setTimeout` with it. A 2026-11-12 search of MoonshotAI/kimi-code
   issues missed the existing report, #4943 (a Windows reproduction). So on
@@ -3512,8 +3513,30 @@ was reconciled by hand the same day (12 of 32 files defective). Mostly condition
   #4943 rather than a duplicate issue. The comment covers the cause, the Linux
   checks and a suggested fix. The related #3187 covers `bash_task_timeout_s`.
   Clade's workaround is `install.sh` writing `[subagent] timeout_ms = 7200000`
-  (`docs/kimi.md#subagents-under-kimi--p`). Retire it once Kimi treats 0 as no
-  limit; watch #4943 for that.
+  (`docs/kimi.md#subagents-under-kimi--p`).
+  - **Upstream state, checked 2026-11-15.**
+    - The reporter closed #4943 as completed. They confirmed the `config.toml`
+      value on Windows 11 x64 with 2.6.0.
+    - The fix is kimi-code PR #4868, merged to main on 2026-11-12. `SubagentTool`
+      arms no deadline when `timeoutMs` is 0. Print mode still writes 0, which now
+      means no limit.
+    - 2.6.0, 2.6.1 and 2.6.2 (npm `latest`) lack the `timeoutMs > 0` guard. This
+      was checked in each release tag's `agentTool.ts` and in the 2.6.2 npm bundle.
+    - The first build with the guard is npm `canary`
+      `2.7.0-canary.20261113055733-391d9e7`.
+    - The author's host runs 2.6.0.
+  - **Retire when** all three hold:
+    - a stable release carries the guard;
+    - the installed Kimi is at that release or later;
+    - a `kimi -p` Agent call succeeds with `subagent.timeout_ms` removed.
+  - **To check a release,** run `npm pack @moonshot-ai/kimi-code@<version>`, then
+    look for `timeoutMs > 0` just before `controller.abort("Timed out")` in
+    `package/dist/main.mjs`.
+  - **Removing the install step leaves the line in configs it already wrote.** Those
+    configs keep the two-hour cap under `kimi -p`. Nothing records which configs
+    Clade wrote, so the installer cannot tell its own line from a user's
+    `timeout_ms = 7200000`. The context policy's state file is the precedent for
+    such a record.
 - [ ] 🔵 **Hand-launched Kimi workers trip the correction detector.** A `kimi -p`
   worker started outside `run-tasks-parallel.sh` has no `CLADE_WORKER_TASK_ID`, so
   `correction-detector.sh` reads its brief as an owner prompt. On 2026-11-13 a
