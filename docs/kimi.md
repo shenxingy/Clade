@@ -193,6 +193,15 @@ defaults to 7,200,000 ms, but the explicit zero wins. `SubagentTool`
 zero-value guard. TOML's `timeout_ms` becomes `timeoutMs` through
 `snakeToCamel` (`app/config/toml.ts`).
 
+2.6.1 and 2.6.2 have the same code. Upstream fixed it on main on 2026-11-12, in
+[kimi-code PR 4868](https://github.com/MoonshotAI/kimi-code/pull/4868).
+`SubagentTool` now arms no deadline when `timeoutMs` is 0, so print mode's zero
+means no limit. As of 2026-11-15 no stable release includes the fix. The first
+build that does is the npm `canary` 2.7.0 of 2026-11-13. The reporter of
+[kimi-code issue 4943](https://github.com/MoonshotAI/kimi-code/issues/4943)
+confirmed the `config.toml` setting below on Windows 11 with 2.6.0. `TODO.md`
+records when the step can be retired.
+
 For an existing `~/.kimi-code/config.toml`, `install.sh` therefore writes
 Kimi's normal default explicitly:
 
@@ -205,9 +214,9 @@ It inserts the key under an existing bare or quoted `[subagent]` header, or
 appends the table when absent. Reinstalling is idempotent, and the step needs
 no Python. Because 7,200,000 ms is Kimi's own default, interactive behavior
 does not change. Print mode's zero is meant to mean **no limit**: swarm
-honours it and only `SubagentTool` does not, so this workaround caps a
-`kimi -p` subagent at two hours where print mode intends no limit; a larger
-`timeout_ms` raises the cap.
+honours it, and `SubagentTool` does not until the upstream fix. So this
+workaround caps a `kimi -p` subagent at two hours where print mode intends no
+limit; a larger `timeout_ms` raises the cap.
 
 The installer skips, with one message and no write:
 
@@ -237,6 +246,16 @@ Choose a different limit in that table, or override it for one print run:
 ```bash
 KIMI_SUBAGENT_TIMEOUT_MS=600000 kimi -p '…'
 ```
+
+The variable overrides the `config.toml` value at any positive number. Without a
+`config.toml` value, `7200000` does not work. A value from the environment is
+not a user value, and `isUnset` (`agent/task/printDefaults.ts`) counts it as
+unset when it equals the registered default, so print mode writes 0 over it.
+Any other positive value is kept. That is why the issue 4943 reporter's
+`KIMI_SUBAGENT_TIMEOUT_MS=7200000` alone still failed on Windows, while
+`600000` worked on Linux here on 2026-11-13. The mechanism was read from the
+2.6.2 bundle and the installed 2.6.0 binary, not run, and the two live runs also
+differ in platform.
 
 Print defaults also set `swarm.timeoutMs` to zero, but swarm does not have the
 same failure: `linkAttemptSignals` (`features/swarm/session/agentRunBatch.ts`)

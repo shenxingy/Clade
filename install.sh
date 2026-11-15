@@ -867,7 +867,9 @@ if [[ -d "$KIMI_DIR" ]]; then
     # resolveSubagentTimeoutMs's own 7200000 default keeps interactive behavior
     # unchanged while preventing the print-mode zero. Swarm is not changed:
     # features/swarm/session/agentRunBatch.ts treats timeout <= 0 as no timer.
-    # retire-when: Kimi's Agent tool treats 0 as no limit, or printDefaults stops writing 0.
+    # retire-when: the installed stable Kimi's Agent tool treats 0 as no limit
+    # (fixed upstream by kimi-code PR 4868; TODO.md tracks which release ships it),
+    # or printDefaults stops writing 0.
     _kimi_subagent_timeout_commit() {
       local candidate="$1" problem
       # Test-only corruption controls for the tomllib guard; inert in normal installs.
