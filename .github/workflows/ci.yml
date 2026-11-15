@@ -57,7 +57,7 @@ jobs:
       - name: Shell syntax check (hooks)
         run: |
           echo "Checking shell syntax..."
-          find configs/hooks/ -name "*.sh" | while read f; do
+          find configs/hooks/ configs/codex-hooks/ -name "*.sh" | while read f; do
             bash -n "$f" && echo "OK: $f" || exit 1
           done
 
@@ -73,7 +73,7 @@ jobs:
       - name: Shellcheck gate (shared checks.sh)
         run: |
           command -v shellcheck >/dev/null || sudo apt-get install -y shellcheck
-          bash configs/scripts/checks.sh shellcheck configs/hooks/*.sh configs/hooks/lib/*.sh configs/scripts/*.sh install.sh
+          bash configs/scripts/checks.sh shellcheck configs/hooks/*.sh configs/hooks/lib/*.sh configs/codex-hooks/*.sh configs/scripts/*.sh install.sh
 
       - name: Install test (dry run)
         run: |
@@ -464,6 +464,12 @@ jobs:
       # correction loop, once-per-session context, and installer migration.
       - name: Run Kimi hook compatibility tests
         run: bash tests/test-kimi-hooks.sh
+
+      # Codex 0.169.0 hooks.json append/trust-index preservation and the exact
+      # installed adapter commands: apply_patch fan-out, deny/context schemas,
+      # correction state, Stop continuation, cleanup, sync and guard mutations.
+      - name: Run Codex hook compatibility tests
+        run: bash tests/test-codex-hooks.sh
 
       # Project auto-memory reaches the sync store: a real memory dir is
       # adopted (verified copy, link back, commit), store entries link at

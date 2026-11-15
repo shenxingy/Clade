@@ -68,7 +68,8 @@ codex plugin marketplace add shenxingy/Clade
 codex plugin add clade@clade
 ```
 
-在你要处理的项目中新建 Codex thread，在 Codex 聊天中运行 `/hooks`，检查 Clade 的两个 hook 定义后再信任。
+在你要处理的项目中新建 Codex thread，在 Codex 聊天中运行 `/hooks`，检查 plugin 的两个 hook 定义后再信任。
+如果还运行了 `./install.sh`，也要检查它添加的十个 portable user-hook wiring；安装器不会修改 hook 信任状态。
 然后用 `$clade:verify` 试一个小任务。维护者可以用下面的命令检查生成物：
 
 ```bash

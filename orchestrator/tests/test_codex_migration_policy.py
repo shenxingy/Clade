@@ -96,3 +96,17 @@ def test_green_is_native_and_bundles_the_exact_local_ci_runner() -> None:
     )
     assert result.returncode == 0, result.stderr
     assert "--repo" in result.stdout
+
+
+def test_codex_hooks_surface_includes_the_portable_user_hook_bridge() -> None:
+    surface = next(
+        surface
+        for surface in _migration()["surfaces"]
+        if surface["id"] == "hooks"
+    )
+    assert surface["status"] == "native-subset"
+    assert surface["codex_target"] == "configs/codex-hooks/decision-to-codex.sh"
+    assert (ROOT / surface["codex_target"]).is_file()
+    assert "ten reviewed portable command-hook wirings" in surface["reason"]
+    assert "~/.codex/hooks.json" in surface["reason"]
+    assert "Only session context" not in surface["reason"]

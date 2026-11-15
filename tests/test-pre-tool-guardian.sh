@@ -139,8 +139,9 @@ assert_verdict() {
 
 # assert_parity <label> <command>
 #
-# configs/codex-migration.json records the two guardians as a parity pair and
-# nothing had ever fed one command to both. They had drifted: the shell hook
+# configs/codex-migration.json keeps destructive-command protection plugin-owned;
+# install.sh must not wire the shell guardian again. Nothing had ever fed one
+# command to both guardians. They had drifted: the shell hook
 # blocked a recursive delete of /home, /etc, /usr, /var, /sys, /proc and /boot
 # and the Python mirror allowed every one of them. Aligning the regex once
 # would drift again; this is the check that keeps them honest.
