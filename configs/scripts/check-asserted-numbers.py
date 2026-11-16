@@ -82,13 +82,14 @@ BASELINE: set[tuple[str, str]] = {
 }
 
 # What actually re-derives a number, and where. Everything else is a literal.
+# The detector score is stated in the orchestrator's import DAG, which moved
+# from CLAUDE.md to docs/orchestrator-architecture.md on 2026-11-16.
+_DETECTOR_SCORE_TEST = ("orchestrator/tests/test_judge_diversity.py"
+                        "::test_documented_detector_score_is_derived")
 DERIVED_BY = {
-    ("CLAUDE.md", "recall"): "orchestrator/tests/test_judge_diversity.py"
-                             "::test_documented_detector_score_is_derived",
-    ("CLAUDE.md", "false-alarms"): "orchestrator/tests/test_judge_diversity.py"
-                                   "::test_documented_detector_score_is_derived",
-    ("CLAUDE.md", "corpus-size"): "orchestrator/tests/test_judge_diversity.py"
-                                  "::test_documented_detector_score_is_derived",
+    ("docs/orchestrator-architecture.md", "recall"): _DETECTOR_SCORE_TEST,
+    ("docs/orchestrator-architecture.md", "false-alarms"): _DETECTOR_SCORE_TEST,
+    ("docs/orchestrator-architecture.md", "corpus-size"): _DETECTOR_SCORE_TEST,
 }
 
 

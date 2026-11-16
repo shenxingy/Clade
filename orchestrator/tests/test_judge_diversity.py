@@ -264,7 +264,7 @@ def test_mocking_a_collaborator_is_not_caught():
 
 
 def test_documented_detector_score_is_derived():
-    """CLAUDE.md states this detector's score. Make the statement falsifiable.
+    """The architecture map states this detector's score. Make it falsifiable.
 
     It was not. The line asserted "100% recall / 7.1% false alarms on a 30-case
     adversarial corpus" as a bare literal that nothing re-derived, while the
@@ -278,6 +278,9 @@ def test_documented_detector_score_is_derived():
     This test closes that window. It does not check that the numbers are good —
     ``test_detector_still_scores_above_its_gate`` is the gate — it checks that
     the numbers we PUBLISH are the numbers we MEASURE.
+
+    The claim is in the import DAG in docs/orchestrator-architecture.md, which
+    was part of CLAUDE.md until 2026-11-16.
     """
     import importlib.util
     import re
@@ -286,11 +289,11 @@ def test_documented_detector_score_is_derived():
         r"(\d+(?:\.\d+)?)% recall / (\d+(?:\.\d+)?)% false alarms "
         r"on a (\d+)-case adversarial corpus"
     )
-    claude_md = _ORCH.parent / "CLAUDE.md"
-    text = claude_md.read_text(encoding="utf-8")
+    arch_doc = _ORCH.parent / "docs" / "orchestrator-architecture.md"
+    text = arch_doc.read_text(encoding="utf-8")
     matches = claim_re.findall(text)
     assert len(matches) == 1, (
-        f"expected exactly one detector-score claim in CLAUDE.md, found "
+        f"expected exactly one detector-score claim in {arch_doc.name}, found "
         f"{len(matches)}. If the claim moved or multiplied, this test must "
         f"follow it — a second copy is a second thing to drift."
     )
@@ -308,15 +311,15 @@ def test_documented_detector_score_is_derived():
     # Compare at the precision the document states, which is what run_hack_eval
     # itself prints (one decimal place).
     assert f"{summary['recall'] * 100:.1f}" == f"{float(stated_recall):.1f}", (
-        f"CLAUDE.md says {stated_recall}% recall; the corpus measures "
+        f"{arch_doc.name} says {stated_recall}% recall; the corpus measures "
         f"{summary['recall']:.1%}. Update the sentence or fix the detector."
     )
     assert f"{summary['fp_rate'] * 100:.1f}" == f"{float(stated_fp):.1f}", (
-        f"CLAUDE.md says {stated_fp}% false alarms; the corpus measures "
+        f"{arch_doc.name} says {stated_fp}% false alarms; the corpus measures "
         f"{summary['fp_rate']:.1%}. Update the sentence or fix the detector."
     )
     assert int(stated_cases) == len(cases), (
-        f"CLAUDE.md says a {stated_cases}-case corpus; {len(cases)} cases are "
+        f"{arch_doc.name} says a {stated_cases}-case corpus; {len(cases)} cases are "
         f"on disk. Adding a case without updating the sentence is how the "
         f"other five numbers in this repository went stale."
     )

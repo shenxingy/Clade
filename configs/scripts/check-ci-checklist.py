@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Assert CLAUDE.md's pre-commit checklist covers every gate CI enforces.
+"""Assert docs/ci-gates.md's pre-commit checklist covers every gate CI enforces.
 
-`CLAUDE.md` tells a contributor to run a numbered list "to ensure CI will
-pass". Nothing checked that claim, and it has now drifted twice:
+`docs/ci-gates.md` (part of CLAUDE.md until 2026-11-16) tells a contributor
+to run a numbered list "to ensure CI will pass". Nothing checked that claim,
+and it has now drifted twice:
 
   2026-08-22 (`df802c3`)  the list covered 4 of CI's 7 gates
   2026-08-29              7 of 11 syntax-check gates, 0 of 17 shell suites,
@@ -32,7 +33,8 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 WORKFLOW_DIR = REPO_ROOT / ".github" / "workflows"
-CLAUDE_MD = REPO_ROOT / "CLAUDE.md"
+CHECKLIST_DOC = REPO_ROOT / "docs" / "ci-gates.md"
+CHECKLIST_REL = "docs/ci-gates.md"
 CHECKLIST_HEADING = "## CI (GitHub Actions)"
 
 # Workflows that cannot run on a contributor's machine, so the checklist has
@@ -113,10 +115,10 @@ def ci_artefacts() -> dict[str, set[str]]:
 
 
 def checklist_artefacts() -> set[str]:
-    text = CLAUDE_MD.read_text(encoding="utf-8")
+    text = CHECKLIST_DOC.read_text(encoding="utf-8")
     start = text.find(CHECKLIST_HEADING)
     if start == -1:
-        print(f"check-ci-checklist: '{CHECKLIST_HEADING}' section missing from CLAUDE.md",
+        print(f"check-ci-checklist: '{CHECKLIST_HEADING}' section missing from {CHECKLIST_REL}",
               file=sys.stderr)
         raise SystemExit(1)
     end = text.find("\n## ", start + len(CHECKLIST_HEADING))
@@ -141,7 +143,7 @@ INTERPRETERS = {"bash", "sh", "zsh", "python", "python3", "node", "env", "sudo"}
 
 def unrunnable_commands() -> list[str]:
     """Documented lines that invoke a repo file directly without an interpreter."""
-    text = CLAUDE_MD.read_text(encoding="utf-8")
+    text = CHECKLIST_DOC.read_text(encoding="utf-8")
     start = text.find(CHECKLIST_HEADING)
     if start == -1:
         return []
@@ -173,7 +175,7 @@ def unrunnable_commands() -> list[str]:
 
 
 def prose_counts() -> list[str]:
-    """The two counts CLAUDE.md states in prose about ci.yml's own jobs.
+    """The two counts docs/ci-gates.md states in prose about ci.yml's own jobs.
 
     Both had drifted by 2026-09-02 — "18 suites" against a list of 19 two lines
     below it, and "11 gates" against 17 in the workflow — and both are exactly
@@ -186,7 +188,7 @@ def prose_counts() -> list[str]:
     if not workflow.exists():
         return problems
     text = workflow.read_text(encoding="utf-8")
-    checklist = CLAUDE_MD.read_text(encoding="utf-8")
+    checklist = CHECKLIST_DOC.read_text(encoding="utf-8")
 
     def _job(name: str) -> str:
         if f"\n  {name}:" not in text:
@@ -213,7 +215,7 @@ def prose_counts() -> list[str]:
             continue
         if int(found.group(1)) != count:
             problems.append(
-                f"CLAUDE.md says {found.group(1)} {what}; ci.yml has {count}"
+                f"{CHECKLIST_REL} says {found.group(1)} {what}; ci.yml has {count}"
             )
     return problems
 
@@ -222,7 +224,7 @@ def main() -> int:
     drifted = prose_counts()
     if drifted:
         print(
-            "check-ci-checklist: CLAUDE.md states counts about ci.yml that ci.yml "
+            f"check-ci-checklist: {CHECKLIST_REL} states counts about ci.yml that ci.yml "
             "contradicts — these are numbers a reader trusts and never rechecks:",
             file=sys.stderr,
         )
@@ -233,7 +235,7 @@ def main() -> int:
     unrunnable = unrunnable_commands()
     if unrunnable:
         print(
-            "check-ci-checklist: the CLAUDE.md pre-commit checklist documents "
+            f"check-ci-checklist: the {CHECKLIST_REL} pre-commit checklist documents "
             "commands that cannot run:",
             file=sys.stderr,
         )
@@ -252,13 +254,13 @@ def main() -> int:
     if not missing:
         total = len({a for group in enforced.values() for a in group})
         print(
-            f"check-ci-checklist: CLAUDE.md covers all {total} CI-enforced gates, "
+            f"check-ci-checklist: {CHECKLIST_REL} covers all {total} CI-enforced gates, "
             "and every documented command is runnable ✓"
         )
         return 0
 
     print(
-        "check-ci-checklist: CI enforces gates the CLAUDE.md pre-commit checklist "
+        f"check-ci-checklist: CI enforces gates the {CHECKLIST_REL} pre-commit checklist "
         "does not mention, so a local run can be green against a checklist that "
         "does not cover the build:",
         file=sys.stderr,
@@ -266,7 +268,7 @@ def main() -> int:
     for where, artefact in missing:
         print(f"  {artefact}  (enforced by {where})", file=sys.stderr)
     print(
-        f"\nAdd them under '{CHECKLIST_HEADING}' in CLAUDE.md, in the same commit "
+        f"\nAdd them under '{CHECKLIST_HEADING}' in {CHECKLIST_REL}, in the same commit "
         "as the CI change.",
         file=sys.stderr,
     )

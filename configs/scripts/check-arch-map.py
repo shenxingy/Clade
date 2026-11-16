@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
-"""Fail when an orchestrator module is missing from the CLAUDE.md architecture map.
+"""Fail when an orchestrator module is missing from the architecture map.
 
-CLAUDE.md's "Orchestrator Layer" import DAG and Key File Map are how an agent
-orients before touching orchestrator/. A module that exists but is absent from
-that map is worse than undocumented: the map reads as complete, so the agent
-concludes the module does not exist. This gate keeps the map honest by making
-"add a module" and "describe it" the same commit.
+The map is docs/orchestrator-architecture.md: the "Orchestrator Layer" import
+DAG and the Key File Map, which lived in CLAUDE.md until 2026-11-16. It is how
+an agent orients before touching orchestrator/. A module that exists but is
+absent from that map is worse than undocumented: the map reads as complete, so
+the agent concludes the module does not exist. This gate keeps the map honest
+by making "add a module" and "describe it" the same commit.
 
 Usage:
-  check-arch-map.py [--root REPO_ROOT] [--doc CLAUDE.md] [--dir orchestrator]
+  check-arch-map.py [--root REPO_ROOT] [--doc docs/orchestrator-architecture.md] [--dir orchestrator]
 """
 from __future__ import annotations
 
@@ -35,7 +36,8 @@ def orchestrator_modules(base: Path) -> list[Path]:
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--root", default=".", help="Repo root (default: cwd)")
-    ap.add_argument("--doc", default="CLAUDE.md", help="Architecture doc, relative to --root")
+    ap.add_argument("--doc", default="docs/orchestrator-architecture.md",
+                    help="Architecture doc, relative to --root")
     ap.add_argument("--dir", default="orchestrator", help="Module dir, relative to --root")
     args = ap.parse_args()
 
