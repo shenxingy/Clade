@@ -221,6 +221,11 @@ def prose_counts() -> list[str]:
 
 
 def main() -> int:
+    if not CHECKLIST_DOC.is_file():
+        print(f"check-ci-checklist: {CHECKLIST_REL} is missing, so CI's gates cannot "
+              "be checked against it", file=sys.stderr)
+        return 1
+
     drifted = prose_counts()
     if drifted:
         print(

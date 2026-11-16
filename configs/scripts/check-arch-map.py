@@ -8,6 +8,10 @@ absent from that map is worse than undocumented: the map reads as complete, so
 the agent concludes the module does not exist. This gate keeps the map honest
 by making "add a module" and "describe it" the same commit.
 
+A missing map fails whenever the module directory exists. It used to be a
+silent no-op, which cost nothing while the map was CLAUDE.md itself; a renamed
+docs/ file would have switched the gate off with CI still green.
+
 Usage:
   check-arch-map.py [--root REPO_ROOT] [--doc docs/orchestrator-architecture.md] [--dir orchestrator]
 """
@@ -45,12 +49,14 @@ def main() -> int:
     doc_path = root / args.doc
     base = root / args.dir
 
-    if not doc_path.exists():
-        print(f"check-arch-map: no {args.doc} at {root} (silent no-op)", file=sys.stderr)
-        return 0
     if not base.is_dir():
         print(f"check-arch-map: no {args.dir}/ at {root} (silent no-op)", file=sys.stderr)
         return 0
+    if not doc_path.is_file():
+        print(f"check-arch-map: {args.dir}/ exists but {args.doc} does not, so no module "
+              f"can be checked. Restore the map, or pass --doc with its new path.",
+              file=sys.stderr)
+        return 1
 
     doc = doc_path.read_text(encoding="utf-8")
     missing = []
