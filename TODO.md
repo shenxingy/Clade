@@ -3669,8 +3669,10 @@ did not act on.
   `DISABLE_AUTOUPDATER=1` is set in both profiles' settings, so the pin is
   deliberate. The pass found three reasons to lift it:
   - 2.1.317 asks before a web or shell tool call sends the account email.
-    Issue 107757 (1,616 HN points) reports users' emails reaching third parties in
-    User-Agent headers; 2.1.323 and 2.1.325 narrowed and widened the check.
+    Claude Code issue 107757 (1,616 HN points) reports users' emails reaching
+    third parties in User-Agent headers. 2.1.323 refuses a shell command that
+    holds the email and a User-Agent, and 2.1.325 extends the check to scripts,
+    file writes, web fetches and MCP calls.
   - 2.1.318 adds `CLAUDE_CODE_DISABLE_AGENT_PROGRESS_SUMMARIES`. A third-party gist
     (flamerix-ai, tested on 2.1.257–2.1.317) estimates the background-agent status
     summaries at ~15–20% of tokens. Not measured here: those requests are not
@@ -3678,18 +3680,6 @@ did not act on.
   - 2.1.323 passes `agent_id` to compaction hooks, which the fix on
     `radar/2026-11-16` needs. That branch also queues four re-checks for after the
     upgrade.
-- [ ] 🟡 **Owner: check the Mac for the backdoored editor extension.** Claude Code
-  for VS Code 2.1.312 and 2.1.313 on the Cursor marketplace dropped an SSH backdoor
-  (Phorion, 1,014 HN points); Cursor removed both. aries, castor and lynx have no
-  Claude Code editor extension (checked 2026-11-16). The Mac needs Touch ID, so it
-  was not checked: `ls ~/.cursor/extensions ~/.vscode/extensions | grep -i anthropic.claude-code`.
-- [ ] 🔵 **scamai repositories commit `.claude/settings.local.json`.**
-  - Found by `gh search code`, 2026-11-16: 9 files across 5 private repositories.
-  - Claude Code's "Don't ask again" writes the whole command into that file. Apiiro
-    found 1,122 public files leaking secrets that way (627 HN points).
-  - A regex scan for tokens, keys, passwords and credentialed URLs found none in
-    these 9. The scan fires on planted fakes.
-  - Those repositories are the owner's call. Clade could refuse to stage the file.
 - [ ] 🔵 **The attention pass reads Hacker News only.** Ranking new repositories by
   GitHub stars is the other fame signal. It is not wired, although `github.com` is
   already on the cron's WebFetch allowlist. Measure what it adds over Hacker News

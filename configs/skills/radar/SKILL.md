@@ -236,15 +236,14 @@ a post explaining why a paradigm broke names its successor.
 the field is reading this month may carry a name that no probe contains. So
 also fetch what was upvoted, ranked by points.
 
-Measured 2026-11-16 on 42 Hacker News stories from the 30 days before, all
-at 157 points or more, hand-filtered to coding agents, their tools and security,
-and model releases:
+On 2026-11-16, Hacker News had ranked three Claude Code security reports at
+1,616, 1,014 and 627 points. That morning's probe sweep had not surfaced any of
+them. The ledger held 8 of 40 high-attention coding-agent stories from the
+30 days before. The list and its limits are in
+`docs/research/2026-11-16-attention-pass.md`.
 
-- The ledger held 8 of the 42.
-- That morning's probe sweep had not surfaced three Claude Code security
-  reports, at 1,616, 1,014 and 627 points.
-
-For each of `agent`, `Claude`, `Codex`, `LLM` and `MCP`, WebFetch:
+For each of `agent`, `Claude`, `Codex`, `LLM`, `MCP`, `OpenAI`, `Anthropic` and
+`Gemini`, WebFetch:
 
     https://hn.algolia.com/api/v1/search_by_date?query=<q>&tags=story&numericFilters=points%3E150&hitsPerPage=50&attributesToRetrieve=title,url,points,num_comments,created_at&attributesToHighlight=none
 
@@ -253,9 +252,15 @@ result as follows:
 
 - **The window.** `search_by_date` returns the newest stories above the points
   floor, so no timestamp has to be computed. Drop anything older than 30 days.
-- **The noise.** The search is typo-tolerant: `MCP` also matches "map", and
-  `Codex` matches "code". Filter by topic and keep stories about coding agents,
-  their harnesses, tools and security, and model releases.
+  If a query's 50th hit is still inside the window, fetch the next page too
+  (add `&page=1`). `Codex` needed one on 2026-11-16.
+- **The noise.** Most hits are general technology news, and the search is
+  typo-tolerant: `MCP` also matches "map", and `Codex` matches "code". Keep
+  the typo tolerance, because it is how stories about code and coders arrive.
+  Turning it off lost 5 of the 40. Filter by topic instead:
+  - keep stories about coding agents, their harnesses, tools and security, and
+    model releases;
+  - count each incident once.
 - **What to do with the rest.** Send each kept story through §2–§4.
 - **The coverage figure.** Report the attention recall: how many of the kept
   stories the ledger already held. A miss says something about the probes, not
