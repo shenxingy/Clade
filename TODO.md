@@ -3673,6 +3673,10 @@ did not act on.
     third parties in User-Agent headers. 2.1.323 refuses a shell command that
     holds the email and a User-Agent, and 2.1.325 extends the check to scripts,
     file writes, web fetches and MCP calls.
+    It has happened on the author's host. A one-off scan of 7,575 transcripts
+    from the 30 days to 2026-11-16 found two curl calls that put the account
+    email into the User-Agent, both on 2026-10-30. Each went to a public site
+    whose access policy asks for a contact address. Neither call asked first.
   - 2.1.318 adds `CLAUDE_CODE_DISABLE_AGENT_PROGRESS_SUMMARIES`. A third-party gist
     (flamerix-ai, tested on 2.1.257–2.1.317) estimates the background-agent status
     summaries at ~15–20% of tokens. Not measured here: those requests are not
