@@ -15,6 +15,8 @@
 #   secret-scanner.sh       fires on a key-shaped string; injects a handling
 #                           note and no rotation advice (the nag drew two
 #                           corrections in four days)
+#   post-tool-use-failure.sh  the recovery hint follows the tool's `error`, and
+#                           reaches each thread once, not on every failing command
 #   settings-hooks.json     the wiring that makes all three reachable
 #   (the `# exists-for: … · retire-when: …` line every hook carries is checked
 #    in tests/test-hook-provenance.sh — split out when this file would have
@@ -1382,6 +1384,65 @@ else
   fi
 fi
 rm -rf "$MS_HOME"
+
+# ─── post-tool-use-failure: the hint follows the error, not the tool ──
+# Until 2026-11-09 every Read failure got "File not found … use Glob", so a
+# Read refused for its size was sent looking for a file that exists, with a
+# tool a restricted session may lack. Half the cases below are red against
+# that version; the rest pin what it already got right.
+section "post-tool-use-failure.sh answers the error it was given"
+PTF_HOOK="$REPO_ROOT/configs/hooks/post-tool-use-failure.sh"
+PTF_FILE="$TMP_ROOT/ptf-big.md"; printf 'line\n' > "$PTF_FILE"
+# ptf <tool> <file_path> <error> → the additionalContext the hook returns
+ptf() {
+  jq -n --arg t "$1" --arg f "$2" --arg e "$3" \
+    '{hook_event_name:"PostToolUseFailure",tool_name:$t,tool_input:{file_path:$f},error:$e,is_interrupt:false}' \
+    | (cd "$TMP_ROOT" && bash "$PTF_HOOK") 2>/dev/null \
+    | jq -r '.hookSpecificOutput.additionalContext // empty' 2>/dev/null
+}
+PTF_OUT=$(ptf Read "$PTF_FILE" "File content (29539 tokens) exceeds maximum allowed tokens (25000). Please use offset and limit parameters to read specific portions of the file.")
+assert_contains "$PTF_OUT" "offset and limit" "Read over the token limit: told to read it in parts"
+assert_not_contains "$PTF_OUT" "File not found" "and not told the file is missing"
+PTF_OUT=$(ptf Read "$TMP_ROOT/nope/missing.md" "File does not exist. Note: your current working directory is /x.")
+assert_contains "$PTF_OUT" "File not found: $TMP_ROOT/nope/missing.md" "Read of a missing file: told it is missing"
+assert_contains "$PTF_OUT" "find . -name 'missing.md' through Bash" "and given a search that needs no Glob tool"
+PTF_OUT=$(ptf Read "$TMP_ROOT" "EISDIR: illegal operation on a directory, read")
+assert_contains "$PTF_OUT" "is a directory, not a file" "Read of a directory: told so"
+PTF_OUT=$(ptf Read "$PTF_FILE" "")
+assert_contains "$PTF_OUT" "File not found" "no error field (an older Claude Code): the not-found hint, as before"
+PTF_OUT=$(ptf Read "$PTF_FILE" "Some error this hook has never seen")
+assert_eq "$PTF_OUT" "" "an unrecognised Read error gets no hint rather than a wrong one"
+PTF_OUT=$(ptf Edit "$PTF_FILE" "File has not been read yet. Read it first before writing to it.")
+assert_contains "$PTF_OUT" "Read $PTF_FILE (again), then retry" "Edit before Read: told to read first"
+assert_not_contains "$PTF_OUT" "old_string not found" "and not blamed on old_string"
+PTF_OUT=$(ptf Edit "$PTF_FILE" "Found 3 matches of the string to replace, but replace_all is false.")
+assert_contains "$PTF_OUT" "occurs more than once" "Edit with an ambiguous old_string: told to make it unique"
+PTF_OUT=$(ptf Edit "$PTF_FILE" "String to replace not found in file.")
+assert_contains "$PTF_OUT" "old_string not found verbatim" "Edit whose old_string is absent: the existing hint"
+PTF_OUT=$(ptf Edit "$TMP_ROOT/nope/missing.md" "File does not exist.")
+assert_contains "$PTF_OUT" "File not found or path invalid" "Edit of a missing file: told the path is wrong"
+
+# ─── post-tool-use-failure: each hint once per thread ────────────────
+# 845 of the 1,788 Bash hints delivered 2026-10-20 → 10-26 repeated, byte for
+# byte, one the same thread already had. A repeat is dropped; a subagent, a
+# changed hint and a call without session_id still get theirs.
+section "post-tool-use-failure says each hint once per thread"
+FAIL_HOOK="$REPO_ROOT/configs/hooks/post-tool-use-failure.sh"
+FH_RT="$TMP_ROOT/fh-rt"; FH_CWD="$TMP_ROOT/fh-cwd"; mkdir -p "$FH_CWD"
+fh() { (cd "$FH_CWD" && printf '%s' "$1" | CLADE_RUNTIME_DIR="$FH_RT" bash "$FAIL_HOOK" 2>/dev/null); }
+FH_BASH='{"tool_name":"Bash","tool_input":{"command":"false"},"session_id":"'"$SID_A"'"}'
+FH_1=$(fh "$FH_BASH"); FH_2=$(fh "$FH_BASH")
+assert_eq "$(jq -r '.hookSpecificOutput.hookEventName' <<< "$FH_1" 2>/dev/null)" "PostToolUseFailure" \
+  "the first Bash failure gets its hint"
+assert_eq "$FH_2" "" "the identical hint is not sent to the same thread again"
+FH_SUB=$(fh '{"tool_name":"Bash","tool_input":{"command":"false"},"session_id":"'"$SID_A"'","agent_id":"agent-x"}')
+assert_contains "$FH_SUB" "Bash failure recovery hints" "a subagent has its own context and still gets it"
+fh '{"tool_name":"Read","tool_input":{"file_path":"/nope/a.py"},"session_id":"'"$SID_A"'"}' >/dev/null
+FH_B=$(fh '{"tool_name":"Read","tool_input":{"file_path":"/nope/b.py"},"session_id":"'"$SID_A"'"}')
+assert_contains "$FH_B" "/nope/b.py" "a hint that changed is sent"
+fh '{"tool_name":"Bash","tool_input":{"command":"false"}}' >/dev/null
+FH_N=$(fh '{"tool_name":"Bash","tool_input":{"command":"false"}}')
+assert_contains "$FH_N" "Bash failure recovery hints" "without a session_id it fails open and repeats"
 
 # ─── Summary ─────────────────────────────────────────────────────────
 
