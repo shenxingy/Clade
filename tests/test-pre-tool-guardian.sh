@@ -952,9 +952,11 @@ assert_verdict "another hyphenated basename" \
   'rm -f /home/alexshen/x-ray.log'                                            ALLOW
 assert_verdict "hyphenated dir name does not supply -r" \
   'rm -f /home/alexshen/my-project/notes.txt'                                 ALLOW
-# The other direction is what the guard is for, and it must not move.
-assert_verdict "a real -r on the same path still blocks" \
-  'rm -rf /home/alexshen/notes/my-report.txt'                                 BLOCK
+# The other direction is what the guard is for, and it must not move. The path
+# is one level below home: two levels down is no longer catastrophic (the
+# depth section below), which would leave this case testing nothing about -r.
+assert_verdict "a real -r on a home-level path still blocks" \
+  'rm -rf /home/alexshen/my-report.txt'                                       BLOCK
 assert_verdict "options after the operand still count (GNU permutes)" \
   'rm /home/alexshen/notes -rf'                                               BLOCK
 assert_verdict "long options count too" \
@@ -983,7 +985,7 @@ assert_verdict "recursive delete under a substitution is still refused" \
 section "Parity — flag parsing agrees across both guardians"
 assert_parity "hyphenated filename, -f only"  'rm -f /home/alexshen/notes/my-report.txt'
 assert_parity "the radar reproduction"        'rm -f /home/alexshen/.claude/research/.radar-write-probe'
-assert_parity "real -r on the same path"      'rm -rf /home/alexshen/notes/my-report.txt'
+assert_parity "real -r on a home-level path"  'rm -rf /home/alexshen/my-report.txt'
 assert_parity "options after the operand"     'rm /home/alexshen/notes -rf'
 assert_parity "long options"                  'rm --recursive --force /home/alexshen/notes'
 assert_parity "dash token after --"           'rm -f -- /home/alexshen/-r-file.txt'
@@ -1015,6 +1017,133 @@ if [[ "$(py_verdict 'rm -rf $UNSET_DIR rm')" == REWRITE* ]]; then
 else printf "  ${RED}✗${NC} codex: an unresolved target, then rm\n"; case_failed; fi
 assert_both "control: a non-recursive rm with a later rm word" \
   'rm -f /home/alexshen/notes/a.txt /tmp/rm/b'                                          ALLOW
+# ─── Depth: the rule is for homes and system trees, not all below them ─
+#
+# The text match was depth-blind: `/home\b`, `/var\b` and `~/` matched at ANY
+# depth, so recursive deletes of scratch under /var/tmp, of worktrees under
+# ~/projects/worktrees and of deep scratch under a home directory were refused
+# as catastrophic. Measured 2026-11-09 on one host's transcripts (30 days, every
+# profile): ~47 sessions carry the refusal, ~20 of its targets under /var/tmp,
+# one a real home directory. configs/hooks/lib/rm-targets.sh now exempts a
+# statement only when EVERY operand is a literal path it proves deep.
+#
+# Each case runs through BOTH guardians with the verdict asserted (assert_both),
+# because parity alone passes when both are wrong. Every ALLOW in the second
+# section was BLOCK on both before the change (except the braced-HOME one,
+# which the shell hook did not match before 2026-11-17). Every BLOCK pins
+# what must not move.
+section "Catastrophic rm — depth: still refused"
+assert_both "bare tilde"                          'rm -rf ~'                            BLOCK
+assert_both "tilde slash"                         'rm -rf ~/'                           BLOCK
+assert_both "everything in home"                  'rm -rf ~/*'                          BLOCK
+assert_both "another user's home by tilde"        'rm -rf ~yan'                         BLOCK
+assert_both "another user's home by path"         'rm -rf /home/yan'                    BLOCK
+assert_both "/home itself"                        'rm -rf /home'                        BLOCK
+assert_both "every home"                          'rm -rf /home/*'                      BLOCK
+assert_both "a directory directly in home"        'rm -rf /home/alexshen/projects'      BLOCK
+assert_both "its contents"                        'rm -rf ~/projects/*'                 BLOCK
+assert_both "its contents, trailing slash"        'rm -rf ~/projects/'                  BLOCK
+assert_both "a dot-directory's child"             'rm -rf ~/.claude/projects'           BLOCK
+assert_both "quoted braced HOME, one level"       'rm -rf "${HOME}/projects"'           BLOCK
+assert_both ".. climbs back to home"              'rm -rf ~/projects/x/../..'           BLOCK
+assert_both ".. out of /var/tmp"                  'rm -rf /var/tmp/x/../../lib'         BLOCK
+assert_both "/./ does not hide the depth"         'rm -rf /home/./alexshen'             BLOCK
+assert_both "doubled slashes do not either"       'rm -rf /home//alexshen'              BLOCK
+assert_both "a glob across home's top level"      'rm -rf ~/*/.git'                     BLOCK
+assert_both "a glob for the user"                 'rm -rf /home/*/projects/x'           BLOCK
+assert_both "a variable inside a home path"       'rm -rf ~/projects/$X'                BLOCK
+assert_both "a deep operand does not excuse a shallow one" \
+  'rm -rf /var/tmp/scratch ~/projects'                                                  BLOCK
+assert_both "/var/tmp itself"                     'rm -rf /var/tmp'                     BLOCK
+assert_both "everything in /var/tmp"              'rm -rf /var/tmp/*'                   BLOCK
+assert_both "/var outside /var/tmp, any depth"    'rm -rf /var/lib/docker/volumes/x'    BLOCK
+assert_both "/etc at any depth"                   'rm -rf /etc/nginx/sites-enabled/x'   BLOCK
+assert_both "find over home keeps the text verdict" \
+  'find ~ -name x -exec rm -rf {} +'                                                    BLOCK
+assert_both "a relative path keeps the text verdict" \
+  'rm -rf ../../home/x/y'                                                               BLOCK
+assert_both "a glob at the filesystem top"        'rm -rf /*/x'                         BLOCK
+# Bypasses found in review, before the exemption shipped. Each was ALLOW on
+# its first cut: the operands were read from after the LAST word "rm", a brace
+# or a glued redirect was judged as part of a path, and a glob segment could
+# match `..`.
+assert_both "a later path holding the word rm"    'rm -rf ~ /tmp/rm/a/b'                BLOCK
+assert_both "a later word rm after a home"        'rm -rf /home/yan /var/tmp/x/rm/y'    BLOCK
+assert_both "a brace that expands to .."          'rm -rf ~/x/{..,..}'                  BLOCK
+assert_both "a brace list naming home's top"      'rm -rf ~/{projects,x/y}'             BLOCK
+assert_both "a glued redirect beside a deep path" 'rm -rf ~>/dev/null /var/tmp/x'       BLOCK
+assert_both "a dot glob that matches .."          'rm -rf ~/a/.*/x'                     BLOCK
+assert_both "two dot globs climbing to home"      'rm -rf ~/a/b/.*/.*/c'                BLOCK
+assert_both "a ? glob that matches .."            'rm -rf /var/tmp/??/??/etc'           BLOCK
+assert_both "a backslash-escaped .."              'rm -rf ~/a/\.\./x'                   BLOCK
+assert_both "a subshell rm"                       '(rm -rf ~/projects)'                 BLOCK
+assert_both "an escaped rm, then a deep rm word"  '\rm -rf ~ rm /var/tmp/x'             BLOCK
+assert_both "a quoted rm, then a deep rm word"    '"rm" -rf ~ rm /var/tmp/x'            BLOCK
+assert_both "a glob in a middle component"        'rm -rf ~/a*/b/c'                     BLOCK
+assert_both "a dot glob at the end matches .. too"  'rm -rf ~/a/b/.*'                     BLOCK
+assert_both "a bare redirect does not hide an operand" \
+  'rm -rf /var/tmp/x > /dev/null ~'                                                     BLOCK
+# What the review fixes keep allowing.
+assert_both "a deep delete with stderr discarded" 'rm -rf /var/tmp/x 2>/dev/null'       ALLOW
+assert_both "a deep delete with a spaced redirect" 'rm -rf ~/scratch/run-1 > /dev/null 2>&1' ALLOW
+# A spaced redirect's target is written, never deleted, even when it is a home path.
+assert_both "a redirect target in home is not an operand" 'rm -rf /var/tmp/x 2> ~/err.log' ALLOW
+assert_both "an absolute rm binary"               '/bin/rm -rf /var/tmp/scratch'        ALLOW
+assert_both "rm after sudo"                       'sudo rm -rf /var/tmp/scratch'        ALLOW
+
+section "Catastrophic rm — depth: no longer refused"
+assert_both "scratch under /var/tmp"              'rm -rf /var/tmp/mr56s2-t2'           ALLOW
+assert_both "a nested dir under /var/tmp"         'rm -rf /var/tmp/alexshen-gate/run-3' ALLOW
+assert_both "a scratch glob under /var/tmp"       'rm -rf /var/tmp/df-t1r3-*'           ALLOW
+assert_both "a git worktree" \
+  'rm -rf /home/alexshen/projects/worktrees/internal-release-clean'                     ALLOW
+assert_both "deep scratch by tilde"               'rm -rf ~/rd/face-crop/out/webcam-good' ALLOW
+assert_both "two levels below home"               'rm -rf ~/scratch/v10stage-wt'        ALLOW
+assert_both "two levels, by path"                 'rm -rf /home/alexshen/df-p2/covers/stage' ALLOW
+assert_both "quoted HOME, two levels"             'rm -rf "$HOME/scratch/run-1"'        ALLOW
+assert_both "braced HOME, two levels"             'rm -rf ${HOME}/scratch/run-1'        ALLOW
+assert_both "three levels in a dot-directory"     'rm -rf ~/.cache/pip/http'            ALLOW
+assert_both "contents of a deep directory"        'rm -rf ~/scratch/run-1/*'            ALLOW
+assert_both "a /tmp path holding the word home"   'rm -rf /tmp/home-test'               ALLOW
+assert_both "several deep operands"               'rm -rf /var/tmp/a ~/scratch/b /tmp/c' ALLOW
+assert_both "a deep delete after cd into home"    'cd ~ && rm -rf ~/scratch/run-1'      ALLOW
+
+# The refusal names its target and what is NOT refused, so the next call has a
+# supported path instead of a hand-off file (one session wrote its scratch
+# cleanup to manual-cleanup.txt after this refusal). Its first sentence must
+# not move: friction-rank.py groups refusals by it.
+section "Catastrophic rm — the refusal names its target and its scope"
+run_sh 'rm -rf /var/tmp/scratch ~/projects'
+_rm_reason=$(jq -r '.hookSpecificOutput.permissionDecisionReason // empty' <<< "$RUN_OUT" 2>/dev/null)
+TESTS_RUN=$((TESTS_RUN + 1))
+if [[ "$_rm_reason" == "Catastrophic rm -rf blocked on system/home directory. Target: ~/projects."* \
+      && "$_rm_reason" == *"Not refused: a literal path two levels below a home directory"* ]]; then
+  TESTS_PASSED=$((TESTS_PASSED + 1)); printf "  ${GREEN}✓${NC} shell refusal names ~/projects and the unrefused scope\n"
+else
+  printf "  ${RED}✗${NC} shell refusal text\n      got: %s\n" "$_rm_reason"; case_failed
+fi
+run_py 'rm -rf /var/tmp/scratch ~/projects'
+_rm_reason=$(jq -r '.hookSpecificOutput.permissionDecisionReason // empty' <<< "$RUN_OUT" 2>/dev/null)
+TESTS_RUN=$((TESTS_RUN + 1))
+if [[ "$_rm_reason" == *"Target: ~/projects."* && "$_rm_reason" == *"Not refused: a literal path two levels below a home directory"* ]]; then
+  TESTS_PASSED=$((TESTS_PASSED + 1)); printf "  ${GREEN}✓${NC} codex refusal names ~/projects and the unrefused scope\n"
+else
+  printf "  ${RED}✗${NC} codex refusal text\n      got: %s\n" "$_rm_reason"; case_failed
+fi
+
+# Without the lib (a copy of the hook run from another directory, as the
+# mutation harness does) nothing is exempt: the old verdict, never a crash.
+section "Catastrophic rm — the hook fails closed without lib/rm-targets.sh"
+_rm_lone=$(mktemp -d)
+cp "$HOOK" "$_rm_lone/pre-tool-guardian.sh"
+TESTS_RUN=$((TESTS_RUN + 1))
+_rm_out=$(payload 'rm -rf /var/tmp/mr56s2-t2' | bash "$_rm_lone/pre-tool-guardian.sh" 2>/dev/null); _rm_rc=$?
+if [[ "$(classify "$_rm_out" "$_rm_rc" claude)" == BLOCK ]]; then
+  TESTS_PASSED=$((TESTS_PASSED + 1)); printf "  ${GREEN}✓${NC} a lone copy refuses a deep delete, as before\n"
+else
+  printf "  ${RED}✗${NC} a lone copy gave %s\n" "$(classify "$_rm_out" "$_rm_rc" claude)"; case_failed
+fi
+rm -rf "$_rm_lone"
 
 # ─── Other guardian rules still fire ─────────────────────────────────
 section "Other rules — unaffected by the rm change"

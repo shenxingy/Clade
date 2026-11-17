@@ -667,18 +667,10 @@ fi  # end dev-mode gate
 DANGEROUS_TILDE='(^|[[:space:]]|=)~[a-zA-Z0-9._-]*(/|[[:space:]]|$|[<>)])'
 DANGEROUS_NAMED_PATHS="($DANGEROUS_TILDE|\\\$[{]?HOME\\b|(/home|/etc|/usr|/var|/sys|/proc|/boot)\\b)"  # [{]?: ${HOME} too
 DANGEROUS_ROOT='(^|[[:space:]])/([[:space:]]|$|\*)'
-# Split into individual shell statements before testing, then require ONE
-# statement to satisfy every condition on its own.
-#
-# Per-LINE matching was too coarse in both directions:
-#   - False positive: `SRC=/home/me/.claude; rm -rf /tmp/shadow-test` blocked a
-#     benign temp delete because a home path shared its line. Shell one-liners
-#     chain statements with ; && || far more often than they use newlines, so
-#     "only look at rm lines" did not actually isolate the rm.
-#   - False negative direction: the three greps ran independently over the whole
-#     set of rm lines, so `rm -r a` on one line plus `rm -f /home/b` on another
-#     combined into a block that neither statement earned.
-# `tr` (not sed \n, which BSD sed rejects) keeps this portable to macOS.
+# Split into statements first, and require ONE statement to meet every
+# condition. Per-line greps blocked `SRC=/home/me; rm -rf /tmp/x` for a home
+# path on the same line, and combined `rm -r a` and `rm -f /home/b` from two
+# statements into a block neither earned. `tr`, not sed \n: BSD sed rejects it.
 # rm_scan_flags <statement> — sets RM_RECURSIVE / RM_FORCE from the OPTION
 # tokens of an rm statement, never from its operands.
 #
@@ -721,6 +713,9 @@ rm_scan_flags() {
   return 0
 }
 
+# Proven-deep operands are exempt (lib/rm-targets.sh says why); no lib, no exemption.
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/rm-targets.sh" 2>/dev/null \
+  || rm_all_operands_deep() { return 1; }
 RM_STATEMENTS=$(printf '%s' "$COMMAND" | tr ';|&' '\n\n\n' | grep -E '\brm\b' || true)
 CATASTROPHIC_RM=false
 while IFS= read -r _stmt; do
@@ -730,12 +725,13 @@ while IFS= read -r _stmt; do
   $RM_FORCE || continue
   if printf '%s\n' "$_stmt" | grep -qE "$DANGEROUS_NAMED_PATHS" \
     || printf '%s\n' "$_stmt" | grep -qE "$DANGEROUS_ROOT"; then
+    rm_all_operands_deep "$_stmt" && continue
     CATASTROPHIC_RM=true
     break
   fi
 done <<< "$RM_STATEMENTS"
 if [[ "$CATASTROPHIC_RM" == true ]]; then
-  gd_deny "Catastrophic rm -rf blocked on system/home directory. Command: $COMMAND. If intentional, run manually in your terminal."
+  gd_deny "Catastrophic rm -rf blocked on system/home directory. ${RM_SHALLOW:+Target: $RM_SHALLOW. }Refused: /, a home directory or a directory directly inside one (two levels for a dot-directory such as ~/.claude), and /etc, /usr, /var, /sys, /proc, /boot. Not refused: a literal path two levels below a home directory, or under /tmp or /var/tmp. If this target really must go, it is the owner's to run in their own terminal. Command: $COMMAND"
 fi
 
 # ─── Recursive delete on a target the guardian cannot resolve ─────────

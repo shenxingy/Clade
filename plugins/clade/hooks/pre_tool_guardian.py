@@ -119,6 +119,130 @@ def _delete_targets(statement: str) -> list[str]:
     return [token for token in after.split() if not token.startswith("-")]
 
 
+# Which targets the catastrophic rule exists for. Mirrors rm_operand_is_deep in
+# pre-tool-guardian.sh, where the measurement behind it is recorded: the text
+# match is depth-blind, so every recursive delete under a home directory or
+# /var/tmp was refused. A statement is exempt only when EVERY operand is a
+# literal, anchored path proven deep; anything unproven keeps the old verdict.
+_GLOB_CHARS = frozenset("*?[{")
+_NEVER_DEEP = re.compile(r"^/(?:etc|usr|boot|sys|proc|var)(?:/|$)")
+CATASTROPHIC_SCOPE = (
+    "Refused: /, a home directory or a directory directly inside one (two levels "
+    "for a dot-directory such as ~/.claude), and /etc, /usr, /var, /sys, /proc, "
+    "/boot. Not refused: a literal path two levels below a home directory, or "
+    "under /tmp or /var/tmp. If this target really must go, it is the owner's to "
+    "run in their own terminal."
+)
+
+
+_REDIR_BARE = re.compile(r"^[0-9]*(?:>|>>|<|>\|)$")
+_REDIR_GLUED = re.compile(r"^[0-9]*[<>]")
+_PLAIN_PATH = re.compile(r"^~?[A-Za-z0-9._/*+@%=,:-]*$")
+
+
+def _rm_operands(statement: str) -> list[str]:
+    """Tokens after the FIRST rm that are not options or redirections, and all after --.
+
+    The first rm, as _recursive_force reads it: a superset of the real rm's
+    operands, so a stray later "rm" can only add a token to refuse. A bare
+    redirection takes the next token as its target; `2>/dev/null` carries its
+    own. A redirect glued after a word (`~>/dev/null`) stays, and is refused.
+    """
+    after = re.sub(r"^.*?\brm\b", "", statement, count=1)
+    operands: list[str] = []
+    end_of_options = False
+    skip_next = False
+    for token in after.split():
+        if skip_next:
+            skip_next = False
+            continue
+        if _REDIR_BARE.match(token):
+            skip_next = True
+            continue
+        if _REDIR_GLUED.match(token):
+            continue
+        if not end_of_options:
+            if token == "--":
+                end_of_options = True
+                continue
+            if token.startswith("-") and len(token) > 1:
+                continue
+        operands.append(token)
+    return operands
+
+
+def _home_rest_is_deep(rest: str) -> bool:
+    if "/" not in rest:
+        return False
+    top = rest.split("/", 1)[0]
+    if _GLOB_CHARS & set(top):
+        return False
+    if top.startswith(".") and rest.count("/") < 2:
+        return False
+    return True
+
+
+def _operand_is_deep(token: str) -> bool:
+    """True only when the operand provably names none of the catastrophic targets."""
+    t = token.replace('"', "").replace("'", "")
+    for anchor in ("$HOME", "${HOME}"):
+        if t == anchor or t.startswith(anchor + "/"):
+            t = "~" + t[len(anchor):]
+            break
+    # Plain path characters only, a tilde only in front: no other variable or
+    # substitution, brace, `?`/`[…]` glob, backslash, or glued redirect.
+    if not _PLAIN_PATH.match(t):
+        return False
+    t = re.sub(r"/+", "/", t)
+    while "/./" in t:
+        t = t.replace("/./", "/")
+    while True:
+        if t.endswith("/"):
+            t = t[:-1]
+        elif t.endswith("/."):
+            t = t[:-2]
+        elif t.endswith("/*"):
+            t = t[:-2]
+        else:
+            break
+    if "/../" in f"/{t}/":
+        return False
+    # A `*` only in the last component, and never after a dot: `.*` matches `..`.
+    head, _, last = t.rpartition("/")
+    if "*" in head or (last.startswith(".") and "*" in last):
+        return False
+    if t.startswith("~"):
+        rest = t[1:]
+        rest = rest.split("/", 1)[1] if "/" in rest else ""
+        return _home_rest_is_deep(rest)
+    if t.startswith(("/home/", "/Users/")):
+        rest = t.split("/", 2)[2]
+        if _GLOB_CHARS & set(rest.split("/", 1)[0]):
+            return False
+        rest = rest.split("/", 1)[1] if "/" in rest else ""
+        return _home_rest_is_deep(rest)
+    if t.startswith("/root/"):
+        return _home_rest_is_deep(t[len("/root/"):])
+    if t.startswith("/var/tmp/"):
+        return True
+    if t in ("", "/home", "/Users", "/root") or _NEVER_DEEP.match(t):
+        return False
+    if t.startswith("/"):
+        return not (_GLOB_CHARS & set(t[1:].split("/", 1)[0]))
+    return False  # relative: what it names depends on the working directory
+
+
+def _shallow_operand(statement: str) -> str | None:
+    """None when every operand is deep (and there is one); else the first that is not."""
+    operands = _rm_operands(statement)
+    if not operands:
+        return ""
+    for operand in operands:
+        if not _operand_is_deep(operand):
+            return operand
+    return None
+
+
 def _unresolved_delete(command: str) -> tuple[str, str] | None:
     """A recursive delete whose target this guardian cannot resolve.
 
@@ -1030,7 +1154,14 @@ def evaluate(command: str, branch: str = "") -> dict | None:
         if not _recursive_force(statement):
             continue
         if re.search(_DANGEROUS_NAMED, statement) or re.search(_DANGEROUS_ROOT, statement):
-            return _deny(f"Catastrophic recursive deletion blocked: {statement.strip()}")
+            shallow = _shallow_operand(statement)
+            if shallow is None:
+                continue
+            target = f" Target: {shallow}." if shallow else ""
+            return _deny(
+                f"Catastrophic recursive deletion blocked: {statement.strip()}."
+                f"{target} {CATASTROPHIC_SCOPE}"
+            )
 
     unresolved = _unresolved_delete(command)
     if unresolved is not None:
