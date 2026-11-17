@@ -1019,6 +1019,27 @@ assert_verdict "grepping for a process name is not a kill" \
   'ps aux | grep train.py'                                    ALLOW
 assert_verdict "after a semicolon separator" \
   'cd /srv; pkill -f app.py && ./app.py'                      BLOCK
+# The Bash tool's own shell carries the whole command, so a single pkill -f
+# followed by more work kills that shell and loses the rest (exit 144 in 14
+# main-thread sessions, 30 days to 2026-11-09; every pkill -f sampled from them
+# had this shape). The old rule needed PAT twice or a wrapper, and let these by.
+assert_verdict "single pkill -f, then more work" \
+  'pkill -f dbg_test.py; cd /srv && cat notes.txt'           BLOCK
+assert_verdict "quoted multi-word pattern, then more work" \
+  'pkill -f "next start --port 3473" ; sleep 1; ps -eo pid,args' BLOCK
+assert_verdict "pkill -f, then more work on the next line" \
+  $'pkill -f scripts/preview.py\nnpm run preview'             BLOCK
+assert_verdict "pkill -f, then && more work" \
+  'pkill -f uvicorn && sleep 1'                               BLOCK
+# What still passes: nothing is lost, or the pattern cannot match its own text.
+assert_verdict "pkill -f with only an || true tail" \
+  'pkill -f uvicorn || true'                                  ALLOW
+assert_verdict "pkill -f with a redirect and no further statement" \
+  'pkill -f uvicorn 2>/dev/null'                              ALLOW
+assert_verdict "bracket-trick pattern, then more work" \
+  'pkill -f "[g]oogle-chrome --headless" ; sleep 1'           ALLOW
+assert_verdict "separator inside the quoted pattern is not more work" \
+  'pkill -f "wf_123; sleep 60"'                               ALLOW
 # Regression. The first cut matched `pkill -f` ANYWHERE in the string, so the
 # guard refused its own commit message. `pkill` has to sit at a COMMAND
 # position — start of string, or after a separator or an opening quote — and
