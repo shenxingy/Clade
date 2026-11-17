@@ -126,17 +126,33 @@ if [ -n "$NEW_DIRTY" ]; then
   [ "$EXTRA" -gt 0 ] && issues+=("    ... and ${EXTRA} more")
 fi
 
-# Blockers: only flag if modified AFTER baseline was captured
+# Blockers: only flag if modified AFTER baseline was captured, and then only the
+# open "## Blocker" headings this session ADDED — session-baseline.sh snapshots
+# the open headings at SessionStart. Until 2026-11-02 every open heading counted
+# once the file was touched, another session's included, under the words
+# "recorded this session"; on 2026-10-28 that message led an agent to hand the
+# owner a cleanup belonging to a different session. A session older than the
+# snapshot gets the file-wide count, labelled as such.
 BLOCKER_FILE=".claude/blockers.md"
+BLOCKER_SNAPSHOT=""
+[ -n "$SESSION_ID" ] && BLOCKER_SNAPSHOT="$SESS_DIR/$SESSION_ID.blockers"
 if [ -f "$BLOCKER_FILE" ]; then
   BLOCKER_MTIME=$(stat -c %Y "$BLOCKER_FILE" 2>/dev/null || stat -f %m "$BLOCKER_FILE" 2>/dev/null || echo 0)
   BASELINE_MTIME=$(stat -c %Y "$BASELINE_FILE" 2>/dev/null || stat -f %m "$BASELINE_FILE" 2>/dev/null || echo 0)
   if [ "$BLOCKER_MTIME" -gt "$BASELINE_MTIME" ]; then
+    OPEN_BLOCKERS=$(grep '^## Blocker' "$BLOCKER_FILE" 2>/dev/null | LC_ALL=C sort)
     # `grep -c` prints "0" AND exits 1 on no match, so `|| echo 0` inside the
-    # substitution yields "0\n0" and breaks the -gt test below.
-    BLOCKER_COUNT=$(grep -c "^## Blocker" "$BLOCKER_FILE" 2>/dev/null) || BLOCKER_COUNT=0
-    if [ "${BLOCKER_COUNT:-0}" -gt 0 ]; then
-      issues+=("${BLOCKER_COUNT} blocker(s) recorded this session in .claude/blockers.md")
+    # substitution yields "0\n0" and breaks the -gt tests below.
+    if [ -n "$BLOCKER_SNAPSHOT" ] && [ -f "$BLOCKER_SNAPSHOT" ]; then
+      NEW_BLOCKERS=$(LC_ALL=C comm -13 "$BLOCKER_SNAPSHOT" <(printf '%s\n' "$OPEN_BLOCKERS") | grep -c .) || NEW_BLOCKERS=0
+      if [ "${NEW_BLOCKERS:-0}" -gt 0 ]; then
+        issues+=("${NEW_BLOCKERS} blocker(s) recorded this session in .claude/blockers.md (rename a heading to '## Resolved …' once it is)")
+      fi
+    else
+      BLOCKER_COUNT=$(printf '%s\n' "$OPEN_BLOCKERS" | grep -c .) || BLOCKER_COUNT=0
+      if [ "${BLOCKER_COUNT:-0}" -gt 0 ]; then
+        issues+=("${BLOCKER_COUNT} open blocker(s) in .claude/blockers.md, which this session edited (no snapshot from session start, so some may be another session's)")
+      fi
     fi
   fi
 fi

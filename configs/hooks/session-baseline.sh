@@ -37,7 +37,15 @@ git status --porcelain 2>/dev/null \
   | LC_ALL=C sort \
   > "$SESS_DIR/$SESSION_ID.baseline" 2>/dev/null || true
 
-# Cleanup: remove baselines and counters older than 7 days
-find "$SESS_DIR" -maxdepth 1 -type f \( -name '*.baseline' -o -name '*.stop_attempts' \) -mtime +7 -delete 2>/dev/null || true
+# Open blocker headings at session start, so stop-check.sh reports only the
+# ones THIS session recorded. Without it the check counted every open heading
+# once the file was touched — another session's included — and called them
+# "recorded this session"; on 2026-10-28 that led an agent to hand the owner a
+# cleanup that belonged to a different session.
+grep '^## Blocker' .claude/blockers.md 2>/dev/null | LC_ALL=C sort \
+  > "$SESS_DIR/$SESSION_ID.blockers" 2>/dev/null || true
+
+# Cleanup: remove baselines, blocker snapshots and counters older than 7 days
+find "$SESS_DIR" -maxdepth 1 -type f \( -name '*.baseline' -o -name '*.blockers' -o -name '*.stop_attempts' \) -mtime +7 -delete 2>/dev/null || true
 
 exit 0
