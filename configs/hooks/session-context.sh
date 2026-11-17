@@ -33,7 +33,12 @@ _timeout() {
 # this since, and rules.md grows on every /audit run.
 CTX_RULES_BUDGET="${CLADE_RULES_BUDGET_BYTES:-4000}"
 CTX_FILE_BUDGET="${CLADE_CTX_FILE_BUDGET_BYTES:-3000}"
-CTX_TOTAL_CEILING="${CLADE_CTX_CEILING_BYTES:-12000}"
+# The ceiling sits under Claude Code's 10,000-character cap on a hook's
+# additionalContext (past it Claude sees a 2,000-character preview; the cap is
+# documented at rule-injector.sh CTX_BUDGET). It was 12,000, so a payload of
+# 10,000–12,000 was cut with no warning at all. The largest real payload in
+# local transcripts was 9,821 characters (2026-10-30, a compacted session).
+CTX_TOTAL_CEILING="${CLADE_CTX_CEILING_BYTES:-9500}"
 
 # _capped_read <file> <budget> — echo at most <budget> bytes of <file>, with an
 # explicit marker when the file was longer. Every input this hook injects used
@@ -144,9 +149,13 @@ if [[ -n "$TRACKING" ]]; then
 fi
 
 # Recent commits
+# APPEND, never assign. This line read `CONTEXT="Recent commits:…"`, which threw
+# away the auto-pull notice built just above in every repository with a commit:
+# the hook pulled, and the session was never told its tree had moved. Measured
+# 2026-11-02: 0 of 155 SessionStart payloads in local transcripts carried it.
 GIT_LOG=$(git log --oneline -5 2>/dev/null)
 if [[ -n "$GIT_LOG" ]]; then
-  CONTEXT="Recent commits:\n${GIT_LOG}\n\n"
+  CONTEXT="${CONTEXT}Recent commits:\n${GIT_LOG}\n\n"
 fi
 
 # Loop state (if active)
@@ -601,14 +610,25 @@ fi
 
 # Warn, never truncate: the guidance blocks are appended LAST, so cutting the
 # assembled payload would silently drop exactly the sections this budget exists
-# to protect. A visible line beats a silent overflow.
+# to protect. A visible line beats a silent overflow — and it goes FIRST, because
+# past 10,000 characters Claude Code shows only a 2,000-character preview, and a
+# notice at the end was the first thing that preview dropped.
 if [[ ${#CONTEXT} -gt $CTX_TOTAL_CEILING ]]; then
-  CONTEXT="${CONTEXT}\n(session-context: ${#CONTEXT} chars injected, over the ${CTX_TOTAL_CEILING} budget — a section has grown; see CLAUDE.md.)\n"
+  CONTEXT="(session-context: ${#CONTEXT} chars injected, over the ${CTX_TOTAL_CEILING} budget — a section has grown; past 10,000 Claude Code shows only a preview of this text; see CLAUDE.md.)\n${CONTEXT}"
 fi
 
+# Every section above is joined with "\n" inside double quotes, which bash keeps
+# as the two characters backslash and n. `jq --arg` then delivered them as text:
+# the model read "Recent commits:\nabc123 …\n\nBranch: main" on one line, and no
+# "## " header started a line. Measured 2026-11-02 in local transcripts: 131 of
+# 155 SessionStart payloads, 1,212 literal sequences in the last week alone.
+# Converted here, once, rather than at 46 assignment sites. The cost: a literal
+# backslash-n inside embedded content (a rule quoting printf) also becomes a
+# line break. No rules.md, compact-state.md or fingerprint on the author's
+# machine contained one when this was written.
 if [[ -n "$CONTEXT" ]]; then
   jq -n --arg ctx "$CONTEXT" \
-    '{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":$ctx}}'
+    '{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":($ctx | split("\\n") | join("\n"))}}'
 fi
 
 exit 0
