@@ -177,14 +177,57 @@ rd_unquote() {
   printf '%s' "$t"
 }
 
+# rd_restore_index_only <segment> — true when the segment is a `git restore` that
+# names --staged (-S) and not --worktree (-W). That form rewrites the index only:
+# every working-tree file keeps its content, so nothing was reverted. It is how
+# agents unstage before re-committing (`git reset --soft HEAD~2 && git restore
+# --staged . && committer …`). Measured on the author's machine, 2026-09-02 →
+# 10-26: 37 implicit-revert records whose only "revert" was this form, 34 of
+# them filed as `paths` (12% of the 280 `paths` records), 4 carrying 36
+# `reverted_files` in all — one record alone named 14 files under `--staged .`.
+rd_restore_index_only() {
+  local -a words
+  local i n tok staged=false worktree=false
+  read -ra words <<< "$1"
+  n=${#words[@]}
+  for (( i=0; i<n-1; i++ )); do
+    [[ "${words[$i]}" == "git" && "${words[$((i+1))]}" == "restore" ]] && break
+  done
+  (( i < n-1 )) || return 1
+  for (( i=i+2; i<n; i++ )); do
+    tok="${words[$i]}"
+    case "$tok" in
+      --)         break ;;
+      --staged)   staged=true ;;
+      --worktree) worktree=true ;;
+      -s)         i=$((i+1)) ;;   # --source's short form; its value follows
+      -s*|--*)    : ;;            # an attached -s value, any other long flag
+      -*)         [[ "$tok" == *S* ]] && staged=true
+                  [[ "$tok" == *W* ]] && worktree=true ;;
+    esac
+  done
+  $staged && ! $worktree
+}
+
 # rd_is_revert_segment <segment> — true when this one segment is itself a revert.
 rd_is_revert_segment() {
   local seg="$1" pattern
   for pattern in "${REVERT_PATTERNS[@]}"; do
-    [[ "$seg" =~ $pattern ]] && return 0
+    if [[ "$seg" =~ $pattern ]]; then
+      rd_restore_index_only "$seg" && return 1
+      return 0
+    fi
   done
   return 1
 }
+
+# The coarse match above reads the whole command at once. This one reads each
+# segment, so a command whose only match is an index-only restore writes nothing.
+_rd_any_revert=false
+while IFS= read -r _rd_seg; do
+  if rd_is_revert_segment "$_rd_seg"; then _rd_any_revert=true; break; fi
+done < <(rd_segments "$COMMAND")
+$_rd_any_revert || exit 0
 
 # rd_revert_base <command> <input_json> — the directory the git command ran in.
 # `cd <dir> && git ...` is the dominant real-world shape (68 of 68 informative
@@ -256,9 +299,16 @@ rd_revert_base() {
 # that project as "files behind this correction". The instrument the stack
 # mandates was feeding false evidence to the instrument that learns from it.
 #
-# Three signals, strongest first:
+# Four signals, strongest first:
 # - a `git apply` / `git stash pop|apply` in a segment AFTER the revert — the
 #   round-trip itself, independent of anything the agent chose to print;
+# - a diff the command itself SAVED (`git diff … > F`) and then applies
+#   (`git apply … F`), before the revert or after it. The change still exists:
+#   restored after a probe, or moved to another worktree before the original
+#   checkout is cleaned — `git diff -- a b > $S/x.patch && cd $WT && git apply
+#   $S/x.patch && cd - && git restore -- a b`, which on 2026-10-21 filed two
+#   files as rejected and came back `repeat:true`, the week's only one. Saving
+#   alone is not enough: a backup taken before a discard is still a discard;
 # - the same command EDITS a path it reverts (rd_mutates_reverted_path below) —
 #   `sed -i … file; <test>; git checkout -- file`, where the revert IS the
 #   restore step. Wired at the call site, because it needs the pathspec;
@@ -267,11 +317,20 @@ rd_revert_base() {
 #   purpose: `git checkout -- orchestrator/task_factory/mutation_scan.py` is a
 #   real revert of a real file.
 rd_is_probe() {
-  local cmd="$1" seg after=false
+  local cmd="$1" seg after=false saved="" t
   local re_label='(^|[^A-Za-z0-9_])MUTATION([^A-Za-z0-9_]|$)'
   local re_restore='^[[:space:]]*git[[:space:]]+(apply|stash[[:space:]]+(pop|apply))([[:space:]]|$)'
+  local re_save='^[[:space:]]*git[[:space:]]+diff([[:space:]]|$)'
+  local re_apply='^[[:space:]]*git[[:space:]]+(-C[[:space:]]+[^[:space:]]+[[:space:]]+)?apply([[:space:]]|$)'
   [[ "$cmd" =~ $re_label ]] && return 0
   while IFS= read -r seg; do
+    if [[ "$seg" =~ $re_save ]]; then
+      saved="${saved}$(rd_redirect_targets "$seg")"$'\n'
+    elif [[ -n "$saved" && "$seg" =~ $re_apply ]]; then
+      while IFS= read -r t; do
+        [[ -n "$t" && "$seg" == *"$t"* ]] && return 0
+      done <<< "$saved"
+    fi
     if ! $after; then
       rd_is_revert_segment "$seg" && after=true
       continue
@@ -297,16 +356,19 @@ rd_is_probe() {
 # ever ran inside a python heredoc body, now writes no record at all. Without it the
 # probe the global CLAUDE.md requires was the bulk of Lane C's "rejection"
 # evidence. NOT handled here, so still recorded as `paths`: 22 that restore a
-# file edited in an EARLIER tool call before re-running the tests, and 5 bare
-# `git restore --staged`, which change no file at all.
+# file edited in an EARLIER tool call before re-running the tests. (The 5 bare
+# `git restore --staged` of that replay are not reverts at all; see
+# rd_restore_index_only.)
 #
-# An edit is an in-place `sed`/`perl`/`ruby -i`, a `python3 -c`, or a heredoc fed
+# An edit is an in-place `sed`/`perl`/`ruby -i`, a `python3 -c`, a heredoc fed
 # to an interpreter (`python3 - <<'EOF'`, node/ruby/perl likewise) whose opener
-# line or BODY names the file. A body only counts behind an interpreter: `cat > notes.md
-# <<EOF` that merely mentions the file is prose, not an edit. A `$VAR` pathspec
-# matches `$VAR`/`${VAR}` in an editing segment; heredoc bodies are not searched
-# for variables, because a python body names the path literally. Every miss
-# fails toward the old behaviour (a `paths` record), never toward a lost one.
+# line or BODY names the file, or a stdout redirect or `tee` INTO the file
+# (`git show REV:f > f`, `echo … >> f`; rd_redirects_into). A body only counts
+# behind an interpreter: `cat > notes.md <<EOF` that merely mentions the file is
+# prose, not an edit. A `$VAR` pathspec matches `$VAR`/`${VAR}` in an editing
+# segment; heredoc bodies are not searched for variables, because a python body
+# names the path literally. Every miss fails toward the old behaviour (a `paths`
+# record), never toward a lost one.
 rd_mutates_reverted_path() {
   local cmd="$1" raw="$2" specs="$3" p var base seg bodies
   local re_var='^\$\{?([A-Za-z_][A-Za-z0-9_]*)\}?$'
@@ -324,6 +386,7 @@ rd_mutates_reverted_path() {
     [[ -n "$var" || ( -n "$base" && "$base" != "." && "$base" != ".." ) ]] || continue
     while IFS= read -r seg; do
       rd_is_revert_segment "$seg" && continue
+      rd_redirects_into "$seg" "$p" "$var" && return 0
       [[ "$seg" =~ $re_edit ]] || continue
       if [[ -n "$var" ]]; then
         [[ "$seg" == *"\$$var"* || "$seg" == *"\${$var}"* ]] && return 0
@@ -370,6 +433,54 @@ rd_redirect_is_bare() {
   esac
 }
 
+# rd_redirect_targets <segment> — one file per line that the segment writes
+# through stdout: the target of `>`, `>>`, `1>`, `1>>` (attached or separated)
+# and every non-flag argument of a `tee` that starts the segment (`rd_segments`
+# has already split the pipe). Never stderr (`2>`), never /dev/null.
+rd_redirect_targets() {
+  local -a words
+  local i n tok t tee=false
+  read -ra words <<< "$1"
+  n=${#words[@]}
+  for (( i=0; i<n; i++ )); do
+    tok="${words[$i]}"
+    if $tee; then
+      [[ "$tok" == -* ]] || printf '%s\n' "$(rd_unquote "$tok")"
+      continue
+    fi
+    case "$tok" in
+      tee)                  [[ $i -eq 0 ]] && tee=true; continue ;;
+      '>'|'>>'|'1>'|'1>>')  t="${words[$((i+1))]:-}"; i=$((i+1)) ;;
+      '>>'*|'1>>'*)         t="${tok#1}"; t="${t#>>}" ;;
+      '>'*|'1>'*)           t="${tok#1}"; t="${t#>}" ;;
+      *)                    continue ;;
+    esac
+    t="$(rd_unquote "$t")"
+    [[ -n "$t" && "$t" != /dev/null ]] && printf '%s\n' "$t"
+  done
+}
+
+# rd_redirects_into <segment> <pathspec> <var> — true when the segment writes the
+# reverted path through a redirect or `tee`: `git show REV:f > f; <tests>; git
+# checkout -- f` is a probe whose mutation is a redirect, not a `sed -i` (4 such
+# records in the whole history.jsonl at the 2026-10-19 sweep). The target must
+# BE the path (equal, or ending in `/<path>`), not merely share its basename:
+# `git show HEAD:src/app.py > /tmp/app.py` is a backup, and a revert after it is
+# still a revert.
+rd_redirects_into() {
+  local seg="$1" p="${2#./}" var="$3" t
+  while IFS= read -r t; do
+    [[ -n "$t" ]] || continue
+    if [[ -n "$var" ]]; then
+      [[ "$t" == "\$$var" || "$t" == "\${$var}" ]] && return 0
+    else
+      t="${t#./}"
+      [[ "$t" == "$p" || "$t" == */"$p" ]] && return 0
+    fi
+  done < <(rd_redirect_targets "$seg")
+  return 1
+}
+
 # rd_revert_pathspec <command> — one pathspec token per line, empty when the
 # command names none. Tokens are emitted RAW: a glob or $(...) is not expanded,
 # it simply fails to match, which is the correct fail-open here. Splitting is on
@@ -402,6 +513,8 @@ rd_revert_pathspec() {
         done
         ;;
       restore)
+        # an index-only restore reverts no file (rd_restore_index_only)
+        rd_restore_index_only "$seg" && continue
         seen_ddash=false
         for (( i=2; i<n; i++ )); do
           tok="${words[$i]}"
@@ -464,7 +577,7 @@ if [[ -n "$_paths" ]]; then
 elif echo "$COMMAND" | grep -qE 'git[[:space:]]+(revert|reset)' 2>/dev/null; then
   REVERT_SCOPE="commit"     # no pathspec exists to intersect — see the note above
 else
-  REVERT_SCOPE="unknown"    # e.g. `git restore --staged` with no path
+  REVERT_SCOPE="unknown"    # e.g. `git restore --worktree` with no path
 fi
 # A mutation probe is recorded — dropping it would make a misclassified real
 # revert vanish without a trace — but it carries no evidence: no reverted_files,

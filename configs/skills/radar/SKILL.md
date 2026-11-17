@@ -117,14 +117,21 @@ practice the global CLAUDE.md *requires* — but only recognised the round-trip
 dominant real shape has neither: `sed -i X` or `python3 - "$f" <<'EOF'`, then
 the tests, then `git checkout -- X`. The same-command-edit signal (landed
 2026-10-16 in #124) now covers that shape: 5 of the 40 implicit-revert records
-of 2026-10-12 → 10-19 came out `probe`. Three shapes still read as `paths`, so
-discount them by hand: a shell redirect into the reverted file (`git show
-REV:f > f`, `echo … >> f`; 2 that week, 4 in the whole file), a generator run
-and then discarded (`npx tsx gen.mjs; git diff out.json; git checkout --
-out.json`; 3 that week), and a mutation made in an EARLIER tool call than the
-revert. On 2026-09-23 seven consecutive records were
-probes, two with `repeat:true`; across all 103 `paths`-scoped records then, 3 of
-the 6 `repeat:true` were probes.
+of 2026-10-12 → 10-19 came out `probe`. Since 2026-11-17, when the 2026-10-26
+sweep's change landed, three more shapes are handled in the hook:
+- a shell redirect or `tee` into the reverted file (`git show REV:f > f`,
+  `echo … >> f`) is a `probe`;
+- a diff the command saved and applied elsewhere before cleaning this checkout
+  (a move to another worktree) is a `probe`;
+- an index-only `git restore --staged` writes no record at all: 37 of them
+  2026-09-02 → 10-26, 34 filed as `paths`.
+
+For records written before that, discount all three by hand. Two shapes still
+read as `paths` either way: a generator run and then discarded (`npx tsx
+gen.mjs; git diff out.json; git checkout -- out.json`; 3 in 2026-10-12 → 10-19),
+and a mutation made in an EARLIER tool call than the revert. On 2026-09-23 seven
+consecutive records were probes, two with `repeat:true`; across all 103
+`paths`-scoped records then, 3 of the 6 `repeat:true` were probes.
 
 **Discount a subagent's revert in records written before 2026-10-23.**
 `revert-detector.sh` now writes nothing for a call whose hook input carries
