@@ -61,6 +61,7 @@ printf '%s\n' "$T/kit" > "$HOME/.claude/.kit-source-dir"
 cat > "$T/claude" <<'EOF'
 #!/usr/bin/env bash
 pwd -P >> "$STUB_LOG"
+[[ "${STUB_MODE:-}" == silent ]] && exit 0   # a startup that failed and still exited 0
 d="${CLADE_RADAR_DATE}"
 stage=".radar-staged"; [[ -d "$stage" ]] || stage="."
 # What Lane D handed over: the prompt, and the report as it stood when the agent ran.
@@ -539,6 +540,19 @@ done
 check "the skill names at least one URL to fetch, so the next check can fail" '[[ -n "$SKILL_HOSTS" ]]'
 check "the wrapper's allowlist parses to at least one host" '[[ -n "$GRANTED_HOSTS" ]]'
 check "each host the skill names is granted" '[[ -z "$UNGRANTED" ]]' "not granted:$UNGRANTED"
+
+# ─── 12. a zero exit with no digest is not logged as a sweep ──────────
+# The log read DONE on 2026-08-15 (0 s) and 2026-10-21 (30 s) with no digest
+# for either date. The first check fails against the pre-2026-11-02 wrapper.
+section "a run that staged no digest says so"
+# A date no earlier section ran: a digest left by one would hide the case.
+check "fixture: no digest exists yet for the silent run's date" \
+  '[[ ! -e "$HOME/.claude/research/radar-2027-06-07.md" ]]'
+run_cron 2027-06-07 silent
+check "the log says no digest was produced" \
+  'grep -q "NO DIGEST.*radar-2027-06-07" "$HOME/.claude/research/radar-cron.log"'
+check "a run that did produce one is not flagged" \
+  '! grep -q "NO DIGEST.*radar-2026-01-05" "$HOME/.claude/research/radar-cron.log"'
 
 # ─── Summary ─────────────────────────────────────────────────────────
 printf "\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
