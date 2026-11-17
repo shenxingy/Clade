@@ -1,14 +1,19 @@
 #!/usr/bin/env python3
-"""Fail when an orchestrator module is missing from the CLAUDE.md architecture map.
+"""Fail when an orchestrator module is missing from the architecture map.
 
-CLAUDE.md's "Orchestrator Layer" import DAG and Key File Map are how an agent
-orients before touching orchestrator/. A module that exists but is absent from
-that map is worse than undocumented: the map reads as complete, so the agent
-concludes the module does not exist. This gate keeps the map honest by making
-"add a module" and "describe it" the same commit.
+The map is docs/orchestrator-architecture.md: the "Orchestrator Layer" import
+DAG and the Key File Map, which lived in CLAUDE.md until 2026-11-16. It is how
+an agent orients before touching orchestrator/. A module that exists but is
+absent from that map is worse than undocumented: the map reads as complete, so
+the agent concludes the module does not exist. This gate keeps the map honest
+by making "add a module" and "describe it" the same commit.
+
+A missing map fails whenever the module directory exists. It used to be a
+silent no-op, which cost nothing while the map was CLAUDE.md itself; a renamed
+docs/ file would have switched the gate off with CI still green.
 
 Usage:
-  check-arch-map.py [--root REPO_ROOT] [--doc CLAUDE.md] [--dir orchestrator]
+  check-arch-map.py [--root REPO_ROOT] [--doc docs/orchestrator-architecture.md] [--dir orchestrator]
 """
 from __future__ import annotations
 
@@ -35,7 +40,8 @@ def orchestrator_modules(base: Path) -> list[Path]:
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--root", default=".", help="Repo root (default: cwd)")
-    ap.add_argument("--doc", default="CLAUDE.md", help="Architecture doc, relative to --root")
+    ap.add_argument("--doc", default="docs/orchestrator-architecture.md",
+                    help="Architecture doc, relative to --root")
     ap.add_argument("--dir", default="orchestrator", help="Module dir, relative to --root")
     args = ap.parse_args()
 
@@ -43,12 +49,14 @@ def main() -> int:
     doc_path = root / args.doc
     base = root / args.dir
 
-    if not doc_path.exists():
-        print(f"check-arch-map: no {args.doc} at {root} (silent no-op)", file=sys.stderr)
-        return 0
     if not base.is_dir():
         print(f"check-arch-map: no {args.dir}/ at {root} (silent no-op)", file=sys.stderr)
         return 0
+    if not doc_path.is_file():
+        print(f"check-arch-map: {args.dir}/ exists but {args.doc} does not, so no module "
+              f"can be checked. Restore the map, or pass --doc with its new path.",
+              file=sys.stderr)
+        return 1
 
     doc = doc_path.read_text(encoding="utf-8")
     missing = []

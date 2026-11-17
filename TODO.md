@@ -84,10 +84,6 @@ Phases 1–14 complete.
 - Opt in to the reframe pilot (judge up to 8 of your own asks), or decline it:
   [§ 2026-11-09 Rieseberg ambition](#2026-11-09-rieseberg-ambition-follow-ups),
   "Pilot the reframe procedure by hand".
-- Move the CI checklist and the orchestrator architecture map out of CLAUDE.md into
-  `docs/`, retargeting the gates that pin them (nothing deleted), or keep them:
-  [§ 2026-11-14 harness weight](#2026-11-14-harness-weight-research-follow-ups),
-  "Owner decision: relocate".
 
 **Needs the owner at a machine, a login, or an outward step**
 
@@ -727,7 +723,7 @@ re-running the gates.
 - [x] 🔵 `reactions.create_executor_from_config` has zero production callers and reads a settings key that no longer exists. Removing it means dropping three tests in `test_leaf_modules.py`. DONE 2026-09-08 — removed, with the three tests that only covered it.
 - [x] 🔵 Nothing enforces the top-level `docs/*.md` header convention; two of fourteen files had drifted off it and no gate noticed. Cheapest control: assert in `check-references.py` that every top-level `docs/*.md` links `../README.md` in its first three lines. DONE 2026-09-08 — `check-references.py` now asserts every top-level `docs/*.md` links back to the README in its first lines, and the two drifted files were fixed. Red-phase checked against a deliberately broken page.
 - [x] 🔵 The global agent rules assert that `/sync` flags a README over 300 lines. The shipped skill has no such logic — its only line-count rule caps `PROGRESS.md` at 100. Implement the check or correct the claim. DONE 2026-09-08 — implemented in the skill rather than by correcting the claim, and the generated mirrors were regenerated.
-- [ ] 🔵 Web lint has no home. The `npm run lint` script was deleted because eslint was never installed; re-adding it properly needs a `web` job in `ci.yml` and the coupled CLAUDE.md checklist line, which `check-ci-checklist.py` enforces.
+- [ ] 🔵 Web lint has no home. The `npm run lint` script was deleted because eslint was never installed; re-adding it properly needs a `web` job in `ci.yml` and the coupled checklist line in `docs/ci-gates.md`, which `check-ci-checklist.py` enforces.
 - [ ] 🔵 **Kimi footer quota: upstream the payload, retire the spawn.** `/kimi-usage`
       and `~/.kimi-code/hooks/statusline.sh` (2026-09-18) get plan usage through
       `kimi web`'s documented `GET /api/v1/oauth/usage`, which means the footer's
@@ -3570,7 +3566,7 @@ From `docs/research/2026-11-14-harness-weight.md`: what Anthropic, OpenAI and
 Google say about a heavy harness, read against Clade. The owner asked for research
 only and for nothing to be deleted; every item here proposes, none removes.
 
-- [ ] 🟡 **Owner decision: relocate, don't delete, the two gate-pinned blocks of
+- [x] 🟡 **Owner decision: relocate, don't delete, the two gate-pinned blocks of
   CLAUDE.md.** The CI checklist (24,569 chars) and the dormant orchestrator's
   architecture map (Orchestrator Layer plus Key File Map, 12,191 chars) are 40.5%
   of the 90,726-char project file that every Clade session loads. Anthropic's
@@ -3583,7 +3579,18 @@ only and for nothing to be deleted; every item here proposes, none removes.
   `check-asserted-numbers.py`; `check-runnable-paths.py` already scans `docs/`.
   Acceptance: every gate green against the new location, each moved paragraph
   present verbatim in `docs/` (diff-checked), project CLAUDE.md about 54k chars.
-  Unbuilt: it changes what every Clade session sees, which is the owner's call.
+  DONE 2026-11-16, after the owner said to go with the recommendation:
+  - The CI section is now `docs/ci-gates.md` and the map is
+    `docs/orchestrator-architecture.md`. CLAUDE.md went from 91,149 to 54,777
+    chars and keeps a short pointer to each.
+  - The three gates, the judge-diversity pins and
+    `test_documented_detector_score_is_derived` read the new files.
+    `check-arch-map.py` now fails when the map is missing; before, a missing doc
+    passed silently.
+  - Two moved lines changed, both self-references. Checklist item 9 names the
+    map's new file. A stale `check-ci-checklist.py:67-74` now names the comment
+    it meant.
+  - Not measured: whether sessions behave differently without the two blocks.
 - [ ] 🔵 **Sort the context-injecting hooks into rule vs preference, then measure
   them.** Anthropic's Claude Code docs: a rule that "can't have exceptions" belongs
   in a hook; "if you have hooks for things that are only preferences, delete them

@@ -133,9 +133,10 @@ jobs:
             exit 1
           fi
 
-      # CLAUDE.md's orchestrator import DAG reads as complete, so a module that
-      # exists but is absent from it makes an agent conclude the module doesn't
-      # exist. Adding a module and describing it must be the same commit.
+      # The orchestrator import DAG (docs/orchestrator-architecture.md) reads as
+      # complete, so a module that exists but is absent from it makes an agent
+      # conclude the module doesn't exist. Adding a module and describing it must
+      # be the same commit.
       - name: Architecture map coverage
         run: python3 configs/scripts/check-arch-map.py
 
@@ -258,11 +259,12 @@ jobs:
             python3 configs/scripts/check-sibling-facts.py --range 'HEAD~1..HEAD'
           fi
 
-      # CLAUDE.md's pre-commit checklist claims to be what makes CI pass. It
-      # had drifted twice (df802c3, then again by 2026-08-29), both times
-      # leaving a local run green against a list that did not cover the build.
-      # This compares the gates the workflows invoke against the gates that
-      # section names, so the claim is enforced rather than asserted.
+      # The pre-commit checklist in docs/ci-gates.md (part of CLAUDE.md until
+      # 2026-11-16) claims to be what makes CI pass. It had drifted twice
+      # (df802c3, then again by 2026-08-29), both times leaving a local run green
+      # against a list that did not cover the build. This compares the gates the
+      # workflows invoke against the gates that section names, so the claim is
+      # enforced rather than asserted.
       - name: Pre-commit checklist covers CI
         run: python3 configs/scripts/check-ci-checklist.py
 

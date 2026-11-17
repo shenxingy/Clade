@@ -28,8 +28,9 @@ python3 configs/scripts/validate-skills.py configs/skills --quiet
 
 **Requirements:** Python 3.10+ for the orchestrator and MCP package; `jq` is
 needed when testing the Claude settings merge. The authoritative full test and
-syntax commands are in `CLAUDE.md`; setup and surface checks are in
-[Getting started](docs/getting-started.md).
+syntax commands are in [CI gates](docs/ci-gates.md), and
+`python3 configs/scripts/ci-local.py` runs all of them; setup and surface checks
+are in [Getting started](docs/getting-started.md).
 
 **Test your changes:** Run the focused checks first, then the relevant tests.
 Only deploy to `~/.claude/` in an isolated test profile or on a machine where
@@ -122,6 +123,7 @@ in use. Nothing here is deleted, and a finding here weighs less than one on the
 terminal path.
 
 For deeper context, see:
+- [`docs/orchestrator-architecture.md`](docs/orchestrator-architecture.md) — the orchestrator's import DAG and key files
 - [`docs/research/2026-04-07-claude-hooks.md`](docs/research/2026-04-07-claude-hooks.md) — Claude Code hook system design and patterns
 - [`docs/reference/hooks.md`](docs/reference/hooks.md) — current hook reference
 - [`docs/reference/batch-tasks.md`](docs/reference/batch-tasks.md) — current batch execution reference

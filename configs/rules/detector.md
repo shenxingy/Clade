@@ -13,6 +13,6 @@ are what a self-graded corpus looks like just before adversarial cases halve the
   real shell assertions and returned `eroded:false` **with** `test_files:1` —
   "looked and found nothing". Widening a pattern also widens the false-alarm
   surface: measure `fp_rate` before and after, not just recall.
-- Adding corpus cases changes the denominator CLAUDE.md states. The derivation
-  test `test_documented_detector_score_is_derived` will catch it; update the
-  sentence, do not weaken the test.
+- Adding corpus cases changes the denominator `docs/orchestrator-architecture.md`
+  states. The derivation test `test_documented_detector_score_is_derived` will
+  catch it; update the sentence, do not weaken the test.

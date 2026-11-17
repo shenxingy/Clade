@@ -16,6 +16,6 @@ Mechanics that have actually bitten here:
   anything from `orchestrator/` dies there while passing locally. Parse with
   `ast.literal_eval`; put anything needing deps in the `pytest` job.
 - A new KIND of gate needs its pattern added to `check-ci-checklist.py`'s
-  `ARTEFACT_PATTERNS` **and** its entry in CLAUDE.md, in the same commit —
+  `ARTEFACT_PATTERNS` **and** its entry in `docs/ci-gates.md`, in the same commit —
   otherwise the checklist gate is blind to it and reports full coverage.
 - Prefer **report-only** with a shrink-only baseline over blocking.

@@ -23,9 +23,9 @@ summary: >
 integrated_items:
   - "Research ledger § Run 2026-11-14 (~/.claude/research/known-concepts.md, outside the repo): the first-party sources below, with their scope"
   - "TODO.md § 2026-11-14 harness-weight follow-ups, plus dated notes on the existing half-life and /doctor items"
+  - "2026-11-16, on the owner's go-ahead: the CI checklist moved to docs/ci-gates.md and the orchestrator map to docs/orchestrator-architecture.md, with every gate that pins them retargeted; project CLAUDE.md 91,149 -> 54,777 chars; nothing deleted (TODO § 2026-11-14)"
 needs_work_items:
   - "Owner: run /doctor and /doctor prompt-audit, Anthropic's own rightsizing tools, and accept or reject each proposal (TODO § 2026-09-28 radar sweep follow-ups)"
-  - "Owner decision: relocate the CI checklist and the orchestrator architecture map from CLAUDE.md to docs/ and retarget the gates that pin them; nothing is deleted (TODO § 2026-11-14)"
   - "Build the one-component-at-a-time ablation that the promoted-rule half-life item has lacked since 2026-10-12 (TODO § 2026-10-12 radar sweep follow-ups)"
 reference_items:
   - "ALIGNED: mechanical enforcement (guardian, gates, ci-local, mutation tests), progressive disclosure (skills on demand, 11 path-scoped rules, hub sub-skills listed by name only), little emphatic wording"
