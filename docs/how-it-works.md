@@ -39,7 +39,7 @@
 | `doc-align-check.sh` | PostToolUse (Edit/Write) | Advisory: warns if edited markdown disagrees with docs/facts.json; async systemMessage only |
 | `correction-detector.sh` | UserPromptSubmit | Detects correction patterns; saves rules to corrections/rules.md |
 | `prompt-tracker.sh` | UserPromptSubmit, **sync** | Fingerprints long prompts and, once per pattern, injects a note through `hookSpecificOutput.additionalContext` when the same standing brief is being typed again. Stores fingerprints only, never prompt text |
-| `pre-compact.sh` | PreCompact | Saves session state before context compression |
+| `pre-compact.sh` | PreCompact | Saves a repository snapshot (commits, uncommitted changes, TODO backlog) before compaction, and nothing for a subagent's compaction; `post-compact-reinject.sh` re-injects it as orientation, and as a task to resume only when `.claude/current-task.md` recorded one |
 | `stop-check.sh` | Stop | Blocks stop on uncommitted changes this session produced, or on `## Blocker` headings this session added to blockers.md (against the snapshot `session-baseline.sh` takes) |
 | `verify-task-completed.sh` | TaskCompleted | Runs quality gate after task completion |
 | `notify-telegram.sh` | Notification | Forwards Claude notifications to Telegram |

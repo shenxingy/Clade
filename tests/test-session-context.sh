@@ -199,6 +199,20 @@ else
 fi
 rm -f "$BPROJ/.claude/handoff-2026-09-02.md"
 
+# COMPACT SNAPSHOT: one that records no task is orientation, not "resume from
+# here". 25 of 25 field snapshots (2026-09-18 → 10-26) recorded none, so a new
+# session within 2h of another's compaction was told to resume a TODO backlog.
+printf '# Pre-compact State: x\n\n## Current Task\n(none recorded — this snapshot carries no task)\n\n## Open TODO Items (backlog, not the current task)\n- [ ] COMPACT-BACKLOG-SENTINEL\n' \
+  > "$BPROJ/.claude/compact-state.md"
+OUT=$(ctx CLADE_X=1)
+assert_contains "$OUT" "COMPACT-BACKLOG-SENTINEL" "a fresh compact snapshot is still loaded"
+assert_contains "$OUT" "it records no task" "a snapshot with no recorded task is framed as orientation"
+assert_not_contains "$OUT" "resume from here" "and is not framed as work to resume"
+printf '# Pre-compact State: x\n\n## Current Task\nShip GOAL-42\n' > "$BPROJ/.claude/compact-state.md"
+OUT=$(ctx CLADE_X=1)
+assert_contains "$OUT" "resume from here" "control: a snapshot that records a task still says resume"
+rm -f "$BPROJ/.claude/compact-state.md"
+
 # CEILING WARNING: warn, never truncate — the guidance blocks are appended last.
 OUT=$(ctx CLADE_CTX_CEILING_BYTES=100)
 assert_contains "$OUT" "over the 100 budget" "an over-ceiling payload says so"
