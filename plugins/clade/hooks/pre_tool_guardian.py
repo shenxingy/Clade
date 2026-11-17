@@ -52,7 +52,7 @@ def _rewrite(command: str) -> dict:
 # delete of /home, /etc, /usr, /var, /sys, /proc and /boot that the shell hook
 # blocked; and it split on LINES where the shell splits on statements, so a
 # home path merely sharing a line with a benign delete read differently here.
-_DANGEROUS_TILDE = r"(?:^|[\s=])~[A-Za-z0-9._-]*(?:/|\s|$)"
+_DANGEROUS_TILDE = r"(?:^|[\s=])~[A-Za-z0-9._-]*(?:/|\s|$|[<>)])"  # `~>x`, `(rm -rf ~)` too
 _DANGEROUS_NAMED = (
     r"(?:" + _DANGEROUS_TILDE + r"|\$\{?HOME\}?"
     r"|(?:/home|/etc|/usr|/var|/sys|/proc|/boot)\b)"
@@ -93,7 +93,7 @@ def _recursive_force(statement: str) -> bool:
     """
     recursive = force = False
     end_of_options = False
-    after = re.sub(r"^.*\brm\b", "", statement, count=1)
+    after = re.sub(r"^.*?\brm\b", "", statement, count=1)  # the FIRST rm
     for token in after.split():
         if token == "--":
             end_of_options = True
@@ -115,7 +115,7 @@ def _recursive_force(statement: str) -> bool:
 
 
 def _delete_targets(statement: str) -> list[str]:
-    after = re.sub(r"^.*\brm\b", "", statement, count=1)
+    after = re.sub(r"^.*?\brm\b", "", statement, count=1)  # the FIRST rm
     return [token for token in after.split() if not token.startswith("-")]
 
 

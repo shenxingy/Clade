@@ -990,6 +990,32 @@ assert_parity "dash token after --"           'rm -f -- /home/alexshen/-r-file.t
 assert_parity "non-recursive variable path"   'rm -f $BUILD_DIR/my-report.txt'
 assert_parity "recursive variable path"       'rm -rf $BUILD_DIR/my-report.txt'
 
+# ─── The flags and targets come from after the FIRST rm ───────────────
+# Both guardians read the text after the LAST word "rm" from 2026-09-07 to
+# 2026-11-17. A later operand holding that word hid every flag before it, so
+# each command below was ALLOW on both. Found reviewing the depth exemption.
+section "Catastrophic rm — a later word rm does not hide the flags"
+assert_both "a bare rm after the root"            'rm -rf / rm'                         BLOCK
+assert_both "a bare rm after a home"              'rm -rf ~ rm'                         BLOCK
+assert_both "a path holding rm after a home"      'rm -rf ~ /tmp/rm/x'                  BLOCK
+assert_both "another user's home, then rm"        'rm -rf /home/yan rm'                 BLOCK
+# The tilde pattern wanted `/`, a space or the end after `~`, so a glued
+# redirect or a closing paren hid the home; the shell side missed ${HOME}.
+assert_both "a redirect glued to a home"          'rm -rf ~>/dev/null'                  BLOCK
+assert_both "an input redirect glued to a home"   'rm -rf ~<in'                         BLOCK
+assert_both "a home at the end of a subshell"     '(rm -rf ~)'                          BLOCK
+assert_both "braced HOME"                         'rm -rf ${HOME}'                      BLOCK
+assert_both "control: a backup file ending in a tilde" \
+  'rm -rf /tmp/notes.txt~'                                                              ALLOW
+# The two guardians word a rewrite differently, so this one asserts each verdict.
+assert_verdict "an unresolved target, then rm"    'rm -rf $UNSET_DIR rm'                REWRITE
+TESTS_RUN=$((TESTS_RUN + 1))
+if [[ "$(py_verdict 'rm -rf $UNSET_DIR rm')" == REWRITE* ]]; then
+  TESTS_PASSED=$((TESTS_PASSED + 1)); printf "  ${GREEN}✓${NC} codex: an unresolved target, then rm\n"
+else printf "  ${RED}✗${NC} codex: an unresolved target, then rm\n"; case_failed; fi
+assert_both "control: a non-recursive rm with a later rm word" \
+  'rm -f /home/alexshen/notes/a.txt /tmp/rm/b'                                          ALLOW
+
 # ─── Other guardian rules still fire ─────────────────────────────────
 section "Other rules — unaffected by the rm change"
 assert_verdict "force push to main"        'git push --force origin main'         BLOCK
