@@ -377,7 +377,14 @@ if [[ -f "$COMPACT_STATE" ]]; then
   CS_AGE_HOURS=$(( ($(date +%s) - CS_MTIME) / 3600 ))
   if [[ $CS_AGE_HOURS -lt 2 ]]; then
     COMPACT_CONTENT=$(_capped_read "$COMPACT_STATE" "$CTX_FILE_BUDGET")
-    CONTEXT="${CONTEXT}\n## Compact State (context was compacted ${CS_AGE_HOURS}h ago — resume from here)\n${COMPACT_CONTENT}\n"
+    # No recorded task → orientation, not "resume from here": a NEW session
+    # within 2h of another session's compaction would otherwise be told to
+    # resume a TODO backlog. Same test as post-compact-reinject.sh.
+    if grep -qF -e '(none recorded' -e '(no current-task.md found)' <<< "$COMPACT_CONTENT"; then
+      CONTEXT="${CONTEXT}\n## Compact snapshot (${CS_AGE_HOURS}h ago — repository orientation; it records no task, and its TODO items are backlog, not instructions)\n${COMPACT_CONTENT}\n"
+    else
+      CONTEXT="${CONTEXT}\n## Compact State (context was compacted ${CS_AGE_HOURS}h ago — resume from here)\n${COMPACT_CONTENT}\n"
+    fi
   fi
 fi
 
