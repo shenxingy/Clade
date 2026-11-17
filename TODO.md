@@ -59,8 +59,10 @@ Phases 1–14 complete.
 
 - Retire `doc-align-check.sh`, whose own retire-when condition is met:
   [§ idea-essay sweep](#2026-11-05-idea-essay-sweep-follow-ups), "Owner: retire `doc-align-check.sh`?".
-- Retire `rule-injector.sh`, or only stop it duplicating Claude Code's loader,
-  once the agent's re-measure (on or after 2026-11-16) is in:
+- Retire `rule-injector.sh`, or only stop it duplicating Claude Code's loader.
+  The agent's re-measure is in (2026-11-16): the hook carried 1,351 of the 1,413
+  rule deliveries in 30 days and overlapped the native loader on 79, so the
+  recommendation is to keep it:
   [§ 2026-10-05 radar sweep](#2026-10-05-radar-sweep-follow-ups),
   "Retire `rule-injector.sh` or stop it duplicating Claude Code".
 - Tag and publish v0.3.1, or record that it stays untagged:
@@ -304,6 +306,22 @@ backlog.
       tests/test-hooks.sh.** Do not keep it on the argument that it ought to work.
       A channel nobody reaches is the wired-and-empty defect it was built to fix,
       one level up.
+
+      **Re-measured 2026-11-16 (radar, unattended): the channel landed, so it is
+      not deleted.** Population: the 462 main-thread transcripts of the 30 days to
+      2026-11-16 on aries, every profile, Claude Code 2.1.283. Read from the
+      transcripts, not the sentinels:
+      - `rule-injector.sh` delivered a path-scoped rule in 155 of the 462
+        sessions; Claude Code's own loader (`nested_memory` attachments under a
+        `rules/` path) in 76; either, 193.
+      - Counted once per rule per context segment (compaction starts a new
+        segment, and `post-compact-reinject.sh` re-arms the hook then): 1,351
+        hook deliveries, 141 native, 79 by both.
+      - Top rules by hook delivery: `measured-claims.md` 427 and
+        `test-assertions.md` 386 hook-context records.
+      - Step 2 was not run: an unattended run may not start
+        `check-asserted-numbers.py`. Scoring rule *violations* (the 2026-11-07
+        note) was not attempted either. Both remain open here.
 
 - [ ] 🟡 **Convergence is not proven, and round 6 says why.** Rounds 1-5 audited
       the tree and found 61, 25, 34, - and 23; 43% of the last were siblings of
@@ -1574,6 +1592,73 @@ that was built has been run.
   arXiv:2604.15877 puts memory, skills and rules on one compression axis (5–20x,
   50–500x, 1,000x+), and nothing here decides which level a learned item belongs
   to.
+
+  **Re-measured 2026-11-02 (radar): do NOT retire on this host yet.** Local
+  transcripts from 2026-10-26 to 11-02 cover 35 sessions and 973 session+agent
+  threads, all on CLI 2.1.283.
+  - The hook delivered 2,305 rule bodies: 2,280 distinct (thread, rule) pairs,
+    3.8M characters as `PostToolUse:Bash` context alone.
+  - The native loader (`nested_memory` from a `rules/` path) delivered 57 pairs.
+  - 42 pairs got both. Removing the hook would drop 2,238 of 2,280 pairs (98%),
+    not a duplicate.
+  - Re-measure after the CLI upgrade below, when native loading covers Bash
+    reads. Count rule names out of `[path-scoped rule: NAME (` and match on
+    `sessionId|agentId|NAME`.
+- [ ] 🟡 **The compaction note's queued "owner's last words" must keep role
+  provenance (radar 2026-11-02).** Compaction Laundering (arXiv:2610.29869,
+  2026-10-21) shows the risk. Harnesses that flatten turns into text labels let
+  "an attacker who controls anything the agent reads … forge a user turn that
+  survives compaction as a genuine instruction".
+  - It worked 87-100% of the time on five flattening harnesses and 0% on four
+    role-typed ones.
+  - The radar 2026-10-26 item (branch `radar/2026-10-26`) proposes putting the
+    owner's recent messages verbatim into `.claude/compact-state.md`.
+  - Requirements:
+    - Take them only from typed transcript records: `type=="user"`, string
+      content, not `isMeta`, not a tool result.
+    - Escape anything that looks like a role label.
+    - Never take them from text the agent read.
+  - Same family: `session-context.sh` lifts the first open `TODO.md` line into
+    hook context ("Next TODO"). The trust-region paper (arXiv:2610.38867) finds
+    an injection in "a README or TODO file" is followed "2.6 times more often"
+    than the same text in code.
+  - The precedent is still Hookify (2026-10-05): the directory trust dialog is
+    the boundary. So the TODO line is a watch item, not a gap.
+- [ ] 🟡 **Repeated agent procedures never become scripts (radar 2026-11-02).**
+  The owner asked twice in two days:
+  - 10-31, docforensics: "做成这个小工具…而不是每次都靠Agent单独做" ("make this
+    into a small tool… rather than relying on an agent each time").
+  - 11-01, server-infra: Halo's workflow should become a tool, because
+    "不应该用AI操控浏览器处理的…速度慢…稳定性没法保证" ("it shouldn't be handled
+    by AI driving a browser… slow… stability can't be guaranteed").
+
+  What we have and lack:
+  - `prompt-tracker` notices a re-typed user brief.
+  - Nothing notices the agent re-running the same multi-step tool sequence
+    across sessions.
+  - Field mechanism: SKILL-DISCO (arXiv:2606.26669) distills recurring trace
+    subgraphs into "callable, executable, and verifiable procedural skills".
+  - Its caution is arXiv:2610.34938 (`\retro`): "18 of 43 lint-related proposals
+    recommended a practice regardless of what had happened". Of seven testable
+    changes, "four showed no reduction".
+
+  So any miner needs a with/without check before it proposes a script. First
+  slice, read-only: cluster `Bash` command shapes per project across sessions,
+  and list the sequences seen in 3+ sessions.
+
+  **Re-measured 2026-11-16 (radar): keep the hook.** Over the 462 main-thread
+  transcripts of the 30 days to 2026-11-16 (aries, every profile, Claude Code
+  2.1.283), counting each rule once per context segment, the hook made 1,351
+  deliveries and the native loader 141; 79 were made by both. Retiring the hook
+  would leave rule delivery in 76 sessions instead of 193. The hook-only
+  deliveries are what its extra reach predicts (Bash access, and the basename
+  match on `README.md` and `CLAUDE.md`, neither covered by the native loader on
+  2.1.283), but the split by trigger was not measured. The 79 duplicates (5.8%
+  of hook deliveries) are not worth a transcript read per hook call to suppress.
+  Re-measure after the Claude Code upgrade, whose native loader also fires on
+  single-file Bash reads. One finding from the same pass is fixed on
+  `radar/2026-11-16`: a subagent's compaction cleared the MAIN thread's sentinel
+  (see § 2026-11-16 radar sweep).
 - [ ] 🟡 **`/equip` scans each skill alone; ColluSkill splits a payload across
   skills.** arXiv:2608.09732 (August 2026) reports 96.0% attack success against
   six per-skill scanners. Sub-payloads sit in separately packaged skills joined
@@ -1584,6 +1669,22 @@ that was built has been run.
   the paths each skill executes or sources across the target AND the installed
   set, and flag the overlaps. Needs a false-positive calibration run on the
   vendored seo/blog/ads families before it can gate anything.
+- [ ] 🔵 **`/equip` has no check for oversight-loosening lines (radar
+  2026-11-02).**
+  - The field data: arXiv:2610.37734 (2026-10-27) found "about one in
+    seventeen" published skills tell the agent "to proceed without approval, to
+    bypass checks with --no-verify, or to keep working without checking in".
+    70.1% of those lines are unconditional, and existing scanners catch "at most
+    46%" at precision below 0.4.
+  - Ours: `equip_audit.py` INJ-01..04 cover override, concealment, exfil and
+    blobs. Nothing covers `--no-verify`, `--dangerously-skip-permissions`,
+    `--dangerously-bypass-approvals-and-sandbox` or `bypassPermissions`.
+  - Not built: our own corpus mentions these flags to FORBID them
+    (`commit/prompt.md:68`, `merge-pr/prompt.md:46`) or to announce a deliberate
+    use (`batch-tasks/prompt.md:243`). A bare regex would flag all three, and
+    the radar run cannot execute `test_equip.py`.
+  - Shape: an INJ-05 warn that skips a match when a negation precedes it in the
+    same sentence, calibrated to zero hits on `configs/skills/`.
 - [ ] 🟡 **Hooks run `git` in whatever directory a session opens.** GitSpawn
   (Manifold Security, disclosed 2026-09-02): a `.git/config` with
   `core.fsmonitor` runs its helper on `git status`, outside any agent sandbox.
@@ -1836,8 +1937,22 @@ total limit". Fixed so far: the promotion gate (#134). Open:
   should say so themselves: accept a recorded `ci-local.py` pass in place of
   completed remote checks (or `gh pr merge --auto` where protection requires
   them). Regenerate the plugin and mcp-package copies.
-- [ ] 🟡 **On or after 2026-10-25: did any rule moved out of always-loaded
-  context stop working?** On 2026-10-18 one project moved 54 promoted rules from
+- [x] 🟡 **On or after 2026-10-25: did any rule moved out of always-loaded
+  context stop working?** — CHECKED 2026-10-26 by the radar sweep: the move
+  held. Three corrections were recorded since 2026-10-18 in the homes the move
+  touched. In faceswap-platform-100, one (`watermark-visibility`, 10-23) is a
+  new rule: the only moved file naming a watermark, `camera-studio.md:8`, is
+  about where an overlay is drawn, not how its visibility is verified. Every
+  one of its 10 scoped files fired over 201 session sentinels (from
+  `observability-alerts.md` ×3 to `docs.md` ×141; the global `frontend.md`
+  ×166). Global, two: `access-review` (10-25) matches nothing archived;
+  `credential-history` (10-20) is about the same ldap admin password as the
+  archived `auth-provisioning` rule of 2026-07-07, whose condensed line
+  ("Secret + privileged verb: credential-to-use or value-to-set?") was in the
+  global file the whole time. The agent asked that question and answered "value
+  to set" without digging the rotation history, so a condensed question did not
+  stop a wrong answer; the 10-20 rule now names the history to check. No rule
+  needs moving back. Original item: On 2026-10-18 one project moved 54 promoted rules from
   its CLAUDE.md into path-scoped `.claude/rules/` files, and the global file's
   96 rules were condensed to one line per principle. A rule that keeps getting
   violated after the move is the measurable failure. For each correction
@@ -2108,6 +2223,9 @@ exposed two hooks that have delivered nothing (the command is now in
   one carrying a false `reverted_files`). The fix is to treat a `>`/`>>`/`tee`
   whose target basename equals a reverted path as an edit. It is small, but not
   built: the frequency is low and this run could not run the suite.
+  **Built 2026-10-26 on branch `radar/2026-10-26`, pending review** (see the
+  2026-10-26 section): the target must be the reverted PATH, not just its
+  basename, because `git show HEAD:src/app.py > /tmp/app.py` is a backup.
 
 ## 2026-10-22 Workflow efficiency audit follow-ups
 
@@ -3269,7 +3387,7 @@ items below include the code that keeps the next failure from being silent.
   skips owner-only sections and items; `tests/test-session-context.sh`. Implemented by
   Kimi K3.1 Pro (max effort) in its own worktree; verified independently by Claude
   (re-run suites, red proof, mutations).
-- [ ] 🟠 **Radar review debt compounds.** radar/2026-10-26 (15 files, +525/−51) and
+- [x] 🟠 **Radar review debt compounds.** radar/2026-10-26 (15 files, +525/−51) and
   radar/2026-11-02 (13 files, +258/−17) are unreviewed and now conflict with main
   (`tests/test-hooks.sh`, `tests/test-correction-pairing.sh`;
   `tests/test-radar-cron.sh`); the 11-09 run adds a third. Their TODO follow-ups
@@ -3293,6 +3411,31 @@ items below include the code that keeps the next failure from being silent.
     `=====`/NOMATCH traps, the rm guard's false fires and the pkill self-kill guard.
   - The attention-pass PR edits `tests/test-radar-cron.sh`, which `11-02` also
     touches.
+  DONE 2026-11-17 for all four branches. Each change was ported onto current
+  `main` as its own PR, with the suites run, a red phase or mutation for every
+  guard, and a full local gate per head:
+  - #247 compaction framing and subagent guards;
+  - #248 revert-detector shapes;
+  - #249 two live catastrophic-rm bypasses, found reviewing `11-09`;
+  - #250 session-context and skill-suggest line breaks;
+  - #251 error-aware, once-per-thread failure hints;
+  - #252 stop-check blocker scoping;
+  - #253 the radar delivered-text pass and `NO DIGEST`;
+  - #254 the rm depth exemption, with nine bypasses closed in review;
+  - #256 the pkill tail;
+  - #255 the compute skill's two sections;
+  - this PR, the TODO follow-ups.
+
+  Not landed: the PreCompact prompt-hook removal (owner decision, under the
+  2026-10-26 follow-ups). Review found three things the sweeps' reports did not
+  show:
+  - the 11-02 sweep's `NO DIGEST` test failed against its own fix, because it
+    reused a date an earlier section had given a digest;
+  - its line-break fix broke three existing assertions that expected the
+    literal `\n`;
+  - the depth exemption had nine ways through it.
+
+  Unrun branch code is a draft, not a fix.
 - [x] 🟡 **Session start spends its budget on archaeology.** `commit-archeology.sh`
   timed out on 41 of 153 starts (27%, 15 s timeout); `session-context.sh` on 4 of
   162. `--inject` runs the 60-day scan on a stale-cache start, not on every start;
@@ -3552,8 +3695,10 @@ was reconciled by hand the same day (12 of 32 files defective). Mostly condition
       `applyPrintModeConfigDefaults` tests and run on main `f082f04`.
       `docs/kimi.md` has the details.
     - **Reported.** It is explained in a comment on #4943, posted with the owner's
-      yes. No upstream issue or PR tracks it, so filing one, or a fix PR with the
-      two cases, is the owner's call.
+      yes, and filed as kimi-code issue 5005 (2026-11-17, open): "Print mode
+      replaces KIMI_SUBAGENT_TIMEOUT_MS and KIMI_CODE_SWARM_TIMEOUT_MS with 0 when
+      they equal the default". Watch it for a fix release, and re-run the two cases
+      before retiring anything here.
     - **Clade is not affected.** Its workaround is a `config.toml` value, which
       print defaults keep.
 - [ ] 🔵 **Hand-launched Kimi workers trip the correction detector.** A `kimi -p`
@@ -3702,3 +3847,262 @@ did not act on.
   - NVIDIA OpenShell (now a CNCF project);
   - Pi, which runs through the 2026-11-04 HN setup thread beside Claude Code and
     Codex.
+
+## 2026-10-26 radar sweep follow-ups
+
+Digest: `~/.claude/research/radar-2026-10-26.md`. First weekly run in its own
+worktree (#142): edits are on the local branch `radar/2026-10-26`, which the
+cron wrapper committed after `bash -n` and the affected suites in a no-network
+sandbox. The agent ran none of them; read the wrapper's results in that
+commit's message before trusting any line below. Both 10-19 hook fixes are
+confirmed in the field: no `hook_non_blocking_error` since 2026-10-21 00:31Z
+across the 1,500 transcripts written since (70 main sessions, the rest
+subagents; both profiles), and `skill-suggest.sh` has delivered
+(43 "Test file edited" alone).
+
+- [x] 🟠 **Review and land `radar/2026-10-26`.** Landed 2026-11-17 with every suite
+  run and each guard mutated: the compaction framing in #247 (with the 11-16
+  subagent guard), the failure-hint dedupe in #251 (with the 11-09 error-aware
+  hints), the revert-detector shapes in #248. The PreCompact `prompt` hook removal
+  was NOT landed: it deletes a shipped hook, and the owner asked for nothing to be
+  deleted during the harness-weight work (2026-11-14). It is an owner decision,
+  queued as its own item below. As written by the sweep, four changes, each with
+  tests that fail on the old code, by hand-trace (not run):
+  - **The compaction note no longer passes a backlog off as the task.** 25 of
+    25 post-compaction restores (2026-09-18 → 10-26) recorded no task — nothing
+    writes `current-task.md` — and 19 offered open TODO items under "your task
+    state … resume from it rather than re-deriving intent from the summary".
+    `pre-compact.sh` now says "(none recorded …)" and labels the TODO list
+    backlog; `post-compact-reinject.sh` and `session-context.sh` frame such a
+    snapshot as orientation that the summary and the user's latest message
+    outrank, and keep "resume" for a snapshot that records a task. Tests:
+    `test-post-compact-reinject.sh` §7 runs the real producer (the old fixture
+    held a Current Task the producer never writes); `test-session-context.sh`.
+    Field rhyme: "momentum" (Anthropic, 2026-10-23).
+  - **The PreCompact `prompt` hook is removed.** `precompact-state-save` asked
+    a prompt hook — a single-turn evaluation with no tools — to "use the Write
+    tool"; 0 of 25 restores carried its schema. `install.sh` replaces `.hooks`
+    wholesale, so the removal reaches installed settings. Guard in
+    `test-hooks.sh`.
+  - **`post-tool-use-failure.sh` sends each hint once per thread.** 1,788
+    hints in 2026-10-20 → 10-26, 731k chars, 845 (47%) byte-identical to one
+    the same session+agent already had. Keyed on `session_id` + `agent_id`
+    under `lib/runtime-dir.sh`; fails open. Its first test (`test-hooks.sh`).
+  - **`revert-detector.sh`: three shapes that rejected nothing.** An
+    index-only `git restore --staged` writes no record (37 records 2026-09-02
+    → 10-26, 34 filed `paths`, one naming 14 files); a redirect or `tee` into
+    the reverted path is a probe (the 🔵 under 2026-10-19); a diff the command
+    saved and applied elsewhere is a probe (2026-10-21, the week's only
+    `repeat:true`). `test-correction-pairing.sh` §3j, §3k, four §8 mutations.
+  After merge: `./install.sh`; live proof is the next compaction's restore
+  reading "No task was recorded", and no new `history.jsonl` record for a bare
+  `git restore --staged`.
+- [ ] 🟡 **Owner decision: remove the PreCompact `precompact-state-save` prompt
+  hook?** The 10-26 sweep removed it: a prompt hook is a single-turn evaluation
+  with no tools, yet it asks the model to "use the Write tool", and 0 of 25
+  restores (2026-09-18 → 10-26) carried its schema. Its removal and the
+  `test-hooks.sh` guard that pins the absence are on the local branch
+  `radar/2026-10-26` only. Not landed, because it deletes a shipped hook. Say
+  "remove it" and it lands as its own PR; "keep it" retires this item.
+- [ ] 🟠 **Put what the user asked into the compaction note, mechanically.**
+  The note now stops misdirecting but still carries no task. Compact-Bench
+  (arXiv:2610.31710, 2026-10-22): "LLM summaries retain at most 16.0% of
+  recurring details, compared with 79.1% for mechanical extraction".
+  Anthropic's UK AISI assessment (2026-10-23) traces "momentum" to compaction
+  notes that "served as instructions for the next cycle", and recommends
+  writing explicit stop conditions and out-of-scope lines into them. Shape:
+  `pre-compact.sh` reads `transcript_path` from its hook input and writes the
+  owner's last few non-meta messages verbatim, masked through `redact.py`,
+  bounded, plus one fixed line: work the user has not asked for in this session
+  is out of scope. Not built: user text lands in a project-local file that
+  shows as untracked in several repos, so it needs redaction, a size bound and
+  a `.gitignore` decision first.
+- [ ] 🟡 **Corrections never become checks.** TRACE (arXiv:2606.13174, June
+  2026; deployable skill `tellonce`, MIT, Claude Code / Codex / Copilot CLI)
+  mines corrections into atomic rules and compiles them into checks that must
+  pass before an agent completes: a deterministic layer plus an optional
+  small-model judge in a Stop hook. Mem0 memory "still leaves 57.5% of
+  applicable preference checks violated"; TRACE cut held-out in-distribution
+  violations from 100.0% to 37.6% on ClawArena. Ours: correction-detector →
+  `rules.md` → SessionStart shows the newest few ("26 older rules not shown"
+  this morning) → hand promotion; `/generate-hook` converts one rule at a time
+  by hand; nothing checks a reply against learned rules. Companion: "Lessons
+  Outlive Their Failures" (arXiv:2610.32578, 2026-10-23): in 3 of 4 replayed
+  failures the failure did not recur with or without its fix, a written rule
+  did not change a model's estimates, and only a mechanical check stopped the
+  one that came back; "re-test their rules from time to time and retire the
+  obsolete ones". That replay is the cheap, re-runnable harness the 10-12
+  half-life item said it lacked. First step is measurement, not a Stop judge:
+  replay a sample of promoted rules' original failures with and without the
+  rule. Architectural after that (Stop-judge cost, false positives, loop
+  guards), so BRAINSTORM-grade.
+- [ ] 🔵 **`stop-completeness-check` judges with the agent's own claim in
+  view.** "Self-report leakage" (arXiv:2610.29609, GUI agents): withholding
+  the agent's success report from the judge raised dangerous-misreport recall
+  by 43.4 and 13.3 points on two judge models. Our Stop prompt hook's evaluator
+  is handed the transcript, final message included. Cheap test before any
+  change: `tests/evals/stop_completeness_eval.py` with the final assistant
+  message withheld vs shown. Withholding would need a command or agent hook
+  that builds its own view.
+- [ ] 🔵 **`skill-suggest.sh` now delivers; measure its precision.** Since
+  #139, 2026-10-19 → 10-26: 43 "Test file edited", 31 frontend-design, 25 "/cso",
+  19 "install.sh", 7 "/seo schema". Two misfires seen in this run, both
+  mechanical: `tests/test-hooks.sh` got "Schema markup edited" because its body
+  holds the string `application/ld+json` (the fixture for that very rule), and
+  `configs/hooks/session-context.sh` got "Security-sensitive" because the
+  security regex contains `session`. Sample the deliveries' file paths
+  (attachment → `toolUseID` → tool input) before tightening either pattern.
+
+## 2026-11-09 radar sweep follow-ups
+
+Built on `radar/2026-11-09` (unrun by the agent; the cron wrapper runs the suites).
+Landed 2026-11-17 after review:
+- the catastrophic-rm guard's depth exemption (`configs/hooks/lib/rm-targets.sh`, both
+  guardians), in #254, with nine bypasses closed;
+- `post-tool-use-failure.sh` answering the tool's `error`, in #251;
+- the pkill tail, in #256;
+- the compute skill's "does this run need to exist" step, in #255.
+
+Queued, not built:
+
+- [ ] 🟡 **The Bash tool runs zsh on aries, and agents write bash.** Main-thread
+  transcripts on this host (5 config dirs, retained ≤30 days, text mentions not
+  excluded): 146 contain `no matches found:` (zsh NOMATCH on an unmatched glob) and
+  88 contain `(eval):N: ===== not found` (zsh EQUALS expansion of an unquoted
+  `=====` separator). In Lane D's report (30 days to 2026-11-09) the text it
+  prints for two of the top three families, `Bash:cat` (34 / 25 sessions,
+  discovery / held out) and `Bash:sed` (33 / 19), ends in `(eval):1: ===== not
+  found` after the command's output had printed. Those are ties at one
+  occurrence each (99 and 92 distinct texts), so the count above, not the
+  ranking, is the evidence. Claude Code 2.1.283 (installed) reads `CLAUDE_CODE_SHELL`
+  (binary strings; search snippets show `"env": {"CLAUDE_CODE_SHELL": "/bin/bash"}`
+  in settings.json; the official env-var page was not read). Not built because it
+  changes the owner's shell environment (PATH, rc files, zoxide) for every
+  session: run one profile with it set for a week and compare the two error
+  counts and the session's other Bash failures before offering it as an
+  `install.sh` opt-in. A `post-tool-use-failure.sh` hint naming zsh is the cheaper
+  half, but the hooks docs show a Bash `error` of only "Command failed with exit
+  code 1", so whether the zsh text reaches the hook is unverified; capture one
+  real PostToolUseFailure input for a Bash failure first.
+- [x] 🟡 **The rm guards read flags and operands after the LAST `rm` word.**
+  Fixed in #249 (2026-11-17), in all six sites, beside a second hole found in the
+  same review: `DANGEROUS_TILDE` missed `~>/dev/null` and `(rm -rf ~)`, and the shell
+  side missed `${HOME}`. Both guardians refused none of `rm -rf / rm`,
+  `rm -rf ~ /tmp/rm/x` or `rm -rf ~>/dev/null` before it (payload probes, never run).
+  As queued:
+  `sed -E 's/^.*\brm\b//'` and Python's `re.sub(r"^.*\brm\b", …)` are greedy, so in
+  `rm -rf ~ /tmp/build-rm` the text after the trailing `-rm` is empty: no `-r`, no
+  `-f`, ALLOW in both guardians (read from the code, not run). Any operand ending in
+  `-rm`, `.rm` or `/rm` hides the real flags. Fix in all six extraction sites
+  (`rm_scan_flags`, the unresolved-target loop, `rm_operands`; `_recursive_force`,
+  `_delete_targets`, `_rm_operands`) by taking the FIRST `rm`, with BLOCK cases in
+  `tests/test-pre-tool-guardian.sh` through `assert_both`.
+- [ ] 🔵 **`pre-tool-guardian.sh` is at 1,499 of 1,500 lines.** The depth exemption
+  went to `configs/hooks/lib/rm-targets.sh` to fit. #249 reached exactly 1,500;
+  #254 condensed one comment to bring it to 1,496. Split the guardian (the rm block
+  and the force-push walk are natural seams) before the next rule lands.
+- [ ] 🔵 **Re-measure the subagent-wait warning after the fleet passes 2.1.318.**
+  2.1.318 (2026-11-04): "background subagents … move a shell command to the
+  background after 3 minutes on all providers, so the prompt cache doesn't expire".
+  That is the native form of the 270 s warning in `pre-tool-guardian.sh`. aries runs
+  2.1.283. Once it upgrades, replay Workflow-subagent Bash calls; if no foreground
+  call outlives 270 s, retire the rule under its own retire-when.
+- [ ] 🔵 **Did the reworded rm refusal change what the next calls do?** It now names
+  its target and what is not refused, and keeps its first sentence so
+  `friction-rank.py` still groups it. Gorokh records a guard whose added guidance
+  bought nothing; at the next radar, compare the refusal's next-3-calls before and
+  after this change rather than assume it helped.
+- [ ] 🔵 **macOS `$TMPDIR` is still refused.** `/var/folders/…/T/<x>` falls under
+  `/var` in the depth rule. Not measured on the Mac; exempt it the way `/var/tmp` is
+  if its transcripts show the refusal.
+
+## 2026-11-16 radar sweep follow-ups
+
+Digest: `~/.claude/research/radar-2026-11-16.md`. Weekly cron run on branch
+`radar/2026-11-16`; nothing in it was executed by the agent. This section sits
+above the newest section, not at the end of the file, because every earlier
+radar branch conflicts with `main` in TODO.md (see the first item).
+
+- [x] 🟠 **A subagent's compaction got the main project's task snapshot.**
+  Built on `radar/2026-11-16`, unrun; landed with tests run in #247 (2026-11-17). `post-compact-reinject.sh` ignored
+  `agent_id`, so a compacting subagent was told to "resume" from the project's
+  commits, status and TODO backlog, and the main thread's rule sentinel was
+  cleared. 167 retained subagent transcripts on aries (2026-10-26 → 11-16, 149
+  of them Workflow agents) received that restore as hook context, each right
+  after the subagent's own compaction boundary. The hook now exits silently for a
+  subagent after clearing only that subagent's sentinel. It recognises one by
+  `agent_id`, which Claude Code passes from 2.1.323, or by a `transcript_path`
+  under `subagents/` (unverified on older versions). Tests:
+  `tests/test-post-compact-reinject.sh` §2b, red against the old hook by
+  reading.
+- [ ] 🟠 **Radar branches go stale on TODO.md within a week.** `radar/2026-10-26`,
+  `radar/2026-11-02` and `radar/2026-11-09` are unlanded, and all three conflict
+  with `main` in TODO.md (`radar-branch-state.tsv`, upkeep 2026-11-16). Their
+  fixes keep reappearing as live friction. In Lane D for the 30 days to
+  2026-11-16, the catastrophic-rm refusal recurs in 21 discovery and 6 held-out
+  sessions, and `pkill` exit 144 in 13 and 2. Both fixes sit on
+  `radar/2026-11-09`. Cheapest structural change: radar stages its TODO
+  additions as `.radar-staged/todo-append-<date>.md`, as it already does for
+  the ledger, and the lander appends them, so a branch carries code and tests
+  only. Not built here: it edits `radar-cron.sh` and its test, which
+  `radar/2026-11-02` also changes.
+- [x] 🟡 **`pre-compact.sh` still runs for a subagent's compaction.** Fixed in
+  #247 (2026-11-17) with the `agent_id` / `transcript_path` exit below. It
+  rewrites the project's `compact-state.md` and refreshes its mtime. That keeps
+  `session-context.sh`'s two-hour "resume" window open for new sessions on a
+  snapshot no main-thread compaction wrote. Apply the same `agent_id` /
+  `transcript_path` test there. Not edited here: `pre-compact.sh` is in
+  `radar/2026-10-26`'s conflict list.
+- [ ] 🟡 **Build a plateau sampler if the "no sawtooth" correction recurs.** Four
+  owner corrections in five weeks, across two projects, asked for steadily
+  saturated CPU and memory (correction history, 2026-10-12 → 11-12). The compute
+  skill gained a "Check the plateau once it runs" step on `radar/2026-11-16`,
+  but that is prose with commands, not an instrument. The structural form is a
+  stdlib sampler. It would read `/proc/stat` and the run's cgroup `cpu.stat` at
+  1-5 s for N minutes and print STEADY, SAWTOOTH or UNDERUSED with the series.
+  Its classifier would be testable offline on a recorded series. Trigger:
+  another such correction after the skill change is installed. The Codex
+  plugin stamp was not bumped for the skill change, because `radar/2026-11-09`
+  bumps the same line; bump it once when landing both.
+- [ ] 🔵 **Re-check four Claude Code changes after the upgrade from 2.1.283.**
+  - 2.1.323 passes `agent_id` to post-compaction hooks; the fix above depends on
+    it.
+  - 2.1.323: "a tool's permission check fails with an error after a
+    `PreToolUse` hook returned 'allow': Claude Code now decides the call as if
+    no hook had answered". Check `pre-tool-guardian.sh`'s rewrite path against
+    it.
+  - 2.1.325: "scheduled tasks and `/loop` … ask before running a skill that
+    declares `allowed-tools` or hooks". `radar-cron.sh` runs `claude -p`, not
+    a scheduled task; confirm it is unaffected.
+  - 2.1.323: "the context window assumed for a model ID that Claude Code
+    doesn't recognize" moves from 200K to 1M. Check the context policy's
+    `autoCompactWindow` reasoning against it.
+
+## 2026-11-17 radar-landing follow-ups
+
+Found while porting and landing the four radar branches (#247-#256 and this PR).
+
+- [ ] 🟠 **`ci-local.py` runs a workflow's `npm install -g` against the host's
+  global npm.** The "Validate Plugin Manifest" job's "Install Claude Code CLI"
+  step installs `@anthropic-ai/claude-code` globally. Two gates running at once
+  on one host raced in that directory: one failed with npm `ENOTEMPTY`
+  (2026-11-17, the first gate of #251). Worse, a local gate rewrites the user's
+  own installed CLI. The landing used a wrapper that pointed `NPM_CONFIG_PREFIX`
+  and `npm_config_cache` at a per-gate directory and put its `bin` first on
+  `PATH`. `ci-local.py` should do that itself for every step, so that a local
+  gate never mutates host-global package state. Acceptance: two concurrent runs
+  on one host both pass, and the global prefix's mtime is unchanged.
+- [ ] 🟡 **The catastrophic-rm guard over-blocks `rm` inside a hyphenated word.**
+  `\brm\b` and `(^|[^A-Za-z0-9_])rm([^A-Za-z0-9_]|$)` both treat a hyphen as a
+  word boundary. So a command that only names a branch like `fix/x-rm-first-word`,
+  together with any `-r`/`-f`-looking token and a home path, reads as a recursive
+  delete. It was hit live while landing #249, and the branch was renamed to get
+  past it. Over-blocking is the safe direction, so this is friction, not a hole.
+  Candidate: require the word to be at a command position, the start of a
+  statement or after `sudo`/`command`/`env`, or a path ending `/rm`. Every
+  bypass case in `tests/test-pre-tool-guardian.sh` must stay blocked.
+- [ ] 🔵 **`pre-tool-guardian.sh` is at 1,496 of 1,500 lines again** after #254.
+  The next guard will not fit. Split the rm section, `rm_scan_flags`, the
+  named-path patterns and the unresolved-target loop, into
+  `configs/hooks/lib/` next to `rm-targets.sh`, before it is needed rather
+  than in the middle of a fix.
