@@ -215,6 +215,42 @@ and the rewrites in `pre-tool-guardian.sh` (41, a top-level
 whose output Claude Code rejects still runs, exits 0 and passes its tests, and
 delivers nothing; the attachment is the only record, and Lane D reads it.
 
+**Then read what the hooks DID deliver.** An accepted hook can still be wrong
+by volume or by text, and no refusal tally sees either. The
+`hook_additional_context` attachments hold the delivered text. Tally them by
+`hookName`, dedupe on the record's `uuid` (profiles can share transcripts), and
+read the payloads of the largest groups and of any hook whose output becomes
+instructions after compaction:
+
+```bash
+grep -rh --include='*.jsonl' '"type":"hook_additional_context"' ~/.claude/projects \
+  | jq -sc '[.[] | select(.attachment.type? == "hook_additional_context")
+      | {u: .uuid, h: .attachment.hookName, c: (.attachment.content | tostring)}]
+      | unique_by(.u) | group_by(.h)
+      | map({hook: .[0].h, n: length, chars: (map(.c | length) | add)}) | sort_by(-.n)'
+```
+
+Per hook, check three things:
+
+- **Repeats.** A hint the same thread already received tells the model nothing.
+- **Literal escapes.** Look for the two characters backslash and n inside
+  `.attachment.content`. A `"…\n"` string built in bash and handed to
+  `jq --arg` arrives as that text, not as a line break.
+- **Size.** Compare the largest payload with Claude Code's 10,000-character
+  cap. Past it, Claude sees a 2,000-character preview.
+
+Two sweeps found real defects this way:
+
+- 2026-10-26: `post-tool-use-failure.sh` sent 1,788 hints in six days, 47% of
+  them byte-identical to one the same thread already had. All 25
+  post-compaction restores on record recorded no task, and 19 of them offered
+  the TODO backlog as "your task state … resume from it".
+- 2026-11-02: in `session-context.sh`, 131 of 155 payloads carried a literal
+  `\n`, and the largest was 9,821 characters while its warning fired only above
+  12,000. An assignment that overwrote the auto-pull notice was found by
+  reading the same payloads: not one of them carried it. `skill-suggest.sh`
+  had the escape defect too.
+
 ### 1. Sweep broadly — probes, not topics
 
 Run searches whose shape invites unfamiliar vocabulary. Rotate them; do not

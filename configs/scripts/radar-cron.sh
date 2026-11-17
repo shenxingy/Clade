@@ -512,6 +512,14 @@ fi
 
 fold_staged "$STAGE_DIR"
 
+# A zero exit is not a sweep. Claude Code before the 2.1.31x fix exited 0 with
+# no output when startup failed, and this log read DONE either way: on
+# 2026-08-15 (0 s) and 2026-10-21 (30 s) it said DONE and no digest exists for
+# either date. Say so, so a missed week cannot pass for a quiet one.
+if [[ ! -e "$RESEARCH_DIR/radar-$RUN_DATE.md" && ! -e "$STAGE_DIR/radar-$RUN_DATE.md" ]]; then
+  log "NO DIGEST — the run produced no radar-$RUN_DATE.md; treat this week as unswept"
+fi
+
 # ─── Verify and commit what the agent changed ────────────────────────
 # radar_sandbox_args — the bwrap prefix: no network, the filesystem
 # read-only except the worktree and a private /tmp, and HOME pointed into that
