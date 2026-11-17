@@ -3283,6 +3283,16 @@ items below include the code that keeps the next failure from being silent.
   a conflicting one; session start shows each branch's state. No draft PR (radar stays
   local). Still open: `radar/2026-10-26` and `radar/2026-11-02` conflict with main
   (re-checked 2026-11-07) and their content has not been reviewed.
+  2026-11-16: four branches are open.
+  - Three conflict with main by `git merge-tree`: `radar/2026-10-26`,
+    `radar/2026-11-02` and `radar/2026-11-09`. All three conflict in TODO.md, and
+    `11-09` also in `plugins/clade/.codex-plugin/plugin.json`.
+  - `radar/2026-11-16` merges cleanly.
+  - The 11-16 sweep ranks this the largest standing problem. The fixes these
+    branches carry still show as live friction in its Lane D table: the zsh
+    `=====`/NOMATCH traps, the rm guard's false fires and the pkill self-kill guard.
+  - The attention-pass PR edits `tests/test-radar-cron.sh`, which `11-02` also
+    touches.
 - [x] 🟡 **Session start spends its budget on archaeology.** `commit-archeology.sh`
   timed out on 41 of 153 starts (27%, 15 s timeout); `session-context.sh` on 4 of
   162. `--inject` runs the 60-day scan on a stale-cache start, not on every start;
@@ -3654,3 +3664,41 @@ or chose not to build.
 - [ ] 🔵 **macOS untested.** `tests/test-codex-hooks.sh` has run only on Linux. The
   adapter and the merger target bash 3.2 and a BSD userland like every shipped
   hook; run the suite on the Mac before calling that true.
+
+## 2026-11-16 attention-pass follow-ups
+
+The owner asked what is new and how research sources are chosen. An attention pass
+ranked Hacker News stories by points for the 30 days to 2026-11-16 and checked them
+against the radar ledger. It is now step 1 of `/radar`. These are what it found and
+did not act on.
+
+- [ ] 🟠 **Upgrade Claude Code from 2.1.283 (npm latest 2.1.326).**
+  `DISABLE_AUTOUPDATER=1` is set in both profiles' settings, so the pin is
+  deliberate. The pass found three reasons to lift it:
+  - 2.1.317 asks before a web or shell tool call sends the account email.
+    Claude Code issue 107757 (1,616 HN points) reports users' emails reaching
+    third parties in User-Agent headers. 2.1.323 refuses a shell command that
+    holds the email and a User-Agent, and 2.1.325 extends the check to scripts,
+    file writes, web fetches and MCP calls.
+    It has happened on the author's host. A one-off scan of 7,575 transcripts
+    from the 30 days to 2026-11-16 found two curl calls that put the account
+    email into the User-Agent, both on 2026-10-30. Each went to a public site
+    whose access policy asks for a contact address. Neither call asked first.
+  - 2.1.318 adds `CLAUDE_CODE_DISABLE_AGENT_PROGRESS_SUMMARIES`. A third-party gist
+    (flamerix-ai, tested on 2.1.257–2.1.317) estimates the background-agent status
+    summaries at ~15–20% of tokens. Not measured here: those requests are not
+    written to the transcripts.
+  - 2.1.323 passes `agent_id` to compaction hooks, which the fix on
+    `radar/2026-11-16` needs. That branch also queues four re-checks for after the
+    upgrade.
+- [ ] 🔵 **The attention pass reads Hacker News only.** Ranking new repositories by
+  GitHub stars is the other fame signal. It is not wired, although `github.com` is
+  already on the cron's WebFetch allowlist. Measure what it adds over Hacker News
+  before wiring it.
+- [ ] 🔵 **`docs/who-to-learn-from.md` is a month past its quarterly review.** It
+  was last reviewed 2026-07-15. Candidates from this pass:
+  - Jane Street's `agent_skills` (9.6k stars);
+  - Modern Web Guidance (skills from the Chrome, Edge, Firefox and MDN teams);
+  - NVIDIA OpenShell (now a CNCF project);
+  - Pi, which runs through the 2026-11-04 HN setup thread beside Claude Code and
+    Codex.

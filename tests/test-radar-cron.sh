@@ -521,6 +521,25 @@ SC_PROD_LINE=$(printf '%b\n' "$SC_SHARED_CONTEXT" | grep -F "  $PROD_BRANCH ")
 check "the cron-created branch's session line reports rebase, not upstream" \
   '[[ "$SC_PROD_LINE" == *"rebased onto main 2026-05-11"* ]] && [[ "$SC_PROD_LINE" != *"has upstream"* ]]'
 
+# ─── 11. every host the skill sends the sweep to is granted ──────────
+# The attention pass (radar SKILL.md §1) tells the unattended agent to WebFetch
+# hn.algolia.com, and the wrapper grants WebFetch per exact host. A host the
+# skill names and the wrapper does not grant is refused at run time; the report
+# then lists that lane as not swept while every test stays green. Commented-out
+# entries inside the array do not count as granted.
+section "every URL host in the radar skill is on the cron's WebFetch allowlist"
+RADAR_SKILL="$REPO_ROOT/configs/skills/radar/SKILL.md"
+SKILL_HOSTS=$(grep -o -E 'https?://[A-Za-z0-9.-]+' "$RADAR_SKILL" | sed -E 's#^https?://##' | sort -u)
+GRANTED_HOSTS=$(awk '/^RADAR_ALLOWED_TOOLS=\(/ { on = 1; next } on && /^\)/ { on = 0 } on && !/^[[:space:]]*#/' "$CRON" \
+  | grep -o -E '"WebFetch\(domain:[^)]+\)"' | sed -E 's/^"WebFetch\(domain:(.*)\)"$/\1/' | sort -u)
+UNGRANTED=""
+for h in $SKILL_HOSTS; do
+  printf '%s\n' "$GRANTED_HOSTS" | grep -q -x -F "$h" || UNGRANTED="$UNGRANTED $h"
+done
+check "the skill names at least one URL to fetch, so the next check can fail" '[[ -n "$SKILL_HOSTS" ]]'
+check "the wrapper's allowlist parses to at least one host" '[[ -n "$GRANTED_HOSTS" ]]'
+check "each host the skill names is granted" '[[ -z "$UNGRANTED" ]]' "not granted:$UNGRANTED"
+
 # ─── Summary ─────────────────────────────────────────────────────────
 printf "\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
 if [[ "$TESTS_FAILED" -eq 0 ]]; then
