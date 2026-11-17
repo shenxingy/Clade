@@ -660,11 +660,12 @@ fi  # end dev-mode gate
 # \b requires a word/non-word transition, and `~` is itself a non-word char, so
 # `~\b` could never match `~` or `~/...` (it only matched nonsense like `~abc`)
 # — i.e. `rm -rf ~` sailed straight through. Anchor it as a home reference
-# instead: start/space/`=` before it, and `/`, whitespace, or end after the
-# optional ~user part. That still lets a trailing-tilde backup file through
-# (`rm -rf /tmp/file~`), which is not a home reference.
-DANGEROUS_TILDE='(^|[[:space:]]|=)~[a-zA-Z0-9._-]*(/|[[:space:]]|$)'
-DANGEROUS_NAMED_PATHS="($DANGEROUS_TILDE|\\\$HOME\\b|(/home|/etc|/usr|/var|/sys|/proc|/boot)\\b)"
+# instead: start/space/`=` before it, and after the optional ~user part `/`,
+# whitespace, the end, or a redirect or `)` glued on (`~>/dev/null` and
+# `(rm -rf ~)` passed until 2026-11-17). That still lets a trailing-tilde
+# backup file through (`rm -rf /tmp/file~`), which is not a home reference.
+DANGEROUS_TILDE='(^|[[:space:]]|=)~[a-zA-Z0-9._-]*(/|[[:space:]]|$|[<>)])'
+DANGEROUS_NAMED_PATHS="($DANGEROUS_TILDE|\\\$[{]?HOME\\b|(/home|/etc|/usr|/var|/sys|/proc|/boot)\\b)"  # [{]?: ${HOME} too
 DANGEROUS_ROOT='(^|[[:space:]])/([[:space:]]|$|\*)'
 # Split into individual shell statements before testing, then require ONE
 # statement to satisfy every condition on its own.

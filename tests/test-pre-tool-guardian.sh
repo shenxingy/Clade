@@ -999,6 +999,14 @@ assert_both "a bare rm after the root"            'rm -rf / rm'                 
 assert_both "a bare rm after a home"              'rm -rf ~ rm'                         BLOCK
 assert_both "a path holding rm after a home"      'rm -rf ~ /tmp/rm/x'                  BLOCK
 assert_both "another user's home, then rm"        'rm -rf /home/yan rm'                 BLOCK
+# The tilde pattern wanted `/`, a space or the end after `~`, so a glued
+# redirect or a closing paren hid the home; the shell side missed ${HOME}.
+assert_both "a redirect glued to a home"          'rm -rf ~>/dev/null'                  BLOCK
+assert_both "an input redirect glued to a home"   'rm -rf ~<in'                         BLOCK
+assert_both "a home at the end of a subshell"     '(rm -rf ~)'                          BLOCK
+assert_both "braced HOME"                         'rm -rf ${HOME}'                      BLOCK
+assert_both "control: a backup file ending in a tilde" \
+  'rm -rf /tmp/notes.txt~'                                                              ALLOW
 # The two guardians word a rewrite differently, so this one asserts each verdict.
 assert_verdict "an unresolved target, then rm"    'rm -rf $UNSET_DIR rm'                REWRITE
 TESTS_RUN=$((TESTS_RUN + 1))
