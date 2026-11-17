@@ -9,6 +9,22 @@ Use existing schedulers and profilers. This workflow selects and verifies them;
 it is not a scheduler and does not reserve capacity by itself. Do not build a
 new queue or deploy a cluster merely to execute a batch.
 
+## First: does this run need to exist?
+
+Two owner corrections recurred in one week on the author's machine (2026-11-02
+to 11-09: four of the first, three of the second), and nothing here asked
+either question before a launch:
+
+- **Answer from data you already have.** Find the newest, largest existing run
+  for the question (its result files, logs, evidence directory) and say what it
+  already answers. Launch only what it cannot answer, at the smallest scale
+  that can; not a full sweep to be sure. When told to go by existing data,
+  launch nothing.
+- **Estimate the wall time of each step before starting it, in machine time.**
+  Use a measured rate (a smoke run, a prior run's log), never human working
+  days. When the estimate is long, say so first and shrink the step rather
+  than discover the length afterwards.
+
 ## Resolve placement and the execution backend
 
 Read `~/.clade/compute-policy.md` when present, then the project's execution
@@ -124,6 +140,21 @@ Pressure during execution stops new admissions, checkpoints at safe boundaries
 and requeues unfinished work. Do not evict other users or run a busy retry loop.
 Use bounded backoff and a real backend/timer wake-up; a note saying "queued" is
 not a queue. Separate remote API quotas from local compute capacity.
+
+## Check the plateau once it runs
+
+Once the run reaches its target concurrency, and after each stage change,
+sample CPU, RAM and GPU at 1-5 s for a few minutes (`vmstat 5`, `mpstat 5`,
+`pidstat -u -r 5` on the run's processes, `nvidia-smi dmon -s u`). Utilization
+should hold a plateau. A sawtooth (climb, drain towards idle, climb again) is a
+dispatch defect, not noise: equal batches awaited together, a serial stage
+between them (merge, upload, model load), or staging that cannot keep workers
+fed. Fix it before leaving the run unattended: more shards than slots, dynamic
+assignment, staging overlapped with compute. A sampler that reads one short
+window every few minutes cannot see a sawtooth shorter than its interval, so
+its readings are not evidence of a steady run. GPU busy percent is duty cycle,
+not throughput; a device waiting at a barrier can still read busy. Keep the
+sampled series with the run's evidence.
 
 ## Prove recovery before unattended execution
 
