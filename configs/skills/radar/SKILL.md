@@ -224,12 +224,42 @@ narrow to what you already track:
   `successor to <known term>`, `what replaced <known term>`
 - Vocabulary shifts: `new term AI engineering <current month year>`,
   `stopped calling it <known term>`
-- Practitioner surfaces: Hacker News discussion trends, arXiv recent-and-cited,
-  named practitioner blogs, framework changelogs and their *rationale* sections
+- Practitioner surfaces: arXiv recent-and-cited, named practitioner blogs,
+  framework changelogs and their *rationale* sections
 - Negative space: `why <known approach> doesn't work`, `limitations of <known term>`
+- Attention: what practitioners upvoted, fetched rather than searched for (below)
 
 Bias toward the last 90 days. Prefer sources that argue rather than announce —
 a post explaining why a paradigm broke names its successor.
+
+**The attention pass.** A probe only finds what its query can phrase. Whatever
+the field is reading this month may carry a name that no probe contains. So
+also fetch what was upvoted, ranked by points.
+
+Measured 2026-11-16 on 42 Hacker News stories from the 30 days before, all
+at 157 points or more, hand-filtered to coding agents, their tools and security,
+and model releases:
+
+- The ledger held 8 of the 42.
+- That morning's probe sweep had not surfaced three Claude Code security
+  reports, at 1,616, 1,014 and 627 points.
+
+For each of `agent`, `Claude`, `Codex`, `LLM` and `MCP`, WebFetch:
+
+    https://hn.algolia.com/api/v1/search_by_date?query=<q>&tags=story&numericFilters=points%3E150&hitsPerPage=50&attributesToRetrieve=title,url,points,num_comments,created_at&attributesToHighlight=none
+
+Ask for every hit as `points | comments | date | title | url`, and use the
+result as follows:
+
+- **The window.** `search_by_date` returns the newest stories above the points
+  floor, so no timestamp has to be computed. Drop anything older than 30 days.
+- **The noise.** The search is typo-tolerant: `MCP` also matches "map", and
+  `Codex` matches "code". Filter by topic and keep stories about coding agents,
+  their harnesses, tools and security, and model releases.
+- **What to do with the rest.** Send each kept story through §2–§4.
+- **The coverage figure.** Report the attention recall: how many of the kept
+  stories the ledger already held. A miss says something about the probes, not
+  only about the field.
 
 ### 2. Extract candidate terms
 
@@ -335,5 +365,6 @@ other checkout (you cannot reach one), and do not call an edit verified. Until
 edits sat on `fix/warm-pace` for four days and the 10-19 run's on `main`.
 
 Close with one line that is honest about coverage: which probe families ran,
-how many candidates were examined, and what was NOT swept. A radar that hides
-its blind spots reads as completeness it does not have.
+how many candidates were examined, the attention recall (ledger held N of the M
+stories kept), and what was NOT swept. A radar that hides its blind spots reads
+as completeness it does not have.
