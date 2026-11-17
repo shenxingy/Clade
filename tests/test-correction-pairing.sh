@@ -332,11 +332,13 @@ assert_eq "$(jq -r '.project' <<< "$(tail -n 1 "$HISTORY")")" "$PROJ" \
 
 # ─── 3c. flag parsing and compound commands ──────────────────────────
 section "revert-detector — pathspec parsing"
-revert_in "git restore --staged --source=HEAD~1 -- src/util.py" "$SID" \
+# --worktree: `--staged` alone touches only the index and is not a revert (§3j).
+revert_in "git restore --staged --worktree --source=HEAD~1 -- src/util.py" "$SID" \
   | CLAUDE_PROJECT_DIR="$PROJ" bash "$REVERT_HOOK"
 LAST=$(tail -n 1 "$HISTORY")
 assert_contains "$(jq -c '.revert_paths' <<< "$LAST")" "src/util.py" "git restore: the path is kept"
 assert_not_contains "$(jq -c '.revert_paths' <<< "$LAST")" "staged" "git restore: --staged is not a path"
+assert_not_contains "$(jq -c '.revert_paths' <<< "$LAST")" "worktree" "git restore: --worktree is not a path"
 assert_not_contains "$(jq -c '.revert_paths' <<< "$LAST")" "HEAD~1" "git restore: --source's value is not a path"
 
 revert_in 'git status --short | grep py; git checkout -- src/app.py' "$SID" \
@@ -363,7 +365,7 @@ LAST=$(jq -c '.revert_paths' <<< "$(tail -n 1 "$HISTORY")")
 assert_contains "$LAST" ".claude-plugin/" "attached redirect: the real pathspec survives"
 assert_not_contains "$LAST" "2>/dev/null" "attached redirect: 2>/dev/null is not a path"
 
-revert_in 'git restore --staged :/ >/dev/null 2>&1' "$SID" \
+revert_in 'git restore --staged --worktree :/ >/dev/null 2>&1' "$SID" \
   | CLAUDE_PROJECT_DIR="$PROJ" bash "$REVERT_HOOK"
 LAST=$(jq -c '.revert_paths' <<< "$(tail -n 1 "$HISTORY")")
 assert_not_contains "$LAST" "/dev/null" "restore: >/dev/null is not a path"
@@ -597,6 +599,64 @@ assert_eq "$(reverts_recorded "$REVERT_HOOK" '{"agent_type":"code-reviewer"}')" 
   "control: agent_type without agent_id is the main thread, still recorded"
 assert_eq "$(reverts_recorded "$REVERT_HOOK" '{"agent_id":null}')" "1" \
   "control: a null agent_id is the main thread, still recorded"
+
+# scope_via <hook> <command> — the revert_scope of the record ONE command adds,
+# or "none" when it adds no record (tail -n 1 alone would read an older one).
+scope_via() {
+  local before after
+  before=$(hist_lines)
+  revert_in "$2" "$SID" | CLAUDE_PROJECT_DIR="$PROJ" bash "$1"
+  after=$(hist_lines)
+  if [[ "$after" -gt "$before" ]]; then jq -r '.revert_scope' <<< "$(tail -n 1 "$HISTORY")"
+  else echo none; fi
+}
+
+# ─── 3j. an index-only restore reverts nothing ───────────────────────
+# Field data 2026-09-02 → 10-26: 37 records whose only "revert" was `git
+# restore --staged` — unstaging before a re-commit, which leaves every file as
+# it was — 34 of them filed as `paths`, one naming 14 files as rejected.
+section "revert-detector — git restore --staged changes no file"
+assert_eq "$(scope_via "$REVERT_HOOK" 'git reset --soft HEAD~2 && git restore --staged . && git status --short')" "none" \
+  "reset --soft + restore --staged . writes no record"
+assert_eq "$(scope_via "$REVERT_HOOK" 'git restore -S src/app.py')" "none" "restore -S <path> writes no record"
+# Controls: the working tree IS restored by default, by --worktree and by -SW,
+# and an unstage beside a real revert keeps the real revert, alone.
+assert_eq "$(scope_via "$REVERT_HOOK" 'git restore src/app.py')" "paths" "control: plain restore is a revert"
+assert_eq "$(scope_via "$REVERT_HOOK" 'git restore --staged --worktree src/app.py')" "paths" \
+  "control: --staged --worktree is a revert"
+assert_eq "$(scope_via "$REVERT_HOOK" 'git restore -SW src/app.py')" "paths" "control: -SW is a revert"
+assert_eq "$(scope_via "$REVERT_HOOK" 'git restore --staged src/util.py && git checkout -- src/app.py')" "paths" \
+  "control: an unstage beside a real revert is still recorded"
+LAST=$(tail -n 1 "$HISTORY")
+assert_contains "$(jq -c '.revert_paths' <<< "$LAST")" "src/app.py" "the real revert's path is kept"
+assert_not_contains "$(jq -c '.revert_paths' <<< "$LAST")" "src/util.py" "the unstaged path is not a reverted path"
+
+# ─── 3k. a write into the reverted file, or a saved diff re-applied ──
+# Two probe shapes the earlier signals missed: the mutation is a redirect (`git
+# show REV:f > f`, `echo … >> f`, `| tee f`), or the change is saved, applied
+# in another worktree, and only then cleaned from this one (2026-10-21: two
+# files filed as rejected, `repeat:true`).
+section "revert-detector — redirect-written probes and moved changes"
+assert_eq "$(scope_via "$REVERT_HOOK" 'git show HEAD~1:src/app.py > src/app.py && npm test; git checkout -- src/app.py')" "probe" \
+  "git show REV:f > f, then revert f, is a probe"
+assert_eq "$(scope_via "$REVERT_HOOK" 'echo "x" >>src/app.py; make test; git checkout -- src/app.py')" "probe" \
+  "an attached >> into the reverted file is a probe"
+assert_eq "$(scope_via "$REVERT_HOOK" 'printf x | tee -a ./src/app.py; git checkout -- src/app.py')" "probe" \
+  "tee into the reverted file is a probe"
+assert_eq "$(scope_via "$REVERT_HOOK" 'F=src/app.py; echo x > "$F"; npm test; git checkout -- "$F"')" "probe" \
+  "a redirect into \$F, then revert \$F, is a probe"
+assert_eq "$(scope_via "$REVERT_HOOK" 'S=/tmp/s && git diff -- src/app.py > $S/move.patch && git -C /tmp/wt apply $S/move.patch && git restore -- src/app.py')" "probe" \
+  "a diff saved, applied elsewhere, then restored here is a move, not a rejection"
+# Controls: a backup that only shares the basename, a redirect into ANOTHER
+# file, and a diff saved but never applied are still real reverts.
+assert_eq "$(scope_via "$REVERT_HOOK" 'git show HEAD:src/app.py > /tmp/app.py; git checkout -- src/app.py')" "paths" \
+  "control: a backup to /tmp/<same name> is not an edit of the file"
+assert_eq "$(scope_via "$REVERT_HOOK" 'echo x > src/other.py; git checkout -- src/app.py')" "paths" \
+  "control: a redirect into another file is not an edit of the reverted one"
+assert_eq "$(scope_via "$REVERT_HOOK" 'git diff -- src/app.py > /tmp/backup.patch; git checkout -- src/app.py')" "paths" \
+  "control: a diff saved before a discard is still a discard"
+assert_contains "$(jq -c '.reverted_files' <<< "$(tail -n 1 "$HISTORY")")" "src/app.py" \
+  "control: and it keeps its rejection evidence"
 
 # ─── 4. explicit correction surfaces the concrete pair (gate: open) ──
 section "correction-detector — concrete signal on explicit correction"
@@ -941,7 +1001,7 @@ _lf_cd=$(link_filter "$CORRECTION_HOOK"); _lf_rd=$(link_filter "$REVERT_HOOK")
 assert_contains "$_lf_cd" "transcript_path" "the session-link filter is found in correction-detector.sh"
 assert_eq "$_lf_rd" "$_lf_cd" "revert-detector.sh carries correction-detector.sh's session-link filter verbatim"
 
-# ─── 8. mutations: each guard of §3i and §5e, removed, turns its case red ──
+# ─── 8. mutations: each guard of §3i–§3k and §5e, removed, turns its case red ──
 # A case that cannot fail is not evidence. Each mutant below is a copy of the
 # hook with ONE guard deleted, placed beside the real lib/ and scripts/ so it
 # still runs; the case that pins that guard is re-run against it and must see
@@ -1078,6 +1138,32 @@ _m="the id the private-session check reuses"
 if M=$(mutant "$CORRECTION_HOOK" m-cd-private.sh '_CD_SID="${_CD_LINK%%"$_CD_TAB"*}"' '_CD_SID=""'); then
   assert_not_contains "$(fires_with_sid "$M" "不对，你说反了" sess-private)" "This project is in conversation mode" \
     "mutant without $_m: a private session is no longer recognised"
+else anchor_lost "$_m"; fi
+
+_m="the index-only restore guard"
+if M=$(mutant "$REVERT_HOOK" m-index.sh 'rd_restore_index_only "$seg" && return 1' ':'); then
+  _s=$(scope_via "$M" 'git restore --staged .')
+  assert_eq "$([[ "$_s" != none ]] && echo recorded || echo none)" "recorded" \
+    "mutant without $_m: an unstage is filed as a revert again"
+else anchor_lost "$_m"; fi
+
+_m="the index-only pathspec skip"
+if M=$(mutant "$REVERT_HOOK" m-index-paths.sh 'rd_restore_index_only "$seg" && continue' ':'); then
+  scope_via "$M" 'git restore --staged src/util.py && git checkout -- src/app.py' >/dev/null
+  assert_contains "$(jq -c '.revert_paths' <<< "$(tail -n 1 "$HISTORY")")" "src/util.py" \
+    "mutant without $_m: the unstaged path is listed as reverted again"
+else anchor_lost "$_m"; fi
+
+_m="the redirect-into-the-file edit"
+if M=$(mutant "$REVERT_HOOK" m-redirect.sh 'rd_redirects_into "$seg" "$p" "$var" && return 0' ':'); then
+  assert_eq "$(scope_via "$M" 'git show HEAD~1:src/app.py > src/app.py; git checkout -- src/app.py')" "paths" \
+    "mutant without $_m: a redirect-written probe is a rejection again"
+else anchor_lost "$_m"; fi
+
+_m="the saved-diff-applied signal"
+if M=$(mutant "$REVERT_HOOK" m-moved.sh '[[ -n "$t" && "$seg" == *"$t"* ]] && return 0' ':'); then
+  assert_eq "$(scope_via "$M" 'git diff -- src/app.py > /tmp/m.patch && git -C /tmp/wt apply /tmp/m.patch && git restore -- src/app.py')" "paths" \
+    "mutant without $_m: a moved change is a rejection again"
 else anchor_lost "$_m"; fi
 
 _m="a reworded comment (no-op control)"
