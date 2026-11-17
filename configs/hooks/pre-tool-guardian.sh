@@ -692,13 +692,17 @@ DANGEROUS_ROOT='(^|[[:space:]])/([[:space:]]|$|\*)'
 # classifying tokens. A token supplies flags only when it STARTS with `-`, and
 # after a `--` nothing does. GNU rm permutes its arguments, so an option may
 # legitimately follow an operand — what an operand may never do is BE one.
+# Both read the text after the FIRST word rm. They read it after the LAST one
+# until 2026-11-17, so `rm -rf / rm` had no flags and was let through.
+RM_WORD='(^|[^A-Za-z0-9_])rm([^A-Za-z0-9_]|$)'
+rm_after_first() { [[ "$1" =~ $RM_WORD ]] && printf '%s' "${1#*"${BASH_REMATCH[0]}"}"; return 0; }
 RM_RECURSIVE=false
 RM_FORCE=false
 rm_scan_flags() {
   local after tok end_opts=false
   RM_RECURSIVE=false
   RM_FORCE=false
-  after=$(printf '%s' "$1" | sed -E 's/^.*\brm\b//')
+  after=$(rm_after_first "$1")
   while IFS= read -r tok; do
     [[ -z "$tok" ]] && continue
     if [[ "$tok" == "--" ]]; then end_opts=true; continue; fi
@@ -777,7 +781,7 @@ if (( _quotes % 2 == 0 )); then
     $RM_FORCE || continue
 
     # Everything after the rm, minus its flags, is a candidate target.
-    _after=$(printf '%s' "$_stmt" | sed -E 's/^.*\brm\b//')
+    _after=$(rm_after_first "$_stmt")
     while IFS= read -r _tok; do
       [[ -z "$_tok" ]] && continue
       case "$_tok" in -*) continue ;; esac

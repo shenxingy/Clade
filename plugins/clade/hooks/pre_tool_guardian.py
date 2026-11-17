@@ -93,7 +93,7 @@ def _recursive_force(statement: str) -> bool:
     """
     recursive = force = False
     end_of_options = False
-    after = re.sub(r"^.*\brm\b", "", statement, count=1)
+    after = re.sub(r"^.*?\brm\b", "", statement, count=1)  # the FIRST rm
     for token in after.split():
         if token == "--":
             end_of_options = True
@@ -115,7 +115,7 @@ def _recursive_force(statement: str) -> bool:
 
 
 def _delete_targets(statement: str) -> list[str]:
-    after = re.sub(r"^.*\brm\b", "", statement, count=1)
+    after = re.sub(r"^.*?\brm\b", "", statement, count=1)  # the FIRST rm
     return [token for token in after.split() if not token.startswith("-")]
 
 
