@@ -138,6 +138,15 @@ assert_eq "" "$OUT" "unmatched file → no suggestion"
 OUT=$(echo '{}' | SKILL_SUGGEST_THROTTLE_DIR="$(mktemp -d "$TMP_ROOT/th.XXXX")" bash "$SKILL_SUGGEST")
 assert_eq "" "$OUT" "missing file_path → no output, no error"
 
+# Two suggestions arrive as two lines. Each one ends in "\n" inside double
+# quotes, which bash keeps as a backslash and an n; until 2026-11-02 the model
+# read them as one line joined by that text (139 real Edit/Write payloads,
+# 2026-10-26 → 11-02). Both assertions fail against the old emission.
+OUT=$(suggest "src/auth/token_test.py" "$(mktemp -d "$TMP_ROOT/th.XXXX")" \
+  | jq -r '.hookSpecificOutput.additionalContext // empty')
+assert_eq "2" "$(grep -c . <<< "$OUT")" "two suggestions are delivered as two lines"
+assert_eq "0" "$(grep -cF '\n' <<< "$OUT")" "no literal backslash-n reaches the model"
+
 # Throttle: same category twice within window → second call silent
 TH_DIR=$(mktemp -d "$TMP_ROOT/th.XXXX")
 OUT1=$(suggest "blog/a.md" "$TH_DIR")

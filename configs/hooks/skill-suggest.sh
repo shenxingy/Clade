@@ -155,7 +155,12 @@ fi
 # the model. This line shipped without it: transcripts on the author's machine
 # hold 309 such rejections, 2026-08-26 → 2026-10-18 on Claude Code 2.1.236 →
 # 2.1.283, so going sync (above) had delivered nothing either.
+#
+# Each suggestion above ends in "\n" inside double quotes: bash keeps that as a
+# backslash and an n, and jq delivered them as text, so two suggestions reached
+# the model as one line joined by a literal "\n" (82 Write and 57 Edit payloads,
+# 2026-10-26 → 11-02). Convert to real line breaks and drop the trailing one.
 jq -n --arg ctx "$SUGGESTIONS" \
-  '{"hookSpecificOutput":{"hookEventName":"PostToolUse","additionalContext":$ctx}}'
+  '{"hookSpecificOutput":{"hookEventName":"PostToolUse","additionalContext":($ctx | split("\\n") | map(select(length > 0)) | join("\n"))}}'
 
 exit 0

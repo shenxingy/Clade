@@ -37,6 +37,13 @@ assert_eq() {
   if [[ "$got" == "$want" ]]; then pass "$msg"
   else fail "$msg" "got '$got', want '$want'"; fi
 }
+# assert_line <haystack> <line> <msg> — one line of the payload is exactly <line>:
+# the title, and nothing after it on that line.
+assert_line() {
+  local haystack="$1" line="$2" msg="$3"
+  if grep -qxF -- "$line" <<< "$haystack"; then pass "$msg"
+  else fail "$msg" "no line equal to '$line'"; fi
+}
 assert_contains() {
   local haystack="$1" needle="$2" msg="$3"
   if grep -qF "$needle" <<< "$haystack"; then pass "$msg"
@@ -203,6 +210,9 @@ rm -f "$BPROJ/.claude/handoff-2026-09-02.md"
 OUT=$(ctx CLADE_CTX_CEILING_BYTES=100)
 assert_contains "$OUT" "over the 100 budget" "an over-ceiling payload says so"
 assert_contains "$OUT" "Close the loop" "the ceiling warning does not truncate the trailing sections"
+# First, not last: past 10,000 characters Claude Code shows a 2,000-character
+# preview, and a notice at the end was the first thing it dropped.
+assert_contains "$(head -1 <<< "$OUT")" "(session-context:" "the over-ceiling notice is the first line"
 
 # CONVERSATION MODE: a repository that is a conversation, not a codebase,
 # declares it with .claude/conversation-mode. It keeps its own lessons and the
@@ -413,7 +423,7 @@ do
   title=${spec#*|}
   printf -- '- [ ] %s **%s** marked-bold-body\n' "$marker" "$title" > "$TODO_PROJ/TODO.md"
   OUT=$(todo_ctx)
-  assert_contains "$OUT" "Next TODO: $marker $title\\n" \
+  assert_line "$OUT" "Next TODO: $marker $title" \
     "a $marker marked bold item prints its title"
   assert_not_contains "$OUT" "marked-bold-body" \
     "a $marker marked bold item omits the body after its title"
@@ -423,7 +433,7 @@ cat > "$TODO_PROJ/TODO.md" <<'EOF'
 - [ ] 🔴 **Don't break on a quote** quote-body
 EOF
 OUT=$(todo_ctx)
-assert_contains "$OUT" "Next TODO: 🔴 Don't break on a quote\\n" \
+assert_line "$OUT" "Next TODO: 🔴 Don't break on a quote" \
   "a marked bold title preserves an unmatched quote"
 assert_not_contains "$OUT" "quote-body" "a quoted marked bold item omits its body"
 
@@ -432,8 +442,51 @@ cat > "$TODO_PROJ/TODO.md" <<'EOF'
 EOF
 OUT=$(todo_ctx)
 # Control: this unmarked old-style shape prints the same line on HEAD too.
-assert_contains "$OUT" "Next TODO: Old style title\\n" \
+assert_line "$OUT" "Next TODO: Old style title" \
   "control: an unmarked bold title keeps its old rendering"
+
+# ─── What the model reads: line breaks and the auto-pull notice ──────
+# Every assertion above is a substring match, which passes whether sections are
+# separated by a newline or by the two characters backslash and n — the shape
+# 131 of 155 real SessionStart payloads had (2026-11-02). And the auto-pull
+# notice was overwritten by the "Recent commits" assignment in every repository
+# with a commit, so no test that used a repo with commits could have seen it.
+# Both cases below fail against the pre-2026-11-02 hook.
+section "session-context.sh — what the model reads"
+PULL_REMOTE="$TMP_ROOT/pull-remote.git"
+PULL_UP="$TMP_ROOT/pull-upstream"
+PULL_PROJ="$TMP_ROOT/pull-proj"
+gitq() { git -c user.email=t@t -c user.name=t -c init.defaultBranch=main "$@" >/dev/null 2>&1; }
+gitq init -q --bare "$PULL_REMOTE"
+gitq init -q "$PULL_UP"
+gitq -C "$PULL_UP" commit -q --allow-empty -m "first upstream commit"
+gitq -C "$PULL_UP" push -q "$PULL_REMOTE" HEAD:refs/heads/main
+gitq clone -q -b main "$PULL_REMOTE" "$PULL_PROJ"
+gitq -C "$PULL_UP" commit -q --allow-empty -m "PULLED-COMMIT-SENTINEL"
+gitq -C "$PULL_UP" push -q "$PULL_REMOTE" HEAD:refs/heads/main
+
+if [[ "$(git -C "$PULL_PROJ" rev-parse --abbrev-ref '@{u}' 2>/dev/null)" != "origin/main" ]]; then
+  fail "fixture: a clean clone tracking a remote one commit ahead" "no upstream — setup failed, cases below skipped"
+else
+  printf 'Tailscale IP: 100.64.0.99\n' > "$BUDGET_HOME/.claude/.env-fingerprint"   # fresh cache, no host probes
+  OUT=$(echo '{}' | env HOME="$BUDGET_HOME" CLAUDE_PROJECT_DIR="$PULL_PROJ" \
+    bash "$SESSION_CONTEXT" | jq -r '.hookSpecificOutput.additionalContext // empty')
+  rm -f "$BUDGET_HOME/.claude/.env-fingerprint"
+  assert_contains "$OUT" "Auto-pulled 1 new commit(s) from origin/main" \
+    "the auto-pull notice survives the Recent commits section"
+  assert_contains "$OUT" "PULLED-COMMIT-SENTINEL" "the pulled commit is listed"
+  if grep -qF '\n' <<< "$OUT"; then
+    fail "sections are separated by real line breaks" \
+      "$(grep -oF '\n' <<< "$OUT" | wc -l | tr -d ' ') literal backslash-n sequences delivered"
+  else
+    pass "sections are separated by real line breaks (no literal backslash-n)"
+  fi
+  if grep -qx 'Recent commits:' <<< "$OUT"; then
+    pass "a section header occupies its own line"
+  else
+    fail "a section header occupies its own line" "no line equal to 'Recent commits:'"
+  fi
+fi
 
 
 # ─── Summary ─────────────────────────────────────────────────────────
