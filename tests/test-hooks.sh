@@ -758,6 +758,36 @@ out=$( cd "$SC_REPO" && printf '%s' "{\"session_id\":\"$SC_SESSION\",\"stop_hook
 assert_not_contains "$out" "integer expression expected" "a blockers file with no open blocker counts as zero"
 assert_not_contains "$out" "blocker(s) recorded" "and is not reported as a blocker"
 
+# 5. Only the blockers THIS session added count as "recorded this session".
+#    The old count took every open heading once the file was touched, so on
+#    2026-10-28 an agent was told another session's cleanup was its own, and
+#    handed it to the owner. The first assertion fails against that code.
+OTHER='## Blocker 2026-10-27 another session: delete the T2 scratch dirs'
+MINE='## Blocker 2026-11-02 this session: needs the API key'
+printf '%s\n' "$OTHER" > "$SC_REPO/.claude/blockers.md"
+printf '%s\n' "$OTHER" > "$SC_REPO/.claude/sessions/$SC_SESSION.blockers"   # open at session start
+sc_run_idle() {
+  rm -f "$SC_REPO/.claude/sessions/$SC_SESSION.stop_attempts"
+  ( cd "$SC_REPO" && printf '%s' "{\"session_id\":\"$SC_SESSION\",\"stop_hook_active\":false}" \
+      | HOME="$SC_HOME" CLAUDE_PROJECT_DIR="$SC_REPO" STOP_CHECK_AGENT_IDLE_S=0 bash "$STOP_CHECK" 2>&1 )
+}
+out=$(sc_run_idle)
+assert_not_contains "$out" "blocker(s) recorded" "another session's open blocker is not reported as this session's"
+printf '%s\n' "$MINE" >> "$SC_REPO/.claude/blockers.md"
+out=$(sc_run_idle)
+assert_contains "$out" "1 blocker(s) recorded this session" "a blocker this session added is reported, and only it"
+# Without a snapshot (a session older than the install) the count is file-wide
+# and must not claim the headings for this session.
+rm -f "$SC_REPO/.claude/sessions/$SC_SESSION.blockers"
+out=$(sc_run_idle)
+assert_contains "$out" "2 open blocker(s)" "without a snapshot the count is file-wide"
+assert_not_contains "$out" "recorded this session" "and does not call them this session's"
+# The snapshot is written by session-baseline.sh at SessionStart.
+printf '%s' "{\"session_id\":\"$SC_SESSION-b\"}" \
+  | CLAUDE_PROJECT_DIR="$SC_REPO" bash "$REPO_ROOT/configs/hooks/session-baseline.sh"
+assert_eq "$(cat "$SC_REPO/.claude/sessions/$SC_SESSION-b.blockers" 2>/dev/null)" "$OTHER"$'\n'"$MINE" \
+  "session-baseline snapshots the open blocker headings, sorted"
+
 rm -rf "$SC_HOME" "$SC_REPO"
 
 section "prompt-tracker notices a re-typed standing brief"
