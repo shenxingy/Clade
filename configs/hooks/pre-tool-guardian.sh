@@ -1461,31 +1461,31 @@ if printf '%s\n' "$COMMAND" | grep -qiE '\bDROP[[:space:]]+(DATABASE|TABLE|SCHEM
 fi
 
 # ─── Self-killing pkill -f ───────────────────────────────────────────
-# `pkill -f PAT` matches against full command lines, including the command line
-# of the shell that launched it. Inside an ssh one-liner or a compound command
-# whose own text contains PAT, the launching shell matches its own pattern and
-# kills itself: exit 255/144, and the work after the `&&` never runs. It looks
-# like the remote host rejected the connection, so the time goes into debugging
-# ssh. Blocked only in the shape that actually self-destructs, because a guard
-# that fires on ordinary `pkill -f name` is one you learn to ignore.
-# `pkill` must sit at a COMMAND position — start of string, or after a
-# separator or an opening quote. Matching it anywhere caught prose: this very
-# guard's own commit message ("block the pkill -f shape that kills its own
-# launcher") was refused, which is the failure mode the rule below warns about.
+# `pkill -f PAT` matches full command lines, including that of the shell that
+# launched it: an ssh or `bash -c` one-liner, and the Bash tool's own shell, which
+# carries the whole command. That shell dies (exit 255/144) and everything after
+# the pkill is lost, which reads as a remote or tool failure. Refused when work
+# would be lost: a wrapper, a second occurrence of PAT, or a statement after the
+# pkill (Lane D, 30 days to 2026-11-09: exit 144 in 14 main-thread sessions, and
+# every pkill -f sampled from them was `pkill -f PAT; more`). A bare
+# `pkill -f name`, a `|| true` tail and a `[n]ame` pattern pass: a guard that
+# fires on those is one you learn to ignore. `pkill` must sit at a command
+# position: matching it anywhere refused this guard's own commit message.
 if printf '%s\n' "$COMMAND" | grep -qE '(^|[;&|(]|[[:space:]]&&[[:space:]]|["'"'"'])[[:space:]]*pkill[[:space:]]+(-[a-zA-Z]*f|--full)'; then
   _PK_PAT=$(printf '%s\n' "$COMMAND" \
     | sed -nE "s/.*(^|[;&|('\"]|[[:space:]])pkill[[:space:]]+(-[a-zA-Z]*f|--full)[[:space:]]+['\"]?([^'\"[:space:]]+).*/\3/p" \
     | head -1 || true)
   if [[ -n "$_PK_PAT" ]]; then
-    # Occurrences of the pattern in the command the shell will carry.
-    _PK_N=$(printf '%s\n' "$COMMAND" | grep -oF -- "$_PK_PAT" | wc -l | tr -d ' ')
-    # A wrapped/remote one-liner carries the pattern in the wrapper's own argv,
-    # so a single textual occurrence is still a self-match there.
+    _PK_N=$(printf '%s\n' "$COMMAND" | grep -oF -- "$_PK_PAT" | wc -l | tr -d ' ')  # occurrences of PAT
     _PK_WRAPPED=false
     printf '%s\n' "$COMMAND" | grep -qE '(^|[[:space:]])(ssh|bash[[:space:]]+-c|sh[[:space:]]+-c)([[:space:]]|$)' \
       && _PK_WRAPPED=true
+    # What follows the last pkill, quoted text and a `|| true` tail removed.
+    _PK_AFTER=$(printf '%s' "${COMMAND##*pkill}" | tr '\n' ';' | sed -E "s/\"[^\"]*\"//g; s/'[^']*'//g; s/[|][|][[:space:]]*(true|:)[[:space:];]*\$//")
+    _PK_RE='(;|&&|[|][|])[[:space:]]*[^[:space:];&|]'
+    [[ "$_PK_PAT" != *'['* && "$_PK_AFTER" =~ $_PK_RE ]] && _PK_WRAPPED=true
     if [[ "${_PK_N:-0}" -ge 2 || "$_PK_WRAPPED" == true ]]; then
-      gd_deny "pkill -f ${_PK_PAT} will match the command line of the shell running it, so this kills its own launcher (exit 255/144) and everything after it never runs. Fixes: put the pkill in a script file, so the pattern is not in the caller argv; anchor the pattern (\"name\\.py --flag\"); and in monitors use the bracket trick pgrep \"na[m]e\". Command: $COMMAND"
+      gd_deny "pkill -f ${_PK_PAT} will match the command line of the shell running it, so this kills its own launcher (exit 255/144) and everything after it never runs. Fixes: use the bracket trick, pkill -f \"[n]ame\", whose regex cannot match its own text; or run the pkill as its own call, or from a script file; and anchor the pattern (\"name\\.py --flag\"). Command: $COMMAND"
     fi
   fi
 fi

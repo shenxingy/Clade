@@ -37,7 +37,7 @@ Uses hybrid auth: persistent browser profile + cookie injection
 
 ### Browser crashes or hangs
 ```bash
-pkill -f chromium && pkill -f chrome             # Kill hanging processes
+pkill -f '[c]hromium'; pkill -f '[c]hrome'       # Kill hanging processes ([c] keeps pkill from matching this shell)
 python3 scripts/run.py cleanup_manager.py --confirm --preserve-library
 python3 scripts/run.py auth_manager.py reauth    # Re-authenticate
 ```
