@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # test-statusline-eta.sh — the status line's task-time segment, end to end.
 #
-# configs/scripts/task-eta.py prints "task 21m · idle | bg workflow 51m ·
-# 20m-2.2h left"; configs/scripts/statusline-command.sh calls it inline with the
+# configs/scripts/task-eta.py prints "task 20m · idle | bg workflow 20m ·
+# 11m-2.2h left"; configs/scripts/statusline-command.sh calls it inline with the
 # status-line JSON; install.sh adds statusLine.refreshInterval so the line keeps
 # refreshing while the main thread is idle. This runs install.sh against a
 # THROWAWAY $HOME under /tmp, writes SYNTHETIC transcripts only (the self-test's
@@ -12,12 +12,13 @@
 #   reinstall keeps a refreshInterval the user set and adds 10 where it is
 #   absent (the Windows/Git Bash rewrite is pinned in tests/test-install.sh);
 #   the line: a Workflow in flight after its turn reads "idle | bg workflow"
-#   with a range, and still does after a later prompt; "beyond history" past
-#   4 h; a missing model prints elapsed time only and starts ONE detached refit
+#   with a range, and still does after a later prompt; a Workflow stopped with
+#   TaskStop, or one whose launch was refused, is not shown; "beyond history"
+#   past 4 h; a missing model prints elapsed time only and starts ONE detached refit
 #   that writes the model; five concurrent calls start one refit, not five;
 #   fail soft: no transcript, an empty one, a directory, malformed lines, stdin
 #   that is not JSON and a corrupt model each print the other segments, no
-#   traceback, exit 0; `slt eta off|on`; no python3 drops only this segment;
+#   traceback, exit 0, and a missing config dir still prints elapsed time; `slt eta off|on`; no python3 drops only this segment;
 #   a backslash in the segment is not read as an escape.
 #
 # The last suite removes each guard in turn from a COPY (statusline-command.sh,
@@ -197,9 +198,14 @@ bad.lines = wf.lines[:2] + ['{"type":"user","message":', 'not json at all'] + wf
 bad.write(os.path.join(fix, 'malformed.jsonl'))
 wf.prompt(T0 + 10 * MIN).turn_end(T0 + 10.5 * MIN).write(os.path.join(fix, 'wf-later-prompt.jsonl'))
 te._Synth().prompt(T0).tool(T0 + 2000, 'b1', 'Bash', command='sleep').write(os.path.join(fix, 'fg.jsonl'))
+(te._Synth().prompt(T0).tool(T0 + 5000, 'w1', 'Workflow', script='s').result(T0 + 6000, 'w1', taskId='t-w1')
+ .tool(T0 + 60000, 's1', 'TaskStop', task_id='t-w1').result(T0 + 61000, 's1', task_id='t-w1')
+ .turn_end(T0 + 62000)).write(os.path.join(fix, 'stopped.jsonl'))
+(te._Synth().prompt(T0).tool(T0 + 5000, 'w1', 'Workflow', script='s')
+ .result(T0 + 6000, 'w1', error='denied by a PreToolUse hook').turn_end(T0 + 9000)).write(os.path.join(fix, 'refused.jsonl'))
 open(os.path.join(fix, 'empty.jsonl'), 'w').close()
 s = int(T0 / 1000)
-print('T20=%d T30=%d T300=%d' % (s + 1200, s + 1800, s + 18000))
+print('T2=%d T20=%d T30=%d T300=%d' % (s + 120, s + 1200, s + 1800, s + 18000))
 PY
 )"; then
   echo "FATAL: could not build the synthetic transcripts"; exit 1
@@ -269,6 +275,18 @@ if [[ "$OUT" =~ ^work\ task\ 20m\ ·\ idle\ \|\ bg\ workflow\ 30m\ ·\ [^\ ]+-[^
 else
   fail "a prompt typed while the Workflow runs still shows it" "out='$OUT'"
 fi
+sl "$T2" "$FIX/stopped.jsonl"
+if [[ $RC -eq 0 && "$OUT" == "work last task 1m" ]]; then
+  pass "a Workflow stopped with TaskStop is no longer shown in flight: '$OUT'"
+else
+  fail "a Workflow stopped with TaskStop is no longer shown in flight" "rc=$RC out='$OUT' err='$ERR'"
+fi
+sl "$T20" "$FIX/refused.jsonl"
+if [[ $RC -eq 0 && "$OUT" == "work last task 9s" ]]; then
+  pass "a Workflow whose launch was refused is not shown in flight: '$OUT'"
+else
+  fail "a Workflow whose launch was refused is not shown in flight" "rc=$RC out='$OUT' err='$ERR'"
+fi
 sl "$T300" "$FIX/fg.jsonl"
 if [[ "$OUT" == "work task 5.0h · beyond history" ]]; then
   pass "past 4 h: '$OUT'"
@@ -311,6 +329,12 @@ else
   fail "a corrupt model reads as no model: elapsed only" "rc=$RC out='$OUT' err='$ERR'"
 fi
 wait_for_model >/dev/null    # that call refits too; let it finish before the lock case
+CLAUDE_CONFIG_DIR="$SANDBOX/no-such-config-dir" sl "$T20" "$FIX/wf.jsonl"
+if [[ $RC -eq 0 && "$OUT" == "work task 20m · idle | bg workflow 20m" && "$ERR" != *Traceback* ]]; then
+  pass "a missing config dir (no lock can be made): elapsed only"
+else
+  fail "a missing config dir (no lock can be made): elapsed only" "rc=$RC out='$OUT' err='$ERR'"
+fi
 
 # ─── Suite 5: one refit at a time ────────────────────────────────────
 
@@ -419,6 +443,13 @@ mutation red "task-eta: a missing model starts a refit" task-eta.py \
   '                _SPAWN(cfg, token)' '                pass'
 mutation red "task-eta: O_EXCL keeps a second refit out" task-eta.py \
   'os.O_CREAT | os.O_EXCL | os.O_WRONLY' 'os.O_CREAT | os.O_WRONLY'
+mutation red "task-eta: a TaskStop ends the job it names" task-eta.py \
+  "                self._stop(inp.get('task_id') or inp.get('shell_id'), ts)" '                pass'
+mutation red "task-eta: a refused launch never ran" task-eta.py \
+  "                self._unlaunch(b.get('tool_use_id'))" '                pass'
+mutation red "task-eta: a lock error leaves elapsed time" task-eta.py \
+  '        except OSError:                  # a missing or read-only config dir' \
+  '        except FileExistsError:          # a missing or read-only config dir'
 
 # Bounded parallelism; bash 3.2 has no `wait -n`, so wait oldest-first.
 SE_JOBS=$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 2)

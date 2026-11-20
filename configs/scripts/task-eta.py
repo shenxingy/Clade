@@ -20,7 +20,10 @@ mostly spent waiting on background work between turns. When no turn is running
 but a background Workflow, Agent, Bash or Monitor job is still in flight, the
 line reads ``idle | bg <kind> <age> · <range> left``. In flight means launched
 during the last three tasks (all the tail reader reads), not seen to finish,
-and under a day old; a job launched before the latest prompt still shows.
+and under a day old; a job launched before the latest prompt still shows. A job
+ends at its completion notice, at a TaskStop (or KillShell) naming it, which no
+notice follows, or at a Monitor's timeout; a launch whose call failed or was
+refused never ran, so it is neither in flight nor fitted.
 
 What the range is, and what it is not
 -------------------------------------
@@ -43,7 +46,8 @@ config dir's own), main-thread transcripts modified in the last 30 days, and
 writes the survival grid atomically. When the model is missing or older than a
 day, a status-line call starts ONE detached low-priority refit behind an
 ``O_EXCL`` lock file (``task-eta-model.lock``; a lock older than an hour is
-stale and is broken), and prints elapsed time only until a model exists. Each
+stale, and one caller breaks it under a second lock), and prints elapsed time
+only until a model exists; a config dir it cannot write means no refit. Each
 refit appends one line to ``task-eta-fit.log``.
 
 Failing soft
@@ -84,6 +88,7 @@ FIT_WINDOW_DAYS = 30          # Claude Code deletes transcripts after 30 days
 CENSOR_S = 2 * 3600           # a transcript written this recently may still be running its last episode
 MODEL_MAX_AGE_S = 24 * 3600   # refit once a day
 LOCK_STALE_S = 3600           # a refit lock older than this is broken (a killed or hung refit)
+BREAK_STALE_S = 60            # a break lock (held for a few syscalls) older than this was left by a kill
 FIT_LOG_KEEP = 20             # lines kept in task-eta-fit.log
 DEADLINE_S = 1.0              # status-line mode gives up and prints nothing after this
 BG_STALE_S = 24 * 3600        # a launch older than this with no completion seen is not in flight
@@ -207,6 +212,21 @@ class Timeline:
         if self.episodes:
             self.episodes[-1]['bgs'].append(bg)
 
+    def _stop(self, task_id, ts):
+        """TaskStop / KillShell: the job ends at the call. No completion notice follows a stop, so
+        without this a stopped job stays in flight until it ages out."""
+        bg = self.bg_by_tuid.get(self.task_to_tuid.get(task_id)) if isinstance(task_id, str) else None
+        if bg is not None and bg[1] is None:
+            bg[1] = ts
+
+    def _unlaunch(self, tuid):
+        """A launch whose call failed or was refused (a hook denial, a bad argument): it never ran."""
+        bg = self.bg_by_tuid.pop(tuid, None)
+        for ep in reversed(self.episodes if bg is not None else []):
+            if any(b is bg for b in ep['bgs']):
+                ep['bgs'] = [b for b in ep['bgs'] if b is not bg]
+                return
+
     def feed(self, r):
         if not isinstance(r, dict):
             return
@@ -239,7 +259,7 @@ class Timeline:
     def _feed_user(self, r, ts):
         msg = r.get('message') if isinstance(r.get('message'), dict) else {}
         cont = msg.get('content')
-        trs = [b.get('tool_use_id') for b in cont if isinstance(b, dict) and b.get('type') == 'tool_result'] \
+        trs = [b for b in cont if isinstance(b, dict) and b.get('type') == 'tool_result'] \
             if isinstance(cont, list) else []
         if trs:
             self._feed_tool_results(r, ts, trs)
@@ -270,8 +290,9 @@ class Timeline:
             if self.cur['t1'] is None:
                 self.cur['t1'] = ts
 
-    def _feed_tool_results(self, r, ts, trs):
+    def _feed_tool_results(self, r, ts, blocks):
         tur = r.get('toolUseResult')
+        trs = [b.get('tool_use_id') for b in blocks]
         if isinstance(tur, dict) and len(trs) == 1:
             tuid = trs[0]
             c = self.calls.get(tuid)
@@ -290,6 +311,9 @@ class Timeline:
                 tm = tur.get('timeoutMs')
                 if isinstance(tm, (int, float)) and not tur.get('persistent'):
                     self.bg_by_tuid[tuid][3] = c[0] + tm
+        for b in blocks:
+            if b.get('is_error') is True:          # the launching call failed: the job never ran
+                self._unlaunch(b.get('tool_use_id'))
         if self.cur is not None:
             self.cur['last'] = max(self.cur['last'], ts)
 
@@ -310,17 +334,21 @@ class Timeline:
             self.calls[tid] = [ts, kind]
             if inp.get('run_in_background') is True or name in ('Workflow', 'Monitor'):
                 self._launch(tid, ts, kind)
+            elif name in ('TaskStop', 'KillShell'):
+                self._stop(inp.get('task_id') or inp.get('shell_id'), ts)
 
     def finish(self):
         self._close_turn_fallback()
 
 
 # ─── Tail reader ───
-# Lines worth decoding outside a full parse: triggers, turn ends, interrupts, background launches
-# and completions. Everything the live estimate reads comes from these.
+# Lines worth decoding outside a full parse: triggers, turn ends, interrupts, background launches,
+# completions, stops and failed calls. Everything the live estimate reads comes from these. Inside a
+# JSON string a quote is escaped, so a key pattern matches a real key, never text that quotes one.
 SPARSE_KEYS = (b'"turnOrigin"', b'"subtype":"turn_duration"', b'<task-notification>', b'"backgroundTaskId"',
                b'"isAsync":true', b'"name":"Workflow"', b'"name":"Monitor"', b'"run_in_background":true',
-               b'"timeoutMs"', b'"taskId"', b'"agentId"', b'[Request interrupted by user')
+               b'"timeoutMs"', b'"taskId"', b'"agentId"', b'"name":"TaskStop"', b'"name":"KillShell"',
+               b'"is_error":true', b'[Request interrupted by user')
 _SKIP_PREFIX = tuple(('{"type":"%s"' % t).encode() for t in (
     'last-prompt', 'mode', 'permission-mode', 'atis-latch', 'ai-title', 'pr-link',
     'file-history-snapshot', 'file-history-delta', 'queue-operation', 'cost-state'))
@@ -357,9 +385,12 @@ def _light_tool_result(line):
         mm = _LR_NUM.search(part)
         if mm:
             tur['timeoutMs'] = int(mm.group(1))
+    block = {'type': 'tool_result', 'tool_use_id': i.group(1).decode('utf-8', 'replace')}
+    if b'"is_error":true' in line[:m.start()]:
+        block['is_error'] = True
     return {'type': 'user', 'isSidechain': b'"isSidechain":true' in line[:200],
             'timestamp': m.group(1).decode('utf-8', 'replace'), 'toolUseResult': tur,
-            'message': {'content': [{'type': 'tool_result', 'tool_use_id': i.group(1).decode('utf-8', 'replace')}]}}
+            'message': {'content': [block]}}
 
 
 def decode_line(line):
@@ -555,7 +586,7 @@ def file_items(path, censor):
         if ep['starter'] in FIT_STARTERS and ends and max(ends) > ep['t0']:
             tasks.append((ep['t0'], (max(ends) - ep['t0']) / 1000.0))
         for launch, done, kind, expire in ep['bgs']:
-            end = done if done is not None else expire      # a timed-out Monitor ends at its expiry
+            end = done if done is not None else expire      # done includes a stop; a Monitor may expire
             if end is not None and end > launch:
                 bgs.append((launch, kind, (end - launch) / 1000.0))
     return tasks, bgs
@@ -652,33 +683,69 @@ def run_fit(cfg, token=None):
 
 
 # ─── Refit trigger: O_EXCL lock, one detached low-priority child ───
+def _create_excl(path, token):
+    """The token if this call created path (O_EXCL), None if it exists."""
+    try:
+        fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+    except FileExistsError:
+        return None
+    with os.fdopen(fd, 'w') as f:
+        f.write(token + '\n')
+    return token
+
+
+def _age(path, now):
+    try:
+        return now - os.path.getmtime(path)
+    except OSError:
+        return None                      # gone
+
+
+def _held(age):
+    """A lock of this age (None: gone) still belongs to a live refit."""
+    return age is not None and age < LOCK_STALE_S
+
+
+_RACE = lambda stage: None   # noqa: E731 — the self-test runs a competing locker at each stage
+
+
 def try_lock(path, now=None):
-    """Create the lock with O_EXCL; break it once if it is older than LOCK_STALE_S.
+    """Create the lock with O_EXCL; break it if it is older than LOCK_STALE_S.
     Returns the token written into it, or None when another refit holds it.
-    (O_EXCL, not mkdir: a lost mkdir race can exit 0 on some coreutils.)"""
+    (O_EXCL, not mkdir: a lost mkdir race can exit 0 on some coreutils.)
+    Breaking happens under a second O_EXCL lock, with the age checked again inside it: of several
+    callers that all saw the same stale lock, one breaks it and the rest find the fresh one it made."""
     now = time.time() if now is None else now
-    token = '%d-%d' % (os.getpid(), int(now * 1000))
-    for attempt in (0, 1):
-        try:
-            fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
-        except FileExistsError:
-            if attempt:
-                return None
-            try:
-                age = now - os.path.getmtime(path)
-            except OSError:
-                continue                 # released in between: try again
-            if age < LOCK_STALE_S:
-                return None
-            try:
-                os.unlink(path)          # stale: a refit that died or hung
-            except OSError:
-                pass
-            continue
-        with os.fdopen(fd, 'w') as f:
-            f.write(token + '\n')
+    token = '%d-%d-%s' % (os.getpid(), int(now * 1000), os.urandom(3).hex())
+    if _create_excl(path, token):
         return token
-    return None
+    age = _age(path, now)
+    if age is None:
+        return _create_excl(path, token)     # released in between
+    if _held(age):
+        return None                          # the fast path; the check inside the break lock decides
+    _RACE('judged')
+    brk = path + '.break'
+    if not _create_excl(brk, token):
+        b_age = _age(brk, now)
+        if b_age is not None and b_age >= BREAK_STALE_S:
+            _unlink(brk)                     # a breaker killed mid-break; the next call breaks the lock
+        return None
+    try:
+        if _held(_age(path, now)):
+            return None                      # another caller broke it first: its lock is fresh
+        _RACE('breaking')
+        _unlink(path)
+        return _create_excl(path, token)
+    finally:
+        release_lock(brk, token)
+
+
+def _unlink(path):
+    try:
+        os.unlink(path)
+    except OSError:
+        pass
 
 
 def release_lock(path, token):
@@ -719,7 +786,10 @@ def model_for_statusline(cfg, now):
     except OSError:
         age = None
     if model is None or age is None or age > MODEL_MAX_AGE_S:
-        token = try_lock(lock_path(cfg), now)
+        try:
+            token = try_lock(lock_path(cfg), now)
+        except OSError:                  # a missing or read-only config dir: no refit, use what there is
+            token = None
         if token is not None:
             try:
                 _SPAWN(cfg, token)
@@ -781,11 +851,11 @@ def fmt_dur(s):
     s = max(0, s)
     if s < 60:
         return '%ds' % s
-    if s < 3600:
+    if round(s / 60) < 60:
         return '%dm' % round(s / 60)
-    if s < 86400:
+    if round(s / 3600) < 24:
         h = s / 3600
-        return ('%.1fh' % h) if h < 10 else '%dh' % round(h)
+        return ('%.1fh' % h) if h < 9.95 else '%dh' % round(h)
     return '%.1fd' % (s / 86400)
 
 
@@ -938,9 +1008,13 @@ class _Synth:
         return self._rec('assistant', ms, message={'model': 'synthetic', 'role': 'assistant', 'content': [
             {'type': 'tool_use', 'id': tid, 'name': name, 'input': inp}]})
 
-    def result(self, ms, tid, pad=0, **tur):
-        return self._rec('user', ms, message={'role': 'user', 'content': [
-            {'tool_use_id': tid, 'type': 'tool_result', 'content': 'x' * pad or 'ok'}]}, toolUseResult=tur)
+    def result(self, ms, tid, pad=0, error=None, **tur):
+        block = {'type': 'tool_result', 'content': (error or '') + 'x' * pad or 'ok'}
+        if error:
+            block['is_error'] = True
+        block['tool_use_id'] = tid
+        return self._rec('user', ms, message={'role': 'user', 'content': [block]},
+                         toolUseResult='Error: ' + error if error else tur)
 
     def turn_end(self, ms):
         return self._rec('system', ms, subtype='turn_duration', durationMs=0)
@@ -1001,7 +1075,7 @@ def self_test():
     import random
     import shutil
     import tempfile
-    global _SPAWN
+    global _SPAWN, _RACE
     fails = []
 
     def check(ok, what):
@@ -1011,7 +1085,7 @@ def self_test():
 
     tmp = tempfile.mkdtemp(prefix='task-eta-selftest-')
     saved = {k: os.environ.get(k) for k in ('HOME', 'CLAUDE_CONFIG_DIR', 'CLADE_TASK_ETA_NOW')}
-    saved_spawn = _SPAWN
+    saved_spawn, saved_race = _SPAWN, _RACE
     try:
         os.environ['HOME'] = tmp
         cfg = os.path.join(tmp, 'cfg')
@@ -1020,7 +1094,7 @@ def self_test():
         os.environ.pop('CLADE_TASK_ETA_NOW', None)
         _selftest_body(tmp, cfg, check, io, random)
     finally:
-        _SPAWN = saved_spawn
+        _SPAWN, _RACE = saved_spawn, saved_race
         for k, v in saved.items():
             if v is None:
                 os.environ.pop(k, None)
@@ -1035,7 +1109,7 @@ def self_test():
 
 
 def _selftest_body(tmp, cfg, check, io, random):
-    global _SPAWN
+    global _SPAWN, _RACE
     # 1. Fit: the history, plus files the fit must leave out or count once.
     root = os.path.join(tmp, 'projects')
     n_tasks, n_bg = _synthetic_history(root, random.Random(1), 250)
@@ -1056,6 +1130,13 @@ def _selftest_body(tmp, cfg, check, io, random):
           'fit counts %d tasks: 30-day window, censored last task, forked session once (got %d)' % (
               n_tasks + 1, model['episode']['n_items']))
     check(model['bg']['n_items'] == n_bg, 'fit counts %d background jobs (got %d)' % (n_bg, model['bg']['n_items']))
+    sroot = os.path.join(tmp, 'projects-stops')
+    (_Synth().prompt(_T0).tool(_T0 + 5000, 'w1', 'Workflow', script='s').result(_T0 + 6000, 'w1', taskId='t-w1')
+     .tool(_T0 + 7000, 'w2', 'Workflow', script='s').result(_T0 + 8000, 'w2', error='refused')
+     .turn_end(_T0 + 9000).prompt(_T0 + 10 * MIN).tool(_T0 + 11 * MIN, 's1', 'TaskStop', task_id='t-w1')
+     .turn_end(_T0 + 12 * MIN)).write(os.path.join(sroot, '-synthetic-stops', 'x.jsonl'), age_s=3 * 86400)
+    check(fit_model(roots=[sroot])['bg']['n_items'] == 1,
+          'fit: a job stopped with TaskStop is fitted up to its stop; a refused launch is not fitted')
     mp = model_path(cfg)
     write_model(model, mp)
     check(load_model(mp) == json.loads(json.dumps(model)) and os.listdir(cfg) == ['task-eta-model.json'],
@@ -1142,9 +1223,32 @@ def _selftest_body(tmp, cfg, check, io, random):
              .turn_end(_T0 + 9000).prompt(_T0 + 25 * 60 * MIN).turn_end(_T0 + 25 * 60 * MIN + 10000))
     line, _ = line_at(stale, _T0 + 25 * 60 * MIN + 5 * MIN)
     check(line == 'last task 10s', 'a day-old launch with no completion is not in flight: %r' % line)
+    # 9b. A stop ends the job it names (no completion notice follows a stop), and only that job.
+    stop = (_Synth().prompt(_T0).tool(_T0 + 5000, 'w1', 'Workflow', script='s').result(_T0 + 6000, 'w1', taskId='t-w1')
+            .tool(_T0 + 60000, 's1', 'TaskStop', task_id='t-w1').result(_T0 + 61000, 's1', task_id='t-w1')
+            .turn_end(_T0 + 62000))
+    line, _ = line_at(stop, _T0 + 2 * MIN)
+    check(line == 'last task 1m', 'a Workflow stopped with TaskStop is not in flight: %r' % line)
+    kill = (_Synth().prompt(_T0).tool(_T0 + 5000, 'b1', 'Bash', command='serve', run_in_background=True)
+            .result(_T0 + 6000, 'b1', backgroundTaskId='bt1').tool(_T0 + 60000, 'k1', 'KillShell', shell_id='bt1')
+            .result(_T0 + 61000, 'k1').turn_end(_T0 + 62000))
+    line, _ = line_at(kill, _T0 + 2 * MIN)
+    check(line == 'last task 1m', 'a background Bash stopped with KillShell is not in flight: %r' % line)
+    other = (_Synth().prompt(_T0).tool(_T0 + 5000, 'w1', 'Workflow', script='s').result(_T0 + 6000, 'w1', taskId='t-w1')
+             .tool(_T0 + 60000, 's1', 'TaskStop', task_id='t-other').turn_end(_T0 + 62000))
+    line, _ = line_at(other, _T0 + 2 * MIN)
+    check(line.startswith('task 2m · idle | bg workflow 2m'), 'a stop naming another job ends nothing: %r' % line)
+    # 9c. A launch whose call failed or was refused never ran (a short result, and one the light parser cuts).
+    for pad in (0, 2 * LIGHT_MIN):
+        den = (_Synth().prompt(_T0).tool(_T0 + 5000, 'w1', 'Workflow', script='s')
+               .result(_T0 + 6000, 'w1', pad=pad, error='denied by a hook').turn_end(_T0 + 9000))
+        line, _ = line_at(den, _T0 + 5 * MIN)
+        check(line == 'last task 9s', 'a refused Workflow launch is not in flight (%d-byte pad): %r' % (pad, line))
     # 10. No model yet: elapsed only.
     line, _ = line_at(wf, _T0 + 20 * MIN, mdl=None)
     check(line == 'task 20m · idle | bg workflow 20m', 'no model, elapsed only: %r' % line)
+    durs = [fmt_dur(x) for x in (59, 3569, 3590, 35800, 35900, 86000)]
+    check(durs == ['59s', '59m', '1.0h', '9.9h', '10h', '1.0d'], 'durations round into the next unit: %r' % durs)
 
     # 11. The tail read gives what a full parse gives (sparse lines, chunk edges, light tool results).
     big = _Synth()
@@ -1160,6 +1264,9 @@ def _selftest_body(tmp, cfg, check, io, random):
         big.tool(t + 10000, 'c%d' % e, 'Bash', command='long').result(t + 70000, 'c%d' % e,
                                                                        backgroundTaskId='bc%d' % e)
         big.tool(t + 71000, 'm%d' % e, 'Monitor', command='m').result(t + 72000, 'm%d' % e, timeoutMs=1200000)
+        if e == 4:              # one job stopped, one launch refused (a result the light parser cuts)
+            big.tool(t + 73000, 'k4', 'TaskStop', task_id='bc4').result(t + 73500, 'k4', task_id='bc4')
+            big.tool(t + 74000, 'f4', 'Workflow', script='s').result(t + 74500, 'f4', pad=6000, error='refused')
         big.raw('{"type":"user", not json').raw('{"type":"file-history-snapshot","x":1}')
         big.turn_end(t + 80000)
         big.notification(t + 5 * MIN, 'w%d' % e, queued=(e % 2 == 1))
@@ -1175,8 +1282,8 @@ def _selftest_body(tmp, cfg, check, io, random):
     check(compare_tail_full(bp, nows) and compare_tail_full(bp, nows, chunk=4096),
           'tail read == full parse on a six-task transcript (1 MB and 4 KB chunks)')
     est = estimate(bp, None, nows[2])
-    check(est.get('bg', {}).get('more') == 3,
-          'fixture: four jobs in flight at once, so every launch kind is compared (got %r)' % est.get('bg'))
+    check(est.get('bg', {}).get('more') == 2,
+          'fixture: three jobs in flight at once, a fourth stopped and a fifth refused (got %r)' % est.get('bg'))
 
     # 12. The refit lock.
     now = time.time()
@@ -1187,7 +1294,40 @@ def _selftest_body(tmp, cfg, check, io, random):
     os.utime(lp, (now - LOCK_STALE_S + 60,) * 2)
     check(try_lock(lp, now) is None, 'a lock younger than the stale timeout still holds')
     os.utime(lp, (now - LOCK_STALE_S - 60,) * 2)
-    check(try_lock(lp, now) is not None, 'a stale lock is broken')
+    check(try_lock(lp, now) is not None and not os.path.exists(lp + '.break'),
+          'a stale lock is broken, and no break lock is left behind')
+
+    def race(stage_for_a):
+        """b sees the lock stale; a competing caller a runs whole at stage_for_a of b's break."""
+        global _RACE
+        for q in (lp, lp + '.break'):
+            if os.path.exists(q):
+                os.unlink(q)
+        open(lp, 'w').close()
+        os.utime(lp, (now - LOCK_STALE_S - 60,) * 2)
+        got = {}
+
+        def hook(stage):
+            global _RACE
+            if stage == stage_for_a:
+                _RACE = lambda _s: None     # noqa: E731
+                got['a'] = try_lock(lp, now)
+        _RACE = hook
+        try:
+            got['b'] = try_lock(lp, now)
+        finally:
+            _RACE = lambda _s: None         # noqa: E731
+        with open(lp) as f:
+            held = f.read().strip()
+        return sorted(k for k, v in got.items() if v and v == held), sorted(k for k, v in got.items() if v)
+    check(race('judged') == (['a'], ['a']), 'two callers saw one stale lock; the one that broke it first holds it')
+    check(race('breaking') == (['b'], ['b']), 'a caller that finds the lock being broken backs off')
+    open(lp + '.break', 'w').close()
+    os.utime(lp + '.break', (now - BREAK_STALE_S - 5,) * 2)
+    os.utime(lp, (now - LOCK_STALE_S - 60,) * 2)
+    first = try_lock(lp, now)
+    check(first is None and try_lock(lp, now) is not None,
+          'a break lock left by a killed breaker is cleared, and the next call breaks the stale lock')
 
     # 13. The refit trigger: one spawn while missing, none while fresh, one more once a day old.
     calls = []
@@ -1224,6 +1364,10 @@ def _selftest_body(tmp, cfg, check, io, random):
     rc, out = run(['--stdin'], json.dumps({'transcript_path': wfp}))
     check(rc == 0 and re.match(r'^task 20m · idle \| bg workflow 20m · \S+-\S+ left$', out) is not None,
           'status-line JSON on stdin: %r' % out)
+    os.environ['CLAUDE_CONFIG_DIR'] = os.path.join(tmp, 'no-such-dir')
+    rc, out = run(['--transcript', wfp])
+    os.environ['CLAUDE_CONFIG_DIR'] = cfg
+    check(rc == 0 and out == 'task 20m · idle | bg workflow 20m', 'a missing config dir: elapsed only: %r' % out)
     rc, out = run(['--transcript', wfp, '--json'])
     check(rc == 0 and json.loads(out).get('bg', {}).get('kind') == 'workflow', '--json prints the estimate')
     bad = _Synth()
