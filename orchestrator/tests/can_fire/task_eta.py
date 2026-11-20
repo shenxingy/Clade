@@ -5,8 +5,7 @@ Each one removes one guard the status-line task timer claims, and its
 (a seeded heavy-tailed history for the fit, then one transcript per case);
 nothing derived from a real transcript is involved. The first four are the
 guards the feature exists for: the survival lookup, the human-prompt task
-boundary, background work in flight, and "beyond history" past the 4 h
-horizon. NO_OP_CONTROLS holds the mutation that must stay green.
+boundary, background work in flight, and no estimate past the 4 h horizon. NO_OP_CONTROLS holds the mutation that must stay green.
 
 Not mutated, and why: the one-second deadline (timing, not behaviour), the
 atomic tmp+rename write (a reader cannot observe the difference in-process),
@@ -37,9 +36,18 @@ MUTATIONS: dict[str, list[tuple[str, str, str]]] = {S: [
      "    if not cell:\n        return None\n    q = [float(v) for v in cell[:3]]",
      "    if not cell:\n        cell = next(c for c in reversed(block['global'][:gi]) if c)\n"
      "    q = [float(v) for v in cell[:3]]"),
-    ("a Monitor is open-ended — the line prints no '(open-ended)'",
-     "    tail += ' (open-ended)' if bg['kind'] == 'monitor' else _range_txt(bg['range'], False)",
-     "    tail += _range_txt(bg['range'], False)"),
+    ("a band too wide to act on is not printed",
+     "    if not isinstance(rng, dict) or rng['p75'] > RANGE_MAX_RATIO * max(rng['p25'], 1.0):",
+     "    if not isinstance(rng, dict):"),
+    ("a Monitor's declared timeout bounds what is left",
+     "'left_max_s': None if expire is None else (expire - T) / 1000.0}",
+     "'left_max_s': None}"),
+    ("idle counts from the task's end, not its start",
+     "        out['idle_s'] = max(0.0, (T - max(ends)) / 1000.0) if ends else out['elapsed_s']",
+     "        out['idle_s'] = out['elapsed_s']"),
+    ("--forms reaches the status line — it gets the longest form only",
+     "'\\n'.join(fmt_forms(est)) if '--forms' in argv else fmt_line(est)",
+     "fmt_line(est)"),
     ("a Monitor is open-ended — the estimate carries a range for it",
      "'range': None if kind == 'monitor' else lookup(model, 'bg', age)",
      "'range': lookup(model, 'bg', age)"),
@@ -47,8 +55,8 @@ MUTATIONS: dict[str, list[tuple[str, str, str]]] = {S: [
      "                    self.bg_by_tuid[tuid][3] = c[0] + tm",
      "                    pass"),
     ("a Workflow is named before older background Bash",
-     "    launch, kind = min(inflight, key=lambda x: (rank.get(x[1], len(rank)), x[0]))",
-     "    launch, kind = min(inflight, key=lambda x: x[0])"),
+     "    launch, kind, expire = min(inflight, key=lambda x: (rank.get(x[1], len(rank)), x[0]))",
+     "    launch, kind, expire = min(inflight, key=lambda x: x[0])"),
     ("in flight means launched during the last three tasks — every task's jobs are searched",
      "    for ep in tl.episodes[-TAIL_EPISODES:]:",
      "    for ep in tl.episodes:"),

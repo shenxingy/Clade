@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # test-statusline-eta.sh — the status line's task-time segment, end to end.
 #
-# configs/scripts/task-eta.py prints "task 20m · idle | bg workflow 20m ·
-# 11m-2.2h left"; configs/scripts/statusline-command.sh calls it inline with the
-# status-line JSON; install.sh adds statusLine.refreshInterval so the line keeps
+# configs/scripts/task-eta.py prints "wait 20m · workflow 20m" (and, with
+# --forms, two shorter forms); configs/scripts/statusline-command.sh calls it
+# inline with the status-line JSON and fits the whole line to COLUMNS, the pane's
+# width; install.sh adds statusLine.refreshInterval so the line keeps
 # refreshing while the main thread is idle. This runs install.sh against a
 # THROWAWAY $HOME under /tmp, writes SYNTHETIC transcripts only (the self-test's
 # own builders, never a real transcript), and pins:
@@ -11,10 +12,13 @@
 #   install: a fresh install sets refreshInterval 10 and installs task-eta.py; a
 #   reinstall keeps a refreshInterval the user set and adds 10 where it is
 #   absent (the Windows/Git Bash rewrite is pinned in tests/test-install.sh);
-#   the line: a Workflow in flight after its turn reads "idle | bg workflow"
-#   with a range, and still does after a later prompt; a Workflow stopped with
-#   TaskStop, or one whose launch was refused, is not shown; "beyond history"
-#   past 4 h; a missing model prints elapsed time only and starts ONE detached refit
+#   the line: a Workflow in flight after its turn reads "wait … · workflow", and
+#   still does after a later prompt; a Workflow stopped with TaskStop, or one
+#   whose launch was refused, is not shown; no estimate past 4 h; the fit to a
+#   pane 94, 90, 80, 46, 35 and 29 columns wide (at 90 the drop-in alone is too
+#   much), with no "git:(" label, the task state last to go and a dropped piece
+#   put back where a later step made room;
+#   a missing model prints elapsed time only and starts ONE detached refit
 #   that writes the model; five concurrent calls start one refit, not five;
 #   fail soft: no transcript, an empty one, a directory, malformed lines, stdin
 #   that is not JSON and a corrupt model each print the other segments, no
@@ -242,7 +246,7 @@ section "No model yet: elapsed only, and one detached refit"
 
 rm -f "$MODEL" "$LOCK" "$FITLOG"
 sl "$T20" "$FIX/wf.jsonl"
-if [[ $RC -eq 0 && "$OUT" == "work task 20m · idle | bg workflow 20m"* ]]; then
+if [[ $RC -eq 0 && "$OUT" == "work wait 20m · workflow 20m" ]]; then
   pass "elapsed only while the model is missing: '$OUT'"
 else
   fail "elapsed only while the model is missing" "rc=$RC out='$OUT' err='$ERR'"
@@ -259,39 +263,39 @@ fi
 section "The segment, with a model fitted from the synthetic history"
 
 sl "$T20" "$FIX/wf.jsonl"
-if [[ $RC -eq 0 && "$OUT" =~ ^work\ task\ 20m\ ·\ idle\ \|\ bg\ workflow\ 20m\ ·\ [^\ ]+-[^\ ]+\ left$ ]]; then
-  pass "idle | bg workflow with a range: '$OUT'"
+if [[ $RC -eq 0 && "$OUT" == "work wait 20m · workflow 20m" ]]; then
+  pass "wait · workflow, its band too wide to print: '$OUT'"
 else
-  fail "idle | bg workflow with a range" "rc=$RC out='$OUT' err='$ERR'"
+  fail "wait · workflow, its band too wide to print" "rc=$RC out='$OUT' err='$ERR'"
 fi
-if [[ "$RAW" == *$'\033[2mtask 20m'* ]]; then
+if [[ "$RAW" == *$'\033[2mwait 20m'* ]]; then
   pass "the segment is dim"
 else
   fail "the segment is dim" "raw=$(printf '%q' "$RAW")"
 fi
 sl "$T30" "$FIX/wf-later-prompt.jsonl"
-if [[ "$OUT" =~ ^work\ task\ 20m\ ·\ idle\ \|\ bg\ workflow\ 30m\ ·\ [^\ ]+-[^\ ]+\ left$ ]]; then
+if [[ "$OUT" == "work wait 20m · workflow 30m" ]]; then
   pass "a prompt typed while the Workflow runs still shows it: '$OUT'"
 else
   fail "a prompt typed while the Workflow runs still shows it" "out='$OUT'"
 fi
 sl "$T2" "$FIX/stopped.jsonl"
-if [[ $RC -eq 0 && "$OUT" == "work last task 1m" ]]; then
+if [[ $RC -eq 0 && "$OUT" == "work idle 57s · took 1m" ]]; then   # T2 is whole seconds: 57.893 s idle
   pass "a Workflow stopped with TaskStop is no longer shown in flight: '$OUT'"
 else
   fail "a Workflow stopped with TaskStop is no longer shown in flight" "rc=$RC out='$OUT' err='$ERR'"
 fi
 sl "$T20" "$FIX/refused.jsonl"
-if [[ $RC -eq 0 && "$OUT" == "work last task 9s" ]]; then
+if [[ $RC -eq 0 && "$OUT" == "work idle 20m · took 9s" ]]; then
   pass "a Workflow whose launch was refused is not shown in flight: '$OUT'"
 else
   fail "a Workflow whose launch was refused is not shown in flight" "rc=$RC out='$OUT' err='$ERR'"
 fi
 sl "$T300" "$FIX/fg.jsonl"
-if [[ "$OUT" == "work task 5.0h · beyond history" ]]; then
-  pass "past 4 h: '$OUT'"
+if [[ "$OUT" == "work run 5.0h" ]]; then
+  pass "past 4 h: elapsed only, no estimate: '$OUT'"
 else
-  fail "past 4 h the line says beyond history" "out='$OUT'"
+  fail "past 4 h: elapsed only, no estimate" "out='$OUT'"
 fi
 
 # ─── Suite 4: fail soft ──────────────────────────────────────────────
@@ -316,21 +320,21 @@ else
   fail "stdin that is not JSON" "rc=$RC out='$OUT' err='$ERR'"
 fi
 sl "$T20" "$FIX/malformed.jsonl"
-if [[ $RC -eq 0 && "$OUT" == "work task 20m · idle | bg workflow 20m"* && "$ERR" != *Traceback* ]]; then
+if [[ $RC -eq 0 && "$OUT" == "work wait 20m · workflow 20m" && "$ERR" != *Traceback* ]]; then
   pass "malformed lines are skipped, the rest still read: '$OUT'"
 else
   fail "malformed lines are skipped, the rest still read" "rc=$RC out='$OUT' err='$ERR'"
 fi
 printf '{"version": 1, "grid_s": "corrupt"' > "$MODEL"
 sl "$T20" "$FIX/wf.jsonl"
-if [[ $RC -eq 0 && "$OUT" == "work task 20m · idle | bg workflow 20m" && "$ERR" != *Traceback* ]]; then
+if [[ $RC -eq 0 && "$OUT" == "work wait 20m · workflow 20m" && "$ERR" != *Traceback* ]]; then
   pass "a corrupt model reads as no model: elapsed only"
 else
   fail "a corrupt model reads as no model: elapsed only" "rc=$RC out='$OUT' err='$ERR'"
 fi
 wait_for_model >/dev/null    # that call refits too; let it finish before the lock case
 CLAUDE_CONFIG_DIR="$SANDBOX/no-such-config-dir" sl "$T20" "$FIX/wf.jsonl"
-if [[ $RC -eq 0 && "$OUT" == "work task 20m · idle | bg workflow 20m" && "$ERR" != *Traceback* ]]; then
+if [[ $RC -eq 0 && "$OUT" == "work wait 20m · workflow 20m" && "$ERR" != *Traceback* ]]; then
   pass "a missing config dir (no lock can be made): elapsed only"
 else
   fail "a missing config dir (no lock can be made): elapsed only" "rc=$RC out='$OUT' err='$ERR'"
@@ -368,7 +372,7 @@ if [[ "$OUT" == "work" ]]; then pass "slt eta off drops the segment"
 else fail "slt eta off drops the segment" "out='$OUT'"; fi
 bash "$CLAUDE_DIR/scripts/statusline-toggle.sh" eta on >/dev/null
 sl "$T20" "$FIX/wf.jsonl"
-if [[ "$OUT" == "work task 20m"* ]]; then pass "slt eta on brings it back"
+if [[ "$OUT" == "work wait 20m"* ]]; then pass "slt eta on brings it back"
 else fail "slt eta on brings it back" "out='$OUT'"; fi
 
 NOPY="$SANDBOX/no-python-bin"
@@ -391,6 +395,74 @@ if [[ "$RAW" != *$'\n'* && "$OUT" == "work anb033[31m" ]]; then
 else
   fail "a backslash in the segment is dropped, not read as an escape" "raw=$(printf '%q' "$RAW")"
 fi
+
+# ─── Suite 6b: fit to the pane ───────────────────────────────────────
+# A long repository name, a long branch, usage data and a drop-in, at the pane
+# widths seen on the author's tmux (2026-11-20). Claude Code indents the line two
+# columns and keeps two free, so the line must fit COLUMNS - 4. Widths are counted
+# in characters, which needs a UTF-8 locale ("·" and "…" are one column, three
+# bytes); without one the composer overcounts and drops a piece early, so the
+# exact strings are checked only where a UTF-8 locale exists.
+
+section "COLUMNS: the line fits the pane, the task state last to go"
+
+UTF8=""
+for l in C.UTF-8 C.utf8 en_US.UTF-8 en_US.utf8; do
+  if locale -a 2>/dev/null | grep -qx "$l"; then UTF8=$l; break; fi
+done
+printf 'number\n' > "$CLAUDE_DIR/.statusline-mode"
+LONG="$SANDBOX/faceswap-platform-100"
+mkdir -p "$LONG" "$CLAUDE_DIR/statusline-extra.d"
+git -C "$LONG" init -q && git -C "$LONG" symbolic-ref HEAD refs/heads/feat/statusline-compact
+printf '#!/bin/sh\nprintf "amsg ✓104"\n' > "$CLAUDE_DIR/statusline-extra.d/10-test.sh"
+chmod +x "$CLAUDE_DIR/statusline-extra.d/10-test.sh"
+
+slw() {  # slw COLUMNS — the long repository, five days of usage data, the drop-in
+  local payload reset=$(( $(date +%s) + 5 * 86400 ))
+  payload=$(jq -cn --arg cwd "$LONG" --arg t "$FIX/wf.jsonl" --argjson r "$reset" \
+    '{cwd: $cwd, transcript_path: $t, rate_limits: {seven_day: {used_percentage: 80, resets_at: $r}}}')
+  RAW=$(printf '%s' "$payload" | LC_ALL="${UTF8:-C}" COLUMNS="$1" CLADE_TASK_ETA_NOW="$T20" \
+    bash "$SL" 2>"$SANDBOX/sl.err")
+  OUT=$(plain "$RAW")
+}
+nchars() { python3 -c 'import sys; print(len(sys.argv[1]))' "$1"; }
+
+for w in 227 94 90 80 46 35 29; do
+  slw "$w"
+  n=$(nchars "$OUT")
+  if [[ "$n" -le $((w - 4)) && "$OUT" == *"wait 20m"* && "$OUT" != *"git:("* ]]; then
+    pass "COLUMNS=$w: $n columns, the task state kept: '$OUT'"
+  else
+    fail "COLUMNS=$w: fits in $((w - 4)) with the task state" "$n columns: '$OUT'"
+  fi
+done
+
+if [[ -n "$UTF8" ]]; then
+  while IFS='|' read -r w want; do
+    slw "$w"
+    if [[ "$OUT" == "$want" ]]; then pass "COLUMNS=$w gives '$want'"
+    else fail "COLUMNS=$w gives '$want'" "got '$OUT'"; fi
+  done <<'CASES'
+94|faceswap-platform-100 feat/statusline-compact wait 20m · workflow 20m +53% (5d) amsg ✓104
+90|faceswap-platform-100 feat/statusline-compact wait 20m · workflow 20m +53% (5d)
+80|faceswap-platform-100 feat/statusline-compact wait 20m · workflow 20m +53%
+46|faceswap-plat… wait 20m · workflow +53%
+35|faceswap-plat… wait 20m +53%
+29|faceswap-plat… wait 20m
+CASES
+else
+  echo "  (no UTF-8 locale: exact strings skipped, the fit checks above still ran)"
+fi
+
+payload=$(jq -cn --arg cwd "$LONG" --arg t "$FIX/wf.jsonl" '{cwd: $cwd, transcript_path: $t}')
+RAW=$(printf '%s' "$payload" | env -u COLUMNS CLADE_TASK_ETA_NOW="$T20" bash "$SL" 2>/dev/null)
+OUT=$(plain "$RAW")
+if [[ "$OUT" == "faceswap-platform-100 feat/statusline-compact wait 20m · workflow 20m"*"amsg ✓104" ]]; then
+  pass "no COLUMNS: everything prints, as before: '$OUT'"
+else
+  fail "no COLUMNS: everything prints" "out='$OUT'"
+fi
+rm -f "$CLAUDE_DIR/statusline-extra.d/10-test.sh"
 
 # ─── Suite 7: every guard is observed ────────────────────────────────
 
@@ -428,7 +500,16 @@ PY
 mutation green "no-op control (a comment reworded)" statusline-command.sh \
   '# Inline, not a drop-in: drop-in segments get no stdin' '# Inline, not a drop-in: a drop-in segment gets no stdin'
 mutation red "the segment reaches the output" statusline-command.sh \
-  'output+="${eta_segment}"' ':'
+  '[ -n "$eta" ] && output+=" \033[2m${eta}\033[0m"' ':'
+mutation red "the line is fitted to COLUMNS" statusline-command.sh \
+  '*) budget=$((COLUMNS - 4)) ;;' '*) ;;'
+mutation red "the fit keeps the task state: its forms are read" statusline-command.sh \
+  '      eta_short)  eta=$eta_short ;;' '      eta_short)  eta="" ;;'
+mutation red "the fit puts back what a later step made room for" statusline-command.sh \
+  '    [ "$(width)" -le "$budget" ] || usage="" usage_plain=""' '    usage="" usage_plain=""'
+mutation red "the width counts the drop-in segments" statusline-command.sh \
+  '  for p in "$dir" "$branch" "$eta" "$usage_plain" "$extra_plain"; do' \
+  '  for p in "$dir" "$branch" "$eta" "$usage_plain"; do'
 mutation red "slt eta off is honoured" statusline-command.sh \
   'if [ "$(cat "$HOME/.claude/.statusline-eta" 2>/dev/null)" != "off" ] \' 'if true \'
 mutation red "a backslash is dropped before printf %b" statusline-command.sh \

@@ -4160,10 +4160,23 @@ base rate), so the estimate goes on the statusline as a range.
   transcript (of 40) that took 182 ms against a 150 ms budget; and a ledger of
   ETA misses so the band's coverage is re-checked on live use, not only on the
   2026-11-12..20 held-out week.
+- [ ] 🔵 **Facts the task line could print instead of a band** (2026-11-20
+  re-test, docs/research/2026-11-19-cc-eta-and-bottlenecks.md § 2026-11-20
+  follow-up: no signal narrowed the band; these two are exact, not estimates):
+  a Workflow's agents done / started from its run journal (every test run had
+  one; needs the journal path from the launch result), and a countdown for a
+  bare `sleep N` job (exact on 73 of 1,106 test jobs).
+- [ ] 🔵 **Kimi and Codex footers still print `git:(branch)`**
+  (`configs/skills/kimi-usage/scripts/kimi_usage.py`,
+  `configs/skills/codex-usage/scripts/codex_usage.py`). The Claude Code line
+  dropped the label and fits `COLUMNS` since 2026-11-20; decide whether those
+  footers follow (both have their own tests pinning the label).
 - [ ] 🔵 **#259 review residue** (independent review, round 2: 0 blocking; these
   are its non-blocking findings, each reproduced by the reviewer):
-  - `task-eta.py` is 1,419 of 1,500 lines on arrival. Split the fit and the
-    tail reader into a `configs/scripts/lib/` module before the next fix.
+  - `task-eta.py` is 1,470 of 1,500 lines after #259 and the 2026-11-20 line
+    forms (which went in without the split, to keep that PR one behaviour).
+    Split the fit and the tail reader into a `configs/scripts/lib/` module
+    before the next change to it.
   - One model per config dir: profiles that share one `settings.json` each
     refit the same roots (up to five identical refits a day, 6.3 s each on
     450 transcripts). Share one model file across profiles.

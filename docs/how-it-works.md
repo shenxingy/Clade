@@ -179,8 +179,29 @@ domain latched into strict mode permanently after its first correction.
 
 ## Status Line
 
-The status line shows `dir  git:(branch)  ● (4d)  task 20m · idle | bg workflow 20m · 11m-2.2h left`:
-the quota pace indicator, then the [task time](#task-time) (dim).
+The status line shows `dir branch wait 20m · workflow 20m ● (4d)`: the project
+directory, its branch (red, no `git:(…)` label), the [task time](#task-time)
+(dim), the quota pace indicator, then any drop-in segments.
+
+**It fits the pane.** Claude Code indents the line two columns, keeps two free and
+cuts the rest with `…`, and it sets `COLUMNS` to the pane's width; on a 29-column
+tmux split the old line showed `faceswap-platform-100 gi…` and never the task.
+Where the line is too wide, the least useful piece goes first: drop-in segments,
+the quota's reset time, the branch cut to 12 characters, the task's shorter
+form, the directory cut to 14, the branch, the quota, and last the task's
+shortest form; a piece dropped early comes back if a later step made room. The
+test suite's fixture (tests/test-statusline-eta.sh) at the widths of one tmux layout:
+
+| `COLUMNS` | Line |
+|---|---|
+| 94 | `faceswap-platform-100 feat/statusline-compact wait 20m · workflow 20m +53% (5d) amsg ✓104` |
+| 80 | `faceswap-platform-100 feat/statusline-compact wait 20m · workflow 20m +53%` |
+| 46 | `faceswap-plat… wait 20m · workflow +53%` |
+| 35 | `faceswap-plat… wait 20m +53%` |
+| 29 | `faceswap-plat… wait 20m` |
+
+Widths are counted in characters, so this needs a UTF-8 locale; in another the
+count runs high and a piece drops early, never late.
 
 ### Display Modes
 
@@ -280,30 +301,39 @@ Theme is saved to `~/.claude/.statusline-theme` and persists across sessions.
 
 ### Task Time
 
-`configs/scripts/task-eta.py` adds how long the current task has run, and a
-range for what is left. The examples are its self-test's, from a synthetic history:
+`configs/scripts/task-eta.py` says what the session is doing and for how long.
+The examples are its self-test's, from a synthetic history:
 
 | Line | When |
 |------|------|
-| `task 25m · 14m-2.8h left (p25-p75, n=190)` | A turn is running; `n` past tasks ran at least as long |
-| `task 20m · idle \| bg workflow 20m · 11m-2.2h left` | No turn is running, a background job is in flight |
-| `task 12m · idle \| bg monitor 12m (open-ended)` | A Monitor is an event stream: its age, never a range |
-| `task 5.0h · beyond history` | 4 h or more elapsed, or too few past tasks ran this long |
-| `task 20m · idle \| bg workflow 20m` | No model yet: elapsed time only |
-| `last task 1m` | Nothing running and nothing in flight |
+| `run 25m` | A turn is running; the task started 25 min ago |
+| `wait 10m · workflow 9m +1` | No turn is running; a Workflow launched 9 min ago is in flight, and one other job |
+| `wait 12m · monitor 12m ≤8m left` | A Monitor's declared timeout bounds what is left |
+| `wait 20m · workflow 20m 10-20m left` | A band narrow enough to act on (here, a history whose jobs all took 10-20 min) |
+| `idle 4m · took 1m` | Nothing running: idle for 4 min, and the task took 1 min |
 
 **A task** runs from the latest human prompt (typed or queued) to now, and the
 turns a background job's completion notice starts belong to it. **In flight**
 means a Workflow, Agent, background Bash or Monitor launched during the last
 three tasks, not seen to finish and under a day old; a Workflow launched before
-your latest prompt still shows, and `+N more` counts the others. A job finishes
+your latest prompt still shows, and `+N` counts the others. A job finishes
 at its completion notice, at a `TaskStop` (or `KillShell`) that names it, which
 no notice follows, or at a Monitor's timeout; a launch whose call failed or was
-refused never ran, so it is never in flight. **The range**
-is the p25-p75 band of the time that was left for past tasks that had run at
-least as long — a band, never a single number, because a point estimate of
-remaining time is too often off by more than 2x to print. Past 4 h it says
-`beyond history` rather than guess.
+refused never ran, so it is never in flight.
+
+**The range is seldom printed, on purpose.** The lookup behind it is the p25-p75
+band of the time that was left for past tasks (or jobs) that had run at least as
+long, and `task-eta.py --stdin --json` always carries it. The line prints it only
+when the top of the band is at most 4x its bottom, because a wider one does not
+tell anyone whether to wait. On the author's history it almost never is: on a
+held-out week (2026-11-12..20, 221 tasks, 1,106 background jobs) tasks were 28x
+wide at 1 min and 8x at 15 min, and single jobs 5-9x. Nothing narrowed it: not
+the job's identity (its normalised command, subagent type or Workflow name), its
+kind, the prompt's length or the task's phase. The reason is what happens after
+a wait: the agent launches another round about half the time (54% in the fit
+half, 67% in the test week), and nothing observable predicted which better than
+about 60/40. The one hard number is a Monitor's timeout, which it cannot
+outlive. Details: [the research note](research/2026-11-19-cc-eta-and-bottlenecks.md#2026-11-20-follow-up-what-would-narrow-it).
 
 **The model** is fitted from this machine's own main-thread transcripts of the
 last 30 days (`~/.claude/projects` and every `~/.claude-profiles/*/projects`) into
