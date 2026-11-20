@@ -8,7 +8,7 @@ Modes: `symbol` (emoji only) → `percent` (emoji + delta) → `number` (delta o
 
 Themes: 9 emoji sets — circles, bird, moon, weather, mood, coffee, rocket, ocean, dragon
 
-Task time: a separate segment, `task 20m · idle | bg workflow 20m · 11m-2.2h left` — elapsed time since the latest prompt and a p25-p75 range for what is left. `slt eta off|on` hides or shows it.
+Task time: a separate segment, `run 3m` / `wait 20m · workflow 20m` / `idle 4m · took 12m` — what the session is doing and for how long; a remaining-time band prints only when it is at most 4x wide, which on measured history it almost never is. `slt eta off|on` hides or shows it.
 
 ## Parse the invocation
 
