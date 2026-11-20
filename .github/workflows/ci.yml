@@ -379,6 +379,16 @@ jobs:
       - name: Session keeper self-test (can it go red?)
         run: python3 configs/scripts/keep-sessions.py --self-test
 
+      # The status line's task-time estimate: elapsed since the latest human
+      # prompt, a p25-p75 band from a survival lookup, "beyond history" past
+      # 4 h, background work in flight. An estimator whose lookup quietly fell
+      # back to the global median would still print a plausible band. The
+      # self-test fits a seeded synthetic history (never the host's
+      # transcripts) and checks the lookup against the median on held-out
+      # draws; its mutations live in orchestrator/tests/can_fire/task_eta.py.
+      - name: Task-time estimate self-test (can it go red?)
+        run: python3 configs/scripts/task-eta.py --self-test
+
       - name: Score the test-integrity detector against the reward-hack corpus
         run: |
           cd orchestrator
@@ -651,6 +661,14 @@ jobs:
       # shell-tests, because it runs install.sh against a throwaway $HOME.
       - name: Run context-policy install test
         run: bash tests/test-context-policy-install.sh
+
+      # The status line's task-time segment end to end: install.sh's
+      # statusLine.refreshInterval (added, or the user's kept), the inline
+      # segment on synthetic transcripts, the detached refit and its lock,
+      # fail-soft cases, then a guard-mutation suite. Here, not in
+      # shell-tests, because it runs install.sh against a throwaway $HOME.
+      - name: Run status-line task-time test
+        run: bash tests/test-statusline-eta.sh
 
   # Nothing told this repo when a pinned dependency became vulnerable, and the
   # first run's answer was not "slightly behind": fastapi==0.131.0 required

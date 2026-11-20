@@ -602,8 +602,15 @@ SH
   else
     fail "fresh Windows settings wrap every hook + statusLine command"
   fi
+  # The Git Bash rewrite rebuilds the statusLine object; refreshInterval is added after it.
+  if jq -e '.statusLine.refreshInterval == 10' "$WINDOWS_SETTINGS" >/dev/null 2>&1; then
+    pass "fresh Windows settings keep statusLine.refreshInterval 10 through the rewrite"
+  else
+    fail "fresh Windows settings keep statusLine.refreshInterval 10 through the rewrite" \
+      "statusLine=$(jq -c .statusLine "$WINDOWS_SETTINGS" 2>/dev/null)"
+  fi
 
-  jq '. + {model: "windows-sentinel-keep"}' "$WINDOWS_SETTINGS" \
+  jq '. + {model: "windows-sentinel-keep"} | .statusLine.refreshInterval = 4' "$WINDOWS_SETTINGS" \
     > "$WINDOWS_SETTINGS.new"
   mv "$WINDOWS_SETTINGS.new" "$WINDOWS_SETTINGS"
   windows_install_log2="$SANDBOX/install-windows-2.log"
@@ -623,6 +630,12 @@ SH
     pass "existing Windows settings preserve user keys and wrapped commands"
   else
     fail "existing Windows settings preserve user keys and wrapped commands"
+  fi
+  if jq -e '.statusLine.refreshInterval == 4' "$WINDOWS_SETTINGS" >/dev/null 2>&1; then
+    pass "a Windows reinstall keeps the refreshInterval the user set"
+  else
+    fail "a Windows reinstall keeps the refreshInterval the user set" \
+      "statusLine=$(jq -c .statusLine "$WINDOWS_SETTINGS" 2>/dev/null)"
   fi
 else
   echo "  (jq not available — skipping Windows settings checks)"
