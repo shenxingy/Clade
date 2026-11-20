@@ -69,7 +69,7 @@ fi
 # Usage pace: +3% (4.4d)
 output+="${usage_segment}"
 
-# Task time (dim): task 21m · idle | bg workflow 51m · 20m-2.2h left
+# Task time (dim): task 20m · idle | bg workflow 20m · 11m-2.2h left
 output+="${eta_segment}"
 
 # Extra (drop-in) segments

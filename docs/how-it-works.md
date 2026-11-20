@@ -179,7 +179,7 @@ domain latched into strict mode permanently after its first correction.
 
 ## Status Line
 
-The status line shows `dir  git:(branch)  ● (4d)  task 21m · idle | bg workflow 51m · 20m-2.2h left`:
+The status line shows `dir  git:(branch)  ● (4d)  task 20m · idle | bg workflow 20m · 11m-2.2h left`:
 the quota pace indicator, then the [task time](#task-time) (dim).
 
 ### Display Modes
@@ -296,7 +296,10 @@ range for what is left. The examples are its self-test's, from a synthetic histo
 turns a background job's completion notice starts belong to it. **In flight**
 means a Workflow, Agent, background Bash or Monitor launched during the last
 three tasks, not seen to finish and under a day old; a Workflow launched before
-your latest prompt still shows, and `+N more` counts the others. **The range**
+your latest prompt still shows, and `+N more` counts the others. A job finishes
+at its completion notice, at a `TaskStop` (or `KillShell`) that names it, which
+no notice follows, or at a Monitor's timeout; a launch whose call failed or was
+refused never ran, so it is never in flight. **The range**
 is the p25-p75 band of the time that was left for past tasks that had run at
 least as long — a band, never a single number, because a point estimate of
 remaining time is too often off by more than 2x to print. Past 4 h it says
@@ -306,7 +309,8 @@ remaining time is too often off by more than 2x to print. Past 4 h it says
 last 30 days (`~/.claude/projects` and every `~/.claude-profiles/*/projects`) into
 `task-eta-model.json` in the config dir. When it is missing or a day old, a
 status-line call starts one detached low-priority refit behind an `O_EXCL` lock
-(`task-eta-model.lock`, broken after an hour) and keeps going; each refit appends
+(`task-eta-model.lock`, broken after an hour, by one caller however many see it
+stale) and keeps going; each refit appends
 a line to `task-eta-fit.log`. `python3 ~/.claude/scripts/task-eta.py --fit`
 refits now. Nothing leaves the machine.
 

@@ -163,8 +163,8 @@ python3 configs/scripts/harness-usage.py --self-test
 #     prints the time since the latest human prompt and a p25-p75 band for what
 #     is left, from a survival lookup on elapsed time. A lookup that fell back
 #     to the global median, a task boundary moved to the turn, background work
-#     no longer seen in flight, or a missing "beyond history" past 4 h would
-#     all still print a plausible line. The self-test fits a seeded synthetic
+#     no longer seen in flight (or a stopped job still seen), or a missing
+#     "beyond history" past 4 h would all still print a plausible line. The self-test fits a seeded synthetic
 #     history, never the host's transcripts, and checks the lookup against the
 #     median on held-out draws; its mutations, with a no-op control that must
 #     stay green, are in orchestrator/tests/can_fire/task_eta.py.
