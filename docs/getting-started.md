@@ -57,7 +57,8 @@ The installer writes framework files under `~/.claude/`, updates the managed
 Clade block in `~/.codex/AGENTS.md`, writes provider-neutral guidance to
 `~/.agents/AGENTS.md`, and adapts Kimi Code files when that runtime is detected.
 With `jq` present, it replaces the `hooks` and `statusLine` fields in
-`~/.claude/settings.json`, adds deny rules, and updates skill settings. Save
+`~/.claude/settings.json` (keeping a `statusLine.refreshInterval` you set, and
+setting 10 seconds otherwise), adds deny rules, and updates skill settings. Save
 your current configuration if you need to retain custom hooks or a status line;
 review `install.sh` before running it.
 

@@ -1022,16 +1022,24 @@ MUTATIONS["configs/scripts/pr-verification-gaps.py"] = [
 # (this file is also executed by path, below, so a package import would not
 # resolve) and join MUTATIONS, so every test here covers them. A file that
 # defines no MUTATIONS, or names a script listed already, fails the import.
+# A file may also define NO_OP_CONTROLS in the same shape: edits its script's
+# self-test must stay GREEN on, the control that a red mutation was not red for
+# an unrelated reason (test_a_no_op_mutation_keeps_the_self_test_green).
 CAN_FIRE_DIR = Path(__file__).with_name("can_fire")
 
 
-def _load_mutation_files(directory: Path = CAN_FIRE_DIR) -> dict[str, list[tuple[str, str, str]]]:
-    found: dict[str, list[tuple[str, str, str]]] = {}
+def _can_fire_modules(directory: Path):
     for path in sorted(directory.glob("*.py")):
         spec = importlib.util.spec_from_file_location(f"_can_fire_{path.stem}", path)
         assert spec is not None and spec.loader is not None, path
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
+        yield path, module
+
+
+def _load_mutation_files(directory: Path = CAN_FIRE_DIR) -> dict[str, list[tuple[str, str, str]]]:
+    found: dict[str, list[tuple[str, str, str]]] = {}
+    for path, module in _can_fire_modules(directory):
         extra = getattr(module, "MUTATIONS", None)
         assert isinstance(extra, dict) and extra, f"{path} defines no MUTATIONS dict"
         for script, muts in extra.items():
@@ -1043,14 +1051,27 @@ def _load_mutation_files(directory: Path = CAN_FIRE_DIR) -> dict[str, list[tuple
 MUTATIONS.update(_load_mutation_files())
 
 
+def _load_no_op_controls(directory: Path = CAN_FIRE_DIR) -> dict[str, list[tuple[str, str, str]]]:
+    """A can_fire file may also define NO_OP_CONTROLS: mutations its script's self-test must stay GREEN
+    on. Without one, a self-test that goes red on ANY edit passes every mutation above."""
+    found: dict[str, list[tuple[str, str, str]]] = {}
+    for _, module in _can_fire_modules(directory):
+        for script, controls in (getattr(module, "NO_OP_CONTROLS", None) or {}).items():
+            assert script in MUTATIONS, f"{script} has no-op controls and no mutations"
+            found.setdefault(script, []).extend(controls)
+    return found
+
+
+NO_OP_CONTROLS = _load_no_op_controls()
+
+
 def _cases():
     for script, muts in MUTATIONS.items():
         for name, old, new in muts:
             yield pytest.param(script, name, old, new, id=f"{Path(script).stem}:{name[:40]}")
 
 
-@pytest.mark.parametrize("script,name,old,new", list(_cases()))
-def test_removing_a_guard_turns_the_self_test_red(script, name, old, new):
+def _run_mutated(script, name, old, new):
     target = REPO / script
     source = target.read_text(encoding="utf-8")
     assert old in source, (
@@ -1068,10 +1089,25 @@ def test_removing_a_guard_turns_the_self_test_red(script, name, old, new):
     finally:
         target.write_bytes(orig.read_bytes())
         orig.unlink()
+    return result
 
+
+@pytest.mark.parametrize("script,name,old,new", list(_cases()))
+def test_removing_a_guard_turns_the_self_test_red(script, name, old, new):
+    result = _run_mutated(script, name, old, new)
     assert result.returncode != 0, (
         f"{script} --self-test PASSES with {name} removed.\n"
         f"That property is claimed and not checked.\n{result.stdout[-600:]}")
+
+
+@pytest.mark.parametrize("script,name,old,new", [
+    pytest.param(script, name, old, new, id=f"{Path(script).stem}:{name[:40]}")
+    for script, controls in NO_OP_CONTROLS.items() for name, old, new in controls])
+def test_a_no_op_mutation_keeps_the_self_test_green(script, name, old, new):
+    result = _run_mutated(script, name, old, new)
+    assert result.returncode == 0, (
+        f"{script} --self-test goes RED on a no-op ({name}), so its red mutations prove nothing.\n"
+        f"{result.stdout[-600:]}{result.stderr[-600:]}")
 
 
 def test_a_killed_runs_mutation_is_restored_from_the_journal(tmp_path):
@@ -1119,6 +1155,14 @@ def test_a_script_cannot_have_mutations_in_two_places(tmp_path):
         "MUTATIONS = {'configs/scripts/artifact-lint.py': [('x', 'a', 'b')]}\n")
     with pytest.raises(AssertionError, match="in two places"):
         _load_mutation_files(tmp_path)
+
+
+def test_no_op_controls_must_name_a_mutated_script(tmp_path):
+    (tmp_path / "ctl.py").write_text(
+        "MUTATIONS = {'configs/scripts/none.py': [('x', 'a', 'b')]}\n"
+        "NO_OP_CONTROLS = {'configs/scripts/none.py': [('y', 'a', 'b')]}\n")
+    with pytest.raises(AssertionError, match="no-op controls and no mutations"):
+        _load_no_op_controls(tmp_path)
 
 
 def test_the_journal_is_ignored_by_git():

@@ -52,7 +52,8 @@ python3 configs/scripts/validate-skills.py configs/skills --quiet
 
 安装器会把框架写入 `~/.claude/`，更新 `~/.codex/AGENTS.md` 中的 Clade 托管区块，
 把 provider-neutral guidance 写入 `~/.agents/AGENTS.md`，并在检测到 Kimi Code 时适配其文件；
-有 `jq` 时会替换 `~/.claude/settings.json` 的 `hooks` 和 `statusLine` 字段，追加 deny rules，
+有 `jq` 时会替换 `~/.claude/settings.json` 的 `hooks` 和 `statusLine` 字段（保留你设置的
+`statusLine.refreshInterval`，未设置时设为 10 秒），追加 deny rules，
 并更新 skill 设置。如果需要保留自定义 hooks 或状态栏，先保存当前配置，并在运行前检查 `install.sh`。
 
 安装后在你要处理的项目中开启新的 Claude Code 会话。在 agent 聊天里粘贴：`Use Clade verify to run one documented check in this repository. Report

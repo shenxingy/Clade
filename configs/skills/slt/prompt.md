@@ -8,6 +8,8 @@ Modes: `symbol` (emoji only) → `percent` (emoji + delta) → `number` (delta o
 
 Themes: 9 emoji sets — circles, bird, moon, weather, mood, coffee, rocket, ocean, dragon
 
+Task time: a separate segment, `task 20m · idle | bg workflow 20m · 11m-2.2h left` — elapsed time since the latest prompt and a p25-p75 range for what is left. `slt eta off|on` hides or shows it.
+
 ## Parse the invocation
 
 Extract any arguments the user passed after "slt":
@@ -18,6 +20,7 @@ Extract any arguments the user passed after "slt":
 | `slt theme` | `slt theme` |
 | `slt theme <name>` | `slt theme <name>` |
 | `slt symbol\|percent\|number\|bar\|off` | `slt <mode>` |
+| `slt eta`, `slt eta on\|off` | `slt eta`, `slt eta <on\|off>` |
 
 ## Execute
 
