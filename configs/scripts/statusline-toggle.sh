@@ -4,15 +4,18 @@
 #
 # MODES   (~/.claude/.statusline-mode):   symbol | percent | number | bar | off
 # THEMES  (~/.claude/.statusline-theme):  see: slt theme
+# TASK    (~/.claude/.statusline-eta):    on | off — the task-time segment (task-eta.py)
 #
 # Usage:
 #   slt                   cycle mode: symbol → percent → number → bar → off → symbol
 #   slt symbol/percent/number/bar/off  set mode directly
 #   slt theme             list all themes
 #   slt theme <name>      set theme + show stage meanings
+#   slt eta [on|off]      show, or turn on/off, the task-time segment
 
 MODE_FILE="$HOME/.claude/.statusline-mode"
 THEME_FILE="$HOME/.claude/.statusline-theme"
+ETA_FILE="$HOME/.claude/.statusline-eta"
 
 VALID_THEMES="circles plain bird moon weather mood coffee rocket ocean dragon"
 
@@ -122,6 +125,26 @@ if [ "$1" = "theme" ]; then
   exit 0
 fi
 
+# ─── Handle: slt eta [on|off] ───
+
+if [ "$1" = "eta" ]; then
+  case "$2" in
+    on|off)
+      echo "$2" > "$ETA_FILE"
+      echo "Task-time segment: $2"
+      ;;
+    "")
+      [ "$(cat "$ETA_FILE" 2>/dev/null)" = "off" ] && _eta_state=off || _eta_state=on
+      echo "Task-time segment: $_eta_state   (slt eta on|off)"
+      ;;
+    *)
+      echo "Usage: slt eta [on|off]"
+      exit 1
+      ;;
+  esac
+  exit 0
+fi
+
 # ─── Handle: slt <mode> (direct set) ───
 
 if [ -n "$1" ]; then
@@ -136,6 +159,7 @@ if [ -n "$1" ]; then
       echo ""
       echo "Modes:   slt [symbol|percent|number|bar|off]"
       echo "Themes:  slt theme [name]   (run 'slt theme' to see all)"
+      echo "Task:    slt eta [on|off]   (the task-time segment)"
       exit 1
       ;;
   esac

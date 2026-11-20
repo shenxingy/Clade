@@ -495,6 +495,15 @@ if ! command -v jq &>/dev/null; then
 else
   HOOKS=$(jq '.hooks' "$SCRIPT_DIR/configs/settings-hooks.json")
   STATUSLINE='{"type":"command","command":"bash ~/.claude/statusline-command.sh"}'
+  # statusLine.refreshInterval re-runs the status line every N seconds. Without
+  # it the line runs only on events, and the Claude Code status line docs say
+  # those "can go quiet when the main session is idle, for example while a
+  # coordinator waits on background subagents" — exactly when the task-time
+  # segment (task-eta.py) has something to say. Both paths below add it where
+  # the user has not set one; a value the user set, or the template carries, wins.
+  # It is added after the Git Bash rewrite, so Windows keeps it too.
+  STATUSLINE_REFRESH=10
+  SL_WITH_REFRESH='($sl + {refreshInterval: ((.statusLine | objects | .refreshInterval) // $slr)})'
 
   # Git Bash (Windows): rewrite every hook + statusLine command to run via
   # bash.exe so cmd.exe doesn't choke on bare "~/.claude/..." .sh commands (§8a).
@@ -553,9 +562,9 @@ else
     # opted into. Existing user deny entries are preserved and de-duplicated.
     jq --argjson hooks "$HOOKS" --argjson sl "$STATUSLINE" --argjson deny "$TEMPLATE_DENY" \
        --argjson so "$SKILL_OVERRIDES" --argjson sf "$SKILL_FRACTION" \
-       --argjson attr "$TEMPLATE_ATTRIBUTION" \
+       --argjson attr "$TEMPLATE_ATTRIBUTION" --argjson slr "$STATUSLINE_REFRESH" \
       '.hooks = $hooks
-       | .statusLine = $sl
+       | .statusLine = '"$SL_WITH_REFRESH"'
        | .permissions = ((.permissions // {})
                          | .deny = ((.deny // []) + $deny | unique))
        | .skillOverrides = ($so + (.skillOverrides // {}))
@@ -567,9 +576,9 @@ else
   else
     # Fresh install: retain template defaults, but inject the same computed
     # hook/status-line commands as the merge path (including Windows wrappers).
-    jq --argjson hooks "$HOOKS" --argjson sl "$STATUSLINE" \
+    jq --argjson hooks "$HOOKS" --argjson sl "$STATUSLINE" --argjson slr "$STATUSLINE_REFRESH" \
        --argjson so "$SKILL_OVERRIDES" --argjson sf "$SKILL_FRACTION" \
-      '.hooks = $hooks | .statusLine = $sl
+      '.hooks = $hooks | .statusLine = '"$SL_WITH_REFRESH"'
        | .skillOverrides = $so | .skillListingBudgetFraction = $sf' \
       "$SCRIPT_DIR/templates/settings.json" > "$CLAUDE_DIR/.settings.json.$$"
     mv "$CLAUDE_DIR/.settings.json.$$" "$CLAUDE_DIR/settings.json"

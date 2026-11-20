@@ -27,6 +27,19 @@ if command -v python3 >/dev/null 2>&1 && [ -f "$_usage_script" ]; then
     | python3 "$_usage_script" --statusline-input 2>/dev/null)"
 fi
 
+# ─── Task time: elapsed since the latest prompt, and a range for what is left ───
+# Inline, not a drop-in: drop-in segments get no stdin, and this one needs the
+# transcript_path in $input. task-eta.py fails soft (prints nothing, exits 0);
+# no python3, a missing script or `slt eta off` drop the segment, nothing else.
+eta_segment=""
+_eta_script="$HOME/.claude/scripts/task-eta.py"
+if [ "$(cat "$HOME/.claude/.statusline-eta" 2>/dev/null)" != "off" ] \
+   && command -v python3 >/dev/null 2>&1 && [ -f "$_eta_script" ]; then
+  _eta=$(printf '%s' "$input" | python3 "$_eta_script" --stdin 2>/dev/null)
+  _eta=${_eta//\\/}                     # printf %b below must not read an escape in it
+  [ -n "$_eta" ] && eta_segment=" \033[2m${_eta}\033[0m"
+fi
+
 # ─── Extra segments (drop-in scripts) ───
 # Other tools (e.g. amsg) that want a statusLine segment install an
 # executable here instead of overwriting settings.json's statusLine.command
@@ -55,6 +68,9 @@ fi
 
 # Usage pace: +3% (4.4d)
 output+="${usage_segment}"
+
+# Task time (dim): task 21m · idle | bg workflow 51m · 20m-2.2h left
+output+="${eta_segment}"
 
 # Extra (drop-in) segments
 output+="${extra_segment}"
