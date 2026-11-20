@@ -4116,8 +4116,8 @@ on 1,137 human-started episodes (450 main-thread transcripts, five profiles,
 A model-written ETA is ruled out (no clock; its estimates add little beyond a
 base rate), so the estimate goes on the statusline as a range.
 
-- [ ] 🟠 **Statusline task-ETA segment** — branch `feat/statusline-task-eta`
-  (in progress 2026-11-19): `configs/scripts/task-eta.py` prints task elapsed
+- [ ] 🟠 **Statusline task-ETA segment** — #259 (`feat/statusline-task-eta`,
+  open 2026-11-19): `configs/scripts/task-eta.py` prints task elapsed
   plus a p25-p75 remaining band from a 30-day survival lookup, "beyond history"
   past its support, and the in-flight background job when the main thread is
   idle; `install.sh` sets `statusLine.refreshInterval: 10` unless the user set
@@ -4160,3 +4160,28 @@ base rate), so the estimate goes on the statusline as a range.
   transcript (of 40) that took 182 ms against a 150 ms budget; and a ledger of
   ETA misses so the band's coverage is re-checked on live use, not only on the
   2026-11-12..20 held-out week.
+- [ ] 🔵 **#259 review residue** (independent review, round 2: 0 blocking; these
+  are its non-blocking findings, each reproduced by the reviewer):
+  - `task-eta.py` is 1,419 of 1,500 lines on arrival. Split the fit and the
+    tail reader into a `configs/scripts/lib/` module before the next fix.
+  - One model per config dir: profiles that share one `settings.json` each
+    refit the same roots (up to five identical refits a day, 6.3 s each on
+    450 transcripts). Share one model file across profiles.
+  - The background band pools Bash, Agent, Monitor and Workflow durations
+    (806 of 1,039 test items were Bash), so a Workflow's range is mostly Bash
+    history. Fit per kind once each kind has enough items.
+  - A session killed mid-turn has no `turn_duration` record and reads as active
+    (8 of about 170 finished interactive transcripts), so on resume it shows
+    "beyond history" until the next prompt. Jobs killed at session exit (14 of
+    about 3,500) stay in flight for up to 24 h.
+  - Untested edges: a final line over the 32 MB tail cap blanks the segment at
+    about 300 ms (longest real line 1.3 MB); invalid UTF-8 inside a prompt line
+    drops that prompt (the self-test writes its garbage line in text mode, so
+    it never tests invalid bytes); the `+` suffix has no self-test check.
+  - Two self-test mutations print the intended FAIL and then crash with a
+    KeyError. They are red for the right reason, but should end in a clean FAIL
+    list.
+  - The five-call lock case in `tests/test-statusline-eta.sh` relies on
+    `CLADE_TASK_ETA_FIT_DELAY=3` outlasting five calls on a loaded host.
+  - The slt skill's `when_to_use` now says "eta" and "time left". Watch
+    whether it attracts unrelated ETA questions.
