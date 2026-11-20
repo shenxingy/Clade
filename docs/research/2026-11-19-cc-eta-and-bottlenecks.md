@@ -17,7 +17,8 @@ summary: >
   belongs on the statusline as a range, with statusLine.refreshInterval set.
   How much any setting shortens a run is not measured.
 integrated_items:
-  - "Statusline task-elapsed + history-based remaining range, refreshInterval 10 (branch feat/statusline-task-eta, in progress 2026-11-19)"
+  - "Statusline task-elapsed + history-based remaining range, refreshInterval 10 (#259, merged 2026-11-20)"
+  - "2026-11-20: the band prints only when at most 4x wide, a Monitor's timeout bounds it, and the line fits COLUMNS (branch feat/statusline-compact)"
   - "TODO.md § 2026-11-19 task-ETA and bottleneck follow-ups"
 needs_work_items:
   - "Owner: decide the three knob trials (ultracode/Workflow size, default effort, stop-check diet), each as a concurrent treated-vs-control split"
@@ -324,4 +325,65 @@ Each item is a problem from `critic/critic.md`. The fix was checked against the 
 8. **Omitted lane results.** These are now in the verdict or section 2: the background-task ETA (50-56% at 1-5 min, n = 958 / 725 of 1,039), P3 (+8 points at 15 min, n = 367), A1's robustness views and heavy tail, S2's 58.5% / 71.7% (n = 599), prior art, and H's own 0.4-0.5%. One critic figure was wrong. It said `eta.py` runs at a 97 ms median, but `timing.txt` gives 81 ms as the median over files and 97 ms as the largest file's median. The report keeps 81 / 97 / 182 ms and adds the 150 ms target (1 of 40 files over it) and the prototype's scratch-only, undeployed state.
 9. **Model-text comparison made two-sided.** "Beats the model's text" was removed from the verdict. Section 2 now shows 47% vs 28% (n = 32, no CI) beside the 46% vs 44% on the next background task (n = 103), under A2's conclusion that text "adds little beyond the base rate".
 10. **A1's 325 vs 324 Workflow episodes.** It is noted under Lane disagreements; no conclusion depends on it.
+
+## 2026-11-20 follow-up: what would narrow it
+
+After #259 shipped, the owner reported the printed range too wide to act on
+("我都不知道到底还要再跑多久"). The 2026-11-20 re-test used one split: fit on items
+that started before 2026-11-12T00:00Z, test on 2026-11-12..20. The population
+was 971 fit and 221 test human-started tasks, and 2,333 fit and 1,106 test
+background jobs. Each cell below reads within-2x of the p50, then band width
+(p75/p25), at 1 / 5 / 15 / 30 min elapsed. The scripts are scratch-only, like
+the rest of this note's.
+
+**How wide the shipped band is.** Tasks are 28.5x, 11.6x, 8.1x and 7.8x wide.
+The width is the same whether a turn is running or the session is waiting on
+background work. Single jobs, pooled by kind, are 7.4x, 8.4x, 7.1x and 7.8x.
+
+**A job's identity does not narrow it.** The identity tried was the normalised
+command, the subagent type or the Workflow name. At launch, 66% of test jobs
+had 3 or more earlier runs of the same identity. Signature-with-fallback scored
+within 2x on 37 / 53 / 59 / 31% of jobs, with bands 6.2x, 5.7x, 6.7x and 8.3x
+wide. Kind alone scored 38 / 54 / 56 / 40%. For Bash, a control that shuffled
+signatures among jobs scored 36 / 47 / 49 / 39%, so the signature carries only
+a few points. The commonest "jobs" are poll loops (`until … sleep`, 569 runs,
+p25-p75 4.5-29 min), whose length is whatever they wait for.
+
+**Neither does adding the job and a tail while waiting.** Task remaining at an
+idle-waiting moment can be split into the in-flight job plus the time after
+it. That predictor scored 30.4% within 2x, against 29.6% for elapsed only, on
+the same 1,653 per-minute moments from 73 test tasks. The paired difference
+is +0.8 points (95% CI -8.9..+11.0).
+- **The tail is the obstacle.** Knowing the job exactly reaches only 49%;
+  knowing the tail exactly reaches 68%.
+- **Why the tail cannot be predicted.** After a wait, the agent launches
+  another round 54% of the time in the fit half and 67% in the test week.
+  Without one, the rest of the task takes p50 59 s. With one, it takes p50
+  67 min.
+- **What else was tried.** The best predictor of another round was whether
+  earlier waits in the task were followed by one: 61% vs 51% in the fit half,
+  75% vs 59% in the test week. Job kind, round count, elapsed time, the number
+  of jobs in flight and the project's rate did no better.
+- **Control.** An exact job plus an exact tail reproduces the true remaining
+  time on all 106 checked moments.
+
+**What is tight.**
+- **Monitors.** A Monitor cannot outlive its declared timeout, and 74% of 90
+  test Monitors ran to at least 90% of it.
+- **`sleep N`.** A bare `sleep N` job is exact, but only 73 of the 1,106 test
+  jobs were one.
+- **Workflows.** A Workflow's journal always shows its agents started and
+  finished, which is a fact rather than an estimate.
+
+**What changed (branch `feat/statusline-compact`).**
+- The line prints the band only when p75 is at most 4x p25. On this history it
+  never is, and `--json` still carries the band.
+- A Monitor prints `≤<time> left` from its timeout.
+- The line states what the session is doing (`run`, `wait`, `idle`) instead of
+  `task`.
+- The line fits `COLUMNS`. On a 29-column tmux split the old line showed
+  `faceswap-platform-100 gi…` and never the task.
+
+**Not built.** `sleep N` countdowns and Workflow agents-done counts are both
+facts. The second needs the run's journal path from the launch result.
 

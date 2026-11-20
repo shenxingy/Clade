@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
 """task-eta.py — how long the current Claude Code task has run, and a range for what is left.
 
-The status line calls this with its own JSON on stdin and prints one segment.
-These lines are the self-test's, from its synthetic history:
+The status line calls this with its own JSON on stdin and prints one segment;
+``--forms`` prints it three ways, longest first, and the status line keeps the
+longest that fits its pane. These are the self-test's, from its synthetic history:
 
-    task 25m · 14m-2.8h left (p25-p75, n=190)
-    task 20m · idle | bg workflow 20m · 11m-2.2h left
-    task 10m · idle | bg workflow 9m · 7m-1.5h left +1 more
-    task 12m · idle | bg monitor 12m (open-ended)
-    task 5.0h · beyond history
-    last task 1m
+    run 25m                               a turn is running
+    wait 10m · workflow 9m +1             no turn running, background work in flight
+    wait 20m · workflow 20m 10-20m left   ... where past jobs make a band narrow enough to print
+    wait 12m · monitor 12m ≤8m left       a Monitor's timeout bounds what is left
+    idle 4m · took 1m                     nothing running: idle since, and how long the task took
 
 What "task" means
 -----------------
@@ -18,24 +18,30 @@ prompt also starts one) to now. Turns that a background job's completion
 notification starts belong to the same task, because a task's wall time is
 mostly spent waiting on background work between turns. When no turn is running
 but a background Workflow, Agent, Bash or Monitor job is still in flight, the
-line reads ``idle | bg <kind> <age> · <range> left``. In flight means launched
+line reads ``wait <elapsed> · <kind> <age>``. In flight means launched
 during the last three tasks (all the tail reader reads), not seen to finish,
 and under a day old; a job launched before the latest prompt still shows. A job
 ends at its completion notice, at a TaskStop (or KillShell) naming it, which no
 notice follows, or at a Monitor's timeout; a launch whose call failed or was
 refused never ran, so it is neither in flight nor fitted.
 
-What the range is, and what it is not
--------------------------------------
+What the range is, and why it is seldom printed
+-----------------------------------------------
 A survival lookup on elapsed time, fitted from the last 30 days of this
 machine's own main-thread transcripts: at elapsed t, the p25-p75 of the time
-that was left for past tasks that ran at least t. It prints the BAND, never a
-point: the evaluation this was built from found the band calibrated and the
-median alone too often off by more than 2x to print, and no feature beyond
-elapsed time that improved it. Past 4 h elapsed no estimate held up there, so
-from 4 h, and wherever fewer than ``MIN_N`` past items survived, the line says
-``beyond history`` instead of a number. A Monitor is an open-ended event
-stream: its age prints, no range.
+that was left for past tasks that ran at least t. ``--json`` always carries it.
+The line prints it only when p75 is at most ``RANGE_MAX_RATIO`` (4) times p25,
+because a wider band does not tell anyone whether to wait. On the author's
+history it almost never is: tasks were 28x wide at 1 min and 8x at 15 min, and
+single background jobs 5-9x, on a held-out week (2026-11-12..20, 221 tasks and
+1,106 jobs; docs/research/2026-11-19-cc-eta-and-bottlenecks.md). Neither the
+job's identity (its normalised command, subagent type or Workflow name), its
+kind, the prompt's length nor the task's phase narrowed it, because after a
+wait the agent launches another round about half the time (54% then 67%) and
+nothing observable predicted which
+better than about 60/40. Past 4 h elapsed, and wherever fewer than
+``MIN_N`` past items survived, the lookup is ``beyond`` and prints nothing. A
+Monitor's declared timeout is the one hard bound: ``≤<time> left``.
 
 The model and its refit
 -----------------------
@@ -58,6 +64,7 @@ nothing and exit 0, so the other segments always render.
 Usage
 -----
   task-eta.py --stdin                 status-line JSON on stdin (reads transcript_path)
+  task-eta.py --stdin --forms         the segment three ways, longest first, one per line
   task-eta.py --transcript PATH       the same for a transcript path
   task-eta.py ... --json              the estimate as JSON instead of the line
   task-eta.py --fit                   refit the model now (foreground)
@@ -99,6 +106,7 @@ CHUNK = 1 << 20
 LIGHT_MIN = 4000              # tool-result lines longer than this are cut, not decoded
 
 BG_PRIORITY = ('workflow', 'agent', 'bash', 'monitor')   # which in-flight job the line names
+RANGE_MAX_RATIO = 4.0         # a band whose p75 is more than this times its p25 is not printed
 EP_STARTERS = ('human', 'queued', 'sdk', 'peer')          # triggers that start a task
 FIT_STARTERS = ('human', 'queued')                        # tasks the model is fitted on
 
@@ -808,7 +816,7 @@ def live_background(tl, T):
         for launch, done, kind, expire in ep['bgs']:
             if launch <= T and (done is None or done > T) and (expire is None or expire > T) \
                     and T - launch < BG_STALE_S * 1000:
-                out.append((launch, kind))
+                out.append((launch, kind, expire))
     return out
 
 
@@ -829,15 +837,17 @@ def estimate_records(recs, found, model, now_ms):
         # last record, which a sparse read may not hold, but it ended before the last turn began.
         ends = [tl.turns[i]['t1'] for i in ep['turns'] if tl.turns[i]['t1'] is not None]
         out['last_task_s'] = max(0.0, (max(ends) - ep['t0']) / 1000.0) if ends else 0.0
+        out['idle_s'] = max(0.0, (T - max(ends)) / 1000.0) if ends else out['elapsed_s']
     if active and found:
         out['task'] = lookup(model, 'episode', out['elapsed_s'])
     inflight = live_background(tl, T)
     if inflight:
         rank = {k: i for i, k in enumerate(BG_PRIORITY)}
-        launch, kind = min(inflight, key=lambda x: (rank.get(x[1], len(rank)), x[0]))
+        launch, kind, expire = min(inflight, key=lambda x: (rank.get(x[1], len(rank)), x[0]))
         age = (T - launch) / 1000.0
         out['bg'] = {'kind': kind, 'age_s': age, 'more': len(inflight) - 1,
-                     'range': None if kind == 'monitor' else lookup(model, 'bg', age)}
+                     'range': None if kind == 'monitor' else lookup(model, 'bg', age),
+                     'left_max_s': None if expire is None else (expire - T) / 1000.0}
     return out
 
 
@@ -859,31 +869,46 @@ def fmt_dur(s):
     return '%.1fd' % (s / 86400)
 
 
-def _range_txt(rng, with_n):
-    if rng == BEYOND:
-        return ' · beyond history'
-    if not rng:
+def fmt_range(rng):
+    """'5-20m left' for a band narrow enough to act on, else '' (no model, BEYOND, or too wide)."""
+    if not isinstance(rng, dict) or rng['p75'] > RANGE_MAX_RATIO * max(rng['p25'], 1.0):
         return ''
-    txt = ' · %s-%s left' % (fmt_dur(rng['p25']), fmt_dur(rng['p75']))
-    return txt + (' (p25-p75, n=%d)' % rng['n'] if with_n else '')
+    a, b = fmt_dur(rng['p25']), fmt_dur(rng['p75'])
+    if a == b:
+        return '~%s left' % a
+    if a[-1] == b[-1]:                    # one unit: "5-20m", not "5m-20m"
+        a = a[:-1]
+    return '%s-%s left' % (a, b)
+
+
+def fmt_forms(est):
+    """The segment three ways, longest first; the status line keeps the longest that fits its pane.
+    run = a turn is running, wait = no turn, background work in flight, idle = nothing running."""
+    state = est.get('state')
+    if state not in ('active', 'idle'):
+        return []
+    bg = est.get('bg')
+    if state == 'idle' and not bg:
+        idle = 'idle %s' % fmt_dur(est.get('idle_s', 0.0))
+        return [idle + ' · took %s' % fmt_dur(est.get('last_task_s', 0.0)), idle, idle]
+    head = '%s %s%s' % ('run' if state == 'active' else 'wait', fmt_dur(est['elapsed_s']),
+                         '' if est.get('found_start') else '+')
+    if not bg:
+        left = fmt_range(est.get('task'))
+        return [head + (' · ' + left if left else ''), head, head]
+    if bg.get('left_max_s') is not None:  # a Monitor's timeout: an upper bound, never an estimate
+        left = '≤%s left' % fmt_dur(bg['left_max_s'])
+    else:
+        left = fmt_range(bg.get('range'))
+    job = '%s · %s' % (head, bg['kind'])
+    return ['%s %s%s%s' % (job, fmt_dur(bg['age_s']), ' ' + left if left else '',
+                           ' +%d' % bg['more'] if bg['more'] else ''),
+            job + (' ' + left if left else ''), head]
 
 
 def fmt_line(est):
-    if est.get('state') not in ('active', 'idle'):
-        return ''
-    bg = est.get('bg')
-    if est['state'] == 'idle' and not bg:
-        return 'last task %s' % fmt_dur(est['last_task_s'])
-    el = fmt_dur(est['elapsed_s']) + ('' if est.get('found_start') else '+')
-    head = 'task %s' % el
-    head += ' · idle' if est['state'] == 'idle' else _range_txt(est.get('task'), True)
-    if not bg:
-        return head
-    tail = 'bg %s %s' % (bg['kind'], fmt_dur(bg['age_s']))
-    tail += ' (open-ended)' if bg['kind'] == 'monitor' else _range_txt(bg['range'], False)
-    if bg['more']:
-        tail += ' +%d more' % bg['more']
-    return head + ' | ' + tail
+    forms = fmt_forms(est)
+    return forms[0] if forms else ''
 
 
 # ─── CLI: status line ───
@@ -925,7 +950,10 @@ def cmd_statusline(argv, stdin=None, stdout=None):
             return 0
         model = model_for_statusline(config_dir(), time.time())     # file ages: the real clock
         est = estimate(path, model, now_s() * 1000.0)
-        out = json.dumps(est) if '--json' in argv else fmt_line(est)
+        if '--json' in argv:
+            out = json.dumps(est)
+        else:
+            out = '\n'.join(fmt_forms(est)) if '--forms' in argv else fmt_line(est)
         if out:
             stdout.write(out + '\n')
     except BaseException:  # noqa: BLE001 — fail soft: the other segments must still render
@@ -1175,78 +1203,95 @@ def _selftest_body(tmp, cfg, check, io, random):
           .tool(_T0 + 5000, 'w1', 'Workflow', script='s').result(_T0 + 6000, 'w1', taskId='t-w1')
           .turn_end(_T0 + 9000))
     line, est = line_at(wf, _T0 + 20 * MIN)
-    check(re.match(r'^task 20m · idle \| bg workflow 20m · \S+-\S+ left$', line) is not None,
-          'Workflow in flight after its turn: %r' % line)
+    check(line == 'wait 20m · workflow 20m', 'Workflow in flight after its turn: %r' % line)
+    rng = est['bg']['range']
+    check(isinstance(rng, dict) and rng['p75'] > RANGE_MAX_RATIO * rng['p25'],
+          'fixture: the lookup ran, and its band is too wide to print: %r' % (rng,))
+    narrow = json.loads(json.dumps(model))         # a history whose background jobs all took ~10-20 min
+    narrow['bg']['global'] = [None if c is None else [600.0, 900.0, 1200.0] + c[3:] for c in narrow['bg']['global']]
+    line, est = line_at(wf, _T0 + 20 * MIN, mdl=narrow)
+    check(line == 'wait 20m · workflow 20m 10-20m left', 'a band narrow enough prints: %r' % line)
     # 4. A prompt typed while the Workflow runs still shows it; the task restarts at that prompt.
     wf2 = _Synth()
     wf2.lines = list(wf.lines)
     wf2.n = wf.n
     wf2.prompt(_T0 + 10 * MIN).turn_end(_T0 + 10.5 * MIN)
     line, _ = line_at(wf2, _T0 + 30 * MIN)
-    check(re.match(r'^task 20m · idle \| bg workflow 30m · \S+-\S+ left$', line) is not None,
-          'Workflow from the previous prompt still shown: %r' % line)
+    check(line == 'wait 20m · workflow 30m', 'Workflow from the previous prompt still shown: %r' % line)
     # 5. A notification-started turn belongs to the task the human prompt started.
     notif = (_Synth().prompt(_T0).tool(_T0 + 5000, 'w1', 'Workflow', script='s').result(_T0 + 6000, 'w1')
              .turn_end(_T0 + 9000).notification(_T0 + 20 * MIN, 'w1')
              .tool(_T0 + 20 * MIN + 5000, 'b2', 'Bash', command='pytest'))
     line, est = line_at(notif, _T0 + 25 * MIN)
-    check(re.match(r'^task 25m · \S+-\S+ left \(p25-p75, n=\d+\)$', line) is not None,
+    check(line == 'run 25m' and isinstance(est['task'], dict),
           'task elapsed counts from the human prompt, not the notification turn: %r' % line)
     # 6. Beyond history: at 5 h elapsed, and where no past task survived.
     fg = _Synth().prompt(_T0).tool(_T0 + 2000, 'b1', 'Bash', command='sleep 99999')
-    line, _ = line_at(fg, _T0 + 300 * MIN)
-    check(line == 'task 5.0h · beyond history', 'past the horizon: %r' % line)
-    line, _ = line_at(fg, _T0 + 3 * 1440 * MIN)
-    check(line == 'task 3.0d · beyond history', 'past the history: %r' % line)
+    line, est = line_at(fg, _T0 + 300 * MIN)
+    check(line == 'run 5.0h' and est['task'] == BEYOND, 'past the horizon: %r' % line)
+    line, est = line_at(fg, _T0 + 3 * 1440 * MIN)
+    check(line == 'run 3.0d' and est['task'] == BEYOND, 'past the history: %r' % line)
     thin = json.loads(json.dumps(model))           # a history in which no task outlived 30 min
     thin['episode']['global'] = [c if g < 1800 else None for g, c in zip(GRID_S, thin['episode']['global'])]
-    line, _ = line_at(fg, _T0 + 45 * MIN, mdl=thin)
-    check(line == 'task 45m · beyond history', 'past a thin history, inside the horizon: %r' % line)
-    # 7. A Monitor is open-ended: its age, no range.
+    line, est = line_at(fg, _T0 + 45 * MIN, mdl=thin)
+    check(line == 'run 45m' and est['task'] == BEYOND, 'past a thin history, inside the horizon: %r' % line)
+    # 7. A Monitor is open-ended: its age, no range; a declared timeout bounds what is left.
     mon = (_Synth().prompt(_T0).tool(_T0 + 5000, 'm1', 'Monitor', command='tail -f x')
            .result(_T0 + 6000, 'm1', taskId='t-m1').turn_end(_T0 + 9000))
     line, est = line_at(mon, _T0 + 12 * MIN)
-    check(line == 'task 12m · idle | bg monitor 12m (open-ended)', 'Monitor in flight: %r' % line)
+    check(line == 'wait 12m · monitor 12m', 'Monitor in flight: %r' % line)
     check(est['bg']['range'] is None, 'a Monitor carries no range in the estimate either')
+    mon20 = (_Synth().prompt(_T0).tool(_T0 + 5000, 'm1', 'Monitor', command='tail -f x')
+             .result(_T0 + 6000, 'm1', taskId='t-m1', timeoutMs=20 * MIN).turn_end(_T0 + 9000))
+    line, est = line_at(mon20, _T0 + 12 * MIN)
+    check(line == 'wait 12m · monitor 12m ≤8m left', 'a Monitor\'s timeout bounds what is left: %r' % line)
     # 8. Several in flight: a Workflow is named before an older background Bash.
     two = (_Synth().prompt(_T0).tool(_T0 + 1000, 'b1', 'Bash', command='serve', run_in_background=True)
            .result(_T0 + 1500, 'b1', backgroundTaskId='bt1')
            .tool(_T0 + 60000, 'w1', 'Workflow', script='s').result(_T0 + 61000, 'w1').turn_end(_T0 + 62000))
     line, _ = line_at(two, _T0 + 10 * MIN)
-    check(re.match(r'^task 10m · idle \| bg workflow 9m · \S+-\S+ left \+1 more$', line) is not None,
-          'Workflow named first, the other counted: %r' % line)
+    check(line == 'wait 10m · workflow 9m +1', 'Workflow named first, the other counted: %r' % line)
     # 9. An interrupt ends the turn; a launch a day old with no completion is not in flight.
     intr = _Synth().prompt(_T0).tool(_T0 + 2000, 'b1', 'Bash', command='x').interrupt(_T0 + 60000)
     line, _ = line_at(intr, _T0 + 5 * MIN)
-    check(line == 'last task 1m', 'interrupted turn reads as ended: %r' % line)
+    check(line == 'idle 4m · took 1m', 'interrupted turn reads as ended: %r' % line)
     stale = (_Synth().prompt(_T0).tool(_T0 + 5000, 'b1', 'Bash', command='serve', run_in_background=True)
              .turn_end(_T0 + 9000).prompt(_T0 + 25 * 60 * MIN).turn_end(_T0 + 25 * 60 * MIN + 10000))
     line, _ = line_at(stale, _T0 + 25 * 60 * MIN + 5 * MIN)
-    check(line == 'last task 10s', 'a day-old launch with no completion is not in flight: %r' % line)
+    check(line == 'idle 5m · took 10s', 'a day-old launch with no completion is not in flight: %r' % line)
     # 9b. A stop ends the job it names (no completion notice follows a stop), and only that job.
     stop = (_Synth().prompt(_T0).tool(_T0 + 5000, 'w1', 'Workflow', script='s').result(_T0 + 6000, 'w1', taskId='t-w1')
             .tool(_T0 + 60000, 's1', 'TaskStop', task_id='t-w1').result(_T0 + 61000, 's1', task_id='t-w1')
             .turn_end(_T0 + 62000))
     line, _ = line_at(stop, _T0 + 2 * MIN)
-    check(line == 'last task 1m', 'a Workflow stopped with TaskStop is not in flight: %r' % line)
+    check(line == 'idle 58s · took 1m', 'a Workflow stopped with TaskStop is not in flight: %r' % line)
     kill = (_Synth().prompt(_T0).tool(_T0 + 5000, 'b1', 'Bash', command='serve', run_in_background=True)
             .result(_T0 + 6000, 'b1', backgroundTaskId='bt1').tool(_T0 + 60000, 'k1', 'KillShell', shell_id='bt1')
             .result(_T0 + 61000, 'k1').turn_end(_T0 + 62000))
     line, _ = line_at(kill, _T0 + 2 * MIN)
-    check(line == 'last task 1m', 'a background Bash stopped with KillShell is not in flight: %r' % line)
+    check(line == 'idle 58s · took 1m', 'a background Bash stopped with KillShell is not in flight: %r' % line)
     other = (_Synth().prompt(_T0).tool(_T0 + 5000, 'w1', 'Workflow', script='s').result(_T0 + 6000, 'w1', taskId='t-w1')
              .tool(_T0 + 60000, 's1', 'TaskStop', task_id='t-other').turn_end(_T0 + 62000))
     line, _ = line_at(other, _T0 + 2 * MIN)
-    check(line.startswith('task 2m · idle | bg workflow 2m'), 'a stop naming another job ends nothing: %r' % line)
+    check(line == 'wait 2m · workflow 2m', 'a stop naming another job ends nothing: %r' % line)
     # 9c. A launch whose call failed or was refused never ran (a short result, and one the light parser cuts).
     for pad in (0, 2 * LIGHT_MIN):
         den = (_Synth().prompt(_T0).tool(_T0 + 5000, 'w1', 'Workflow', script='s')
                .result(_T0 + 6000, 'w1', pad=pad, error='denied by a hook').turn_end(_T0 + 9000))
         line, _ = line_at(den, _T0 + 5 * MIN)
-        check(line == 'last task 9s', 'a refused Workflow launch is not in flight (%d-byte pad): %r' % (pad, line))
+        check(line == 'idle 5m · took 9s', 'a refused Workflow launch is not in flight (%d-byte pad): %r' % (pad, line))
     # 10. No model yet: elapsed only.
-    line, _ = line_at(wf, _T0 + 20 * MIN, mdl=None)
-    check(line == 'task 20m · idle | bg workflow 20m', 'no model, elapsed only: %r' % line)
+    line, est = line_at(wf, _T0 + 20 * MIN, mdl=None)
+    check(line == 'wait 20m · workflow 20m' and est['bg']['range'] is None, 'no model, elapsed only: %r' % line)
+    # 10b. The three forms, longest first, and the band's text.
+    forms = fmt_forms(line_at(two, _T0 + 10 * MIN, mdl=narrow)[1])
+    check(forms == ['wait 10m · workflow 9m 10-20m left +1', 'wait 10m · workflow 10-20m left', 'wait 10m'],
+          'three forms, each shorter: %r' % forms)
+    forms = fmt_forms(line_at(intr, _T0 + 5 * MIN)[1])
+    check(forms == ['idle 4m · took 1m', 'idle 4m', 'idle 4m'], 'idle forms: %r' % forms)
+    bands = [fmt_range({'p25': a, 'p75': b}) for a, b in ((300, 1200), (300, 1260), (2700, 5400), (300, 300))]
+    check(bands == ['5-20m left', '', '45m-1.5h left', '~5m left'],
+          'a band prints only up to %gx wide, in one unit where it can: %r' % (RANGE_MAX_RATIO, bands))
     durs = [fmt_dur(x) for x in (59, 3569, 3590, 35800, 35900, 86000)]
     check(durs == ['59s', '59m', '1.0h', '9.9h', '10h', '1.0d'], 'durations round into the next unit: %r' % durs)
 
@@ -1362,18 +1407,24 @@ def _selftest_body(tmp, cfg, check, io, random):
         rc = cmd_statusline(argv, stdin=io.StringIO(stdin), stdout=out)
         return rc, out.getvalue().strip()
     rc, out = run(['--stdin'], json.dumps({'transcript_path': wfp}))
-    check(rc == 0 and re.match(r'^task 20m · idle \| bg workflow 20m · \S+-\S+ left$', out) is not None,
-          'status-line JSON on stdin: %r' % out)
+    check(rc == 0 and out == 'wait 20m · workflow 20m', 'status-line JSON on stdin: %r' % out)
+    rc, out = run(['--stdin', '--forms'], json.dumps({'transcript_path': wfp}))
+    check(rc == 0 and out.split('\n') == ['wait 20m · workflow 20m', 'wait 20m · workflow', 'wait 20m'],
+          '--forms prints three lines, longest first: %r' % out)
+    rc, out = run(['--stdin', '--json'], json.dumps({'transcript_path': wfp}))
+    check(rc == 0 and isinstance(json.loads(out)['bg']['range'], dict), 'with a model, the estimate has a band')
     os.environ['CLAUDE_CONFIG_DIR'] = os.path.join(tmp, 'no-such-dir')
     rc, out = run(['--transcript', wfp])
+    rc2, js = run(['--transcript', wfp, '--json'])
     os.environ['CLAUDE_CONFIG_DIR'] = cfg
-    check(rc == 0 and out == 'task 20m · idle | bg workflow 20m', 'a missing config dir: elapsed only: %r' % out)
+    check(rc == 0 and out == 'wait 20m · workflow 20m' and json.loads(js)['bg']['range'] is None,
+          'a missing config dir: elapsed only: %r' % out)
     rc, out = run(['--transcript', wfp, '--json'])
     check(rc == 0 and json.loads(out).get('bg', {}).get('kind') == 'workflow', '--json prints the estimate')
     bad = _Synth()
     bad.lines = wf.lines[:2] + ['{"type":"user","message":', '\x00\xff garbage'] + wf.lines[2:]
     rc, out = run(['--transcript', bad.write(os.path.join(tmp, 'live', 'bad.jsonl'))])
-    check(rc == 0 and out.startswith('task 20m · idle | bg workflow'), 'malformed lines are skipped: %r' % out)
+    check(rc == 0 and out == 'wait 20m · workflow 20m', 'malformed lines are skipped: %r' % out)
     empty = os.path.join(tmp, 'live', 'empty.jsonl')
     open(empty, 'w').close()
     for argv, stdin, what in ((['--stdin'], 'not json', 'stdin not JSON'),
