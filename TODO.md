@@ -4106,3 +4106,82 @@ Found while porting and landing the four radar branches (#247-#256 and this PR).
   named-path patterns and the unresolved-target loop, into
   `configs/hooks/lib/` next to `rm-targets.sh`, before it is needed rather
   than in the middle of a fix.
+
+## 2026-11-19 task-ETA and bottleneck follow-ups
+
+From [docs/research/2026-11-19-cc-eta-and-bottlenecks.md](docs/research/2026-11-19-cc-eta-and-bottlenecks.md).
+The owner asked for a time-remaining estimate and where the time goes. Measured
+on 1,137 human-started episodes (450 main-thread transcripts, five profiles,
+2026-10-16..11-20): 74.3% of episode wall is background wait between turns.
+A model-written ETA is ruled out (no clock; its estimates add little beyond a
+base rate), so the estimate goes on the statusline as a range.
+
+- [ ] 🟠 **Statusline task-ETA segment** — #259 (`feat/statusline-task-eta`,
+  open 2026-11-19): `configs/scripts/task-eta.py` prints task elapsed
+  plus a p25-p75 remaining band from a 30-day survival lookup, "beyond history"
+  past its support, and the in-flight background job when the main thread is
+  idle; `install.sh` sets `statusLine.refreshInterval: 10` unless the user set
+  one. Acceptance: ci-local green, mutations red, and a live screenshot of the
+  segment updating during a background Workflow.
+- [ ] 🟠 **Owner: decide the three knob trials.** None of these has a measured
+  wall-time effect; the research measured only how much time each governs.
+  Run each as a concurrent treated-vs-control split through one project's
+  `.claude/settings.local.json` (all five profiles share one `settings.json`,
+  and Workflow use fell after 11-10, so before/after is confounded), with
+  `outcome-scorecard.py --since 14` as the rework guard:
+  1. `ultracode` opt-in with `workflowSizeGuideline: "medium"` — governs the
+     Workflow wait, 21.3% of episode wall (1,585 h, n = 1,137).
+  2. Default effort `medium`, xhigh or `ultrathink` on hard turns — governs
+     model time, 56.3% of turn wall (423.4 h, 3,749 turns).
+  3. `stop-check.sh` warns instead of blocking — it blocked 634 of 3,945 Stop
+     events in 30 d and the model continued after 632, 20.16 h of re-entry.
+- [ ] 🟡 **Commit the time decomposer as an instrument.** The trials above need
+  it, and the research copy lives in a scratch directory that will be deleted.
+  Port the run's `decompose.py` (turn/episode segmentation, interval-union tool
+  time, background-wait attribution) and `stopreentry.py` into
+  `configs/scripts/`, with a `--self-test` whose mutations go red. Validation to
+  keep: model time 0.95x `totalAPIDuration` and tool time 1.03x
+  `totalToolDuration` in 301 sessions without subagents.
+- [ ] 🟡 **Why did 39% of main-thread Opus 5.5 calls run at `max` effort?**
+  30,937 of 79,002 calls (30 d), while `settings.json` says `xhigh`. Find what
+  raises it (ultracode, `ultrathink` keywords, a skill, a Workflow `effort`)
+  before the effort trial, or the trial's control is not what it seems.
+- [ ] 🟡 **`commit-archeology.sh` hit its 15 s SessionStart timeout 26 times
+  in 181 recorded starts** (main thread, 30 d). A timed-out SessionStart hook
+  delivers nothing and delays the first turn. Profile it on the largest repo
+  and cache or bound its git walk.
+- [ ] 🔵 **Task list as a progress display.** `CLAUDE_CODE_ENABLE_TODO_TOOLS=1`
+  turns on the native step N/M list, which is gated off for Opus 5.5 in 2.1.283.
+  It is a display, not a predictor: even an oracle done/total fraction for
+  Workflows reached only 46-49% within 2x (461 runs). Measure its context cost
+  before enabling it.
+- [ ] 🔵 **ETA follow-ups after the statusline lands:** read live Workflow
+  progress from the run's phases; a per-transcript offset cache for the one
+  transcript (of 40) that took 182 ms against a 150 ms budget; and a ledger of
+  ETA misses so the band's coverage is re-checked on live use, not only on the
+  2026-11-12..20 held-out week.
+- [ ] 🔵 **#259 review residue** (independent review, round 2: 0 blocking; these
+  are its non-blocking findings, each reproduced by the reviewer):
+  - `task-eta.py` is 1,419 of 1,500 lines on arrival. Split the fit and the
+    tail reader into a `configs/scripts/lib/` module before the next fix.
+  - One model per config dir: profiles that share one `settings.json` each
+    refit the same roots (up to five identical refits a day, 6.3 s each on
+    450 transcripts). Share one model file across profiles.
+  - The background band pools Bash, Agent, Monitor and Workflow durations
+    (806 of 1,039 test items were Bash), so a Workflow's range is mostly Bash
+    history. Fit per kind once each kind has enough items.
+  - A session killed mid-turn has no `turn_duration` record and reads as active
+    (8 of about 170 finished interactive transcripts), so on resume it shows
+    "beyond history" until the next prompt. Jobs killed at session exit (14 of
+    about 3,500) stay in flight for up to 24 h.
+  - Untested edges: a final line over the 32 MB tail cap blanks the segment at
+    about 300 ms (longest real line 1.3 MB); invalid UTF-8 inside a prompt line
+    drops that prompt (the self-test writes its garbage line in text mode, so
+    it never tests invalid bytes); the `+` suffix has no self-test check.
+  - Two self-test mutations print the intended FAIL and then crash with a
+    KeyError. They are red for the right reason, but should end in a clean FAIL
+    list.
+  - The five-call lock case in `tests/test-statusline-eta.sh` relies on
+    `CLADE_TASK_ETA_FIT_DELAY=3` outlasting five calls on a loaded host.
+  - The slt skill's `when_to_use` now says "eta" and "time left". Watch
+    whether it attracts unrelated ETA questions.
