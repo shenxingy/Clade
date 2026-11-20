@@ -179,7 +179,8 @@ domain latched into strict mode permanently after its first correction.
 
 ## Status Line
 
-The status line shows `dir  git:(branch)  ● (4d)` — the quota pace indicator on the right.
+The status line shows `dir  git:(branch)  ● (4d)  task 21m · idle | bg workflow 51m · 20m-2.2h left`:
+the quota pace indicator, then the [task time](#task-time) (dim).
 
 ### Display Modes
 
@@ -277,6 +278,49 @@ Theme is saved to `~/.claude/.statusline-theme` and persists across sessions.
 
 **How it works:** reads `seven_day.utilization` and `resets_at` and computes `delta = utilization% − elapsed% × 0.95`. The reading comes from the `rate_limits` Claude Code passes to the status line; when that is absent it calls `GET https://api.anthropic.com/api/oauth/usage` (same source as `/usage`) at most every 5 minutes and caches the whole response, five-hour window included — so the cache is refreshed only on that fallback path and can be far older than what the status line shows; check its `_at` before trusting it. Token and cache both live in the config dir Claude Code runs under — `$CLAUDE_CONFIG_DIR` when set to a non-empty path (a profile), `~/.claude` otherwise: its `.credentials.json` (on macOS, that dir's own Keychain item) and its `usage-watch-cache.json` — so a profile never shows the primary account's quota. No extra setup needed.
 
+### Task Time
+
+`configs/scripts/task-eta.py` adds how long the current task has run, and a
+range for what is left. The examples are its self-test's, from a synthetic history:
+
+| Line | When |
+|------|------|
+| `task 25m · 14m-2.8h left (p25-p75, n=190)` | A turn is running; `n` past tasks ran at least as long |
+| `task 20m · idle \| bg workflow 20m · 11m-2.2h left` | No turn is running, a background job is in flight |
+| `task 12m · idle \| bg monitor 12m (open-ended)` | A Monitor is an event stream: its age, never a range |
+| `task 5.0h · beyond history` | 4 h or more elapsed, or too few past tasks ran this long |
+| `task 20m · idle \| bg workflow 20m` | No model yet: elapsed time only |
+| `last task 1m` | Nothing running and nothing in flight |
+
+**A task** runs from the latest human prompt (typed or queued) to now, and the
+turns a background job's completion notice starts belong to it. **In flight**
+means a Workflow, Agent, background Bash or Monitor launched during the last
+three tasks, not seen to finish and under a day old; a Workflow launched before
+your latest prompt still shows, and `+N more` counts the others. **The range**
+is the p25-p75 band of the time that was left for past tasks that had run at
+least as long — a band, never a single number, because a point estimate of
+remaining time is too often off by more than 2x to print. Past 4 h it says
+`beyond history` rather than guess.
+
+**The model** is fitted from this machine's own main-thread transcripts of the
+last 30 days (`~/.claude/projects` and every `~/.claude-profiles/*/projects`) into
+`task-eta-model.json` in the config dir. When it is missing or a day old, a
+status-line call starts one detached low-priority refit behind an `O_EXCL` lock
+(`task-eta-model.lock`, broken after an hour) and keeps going; each refit appends
+a line to `task-eta-fit.log`. `python3 ~/.claude/scripts/task-eta.py --fit`
+refits now. Nothing leaves the machine.
+
+**It refreshes while you wait.** Claude Code runs the status line on events, and
+those go quiet while the main thread waits on background work. `install.sh`
+therefore sets `statusLine.refreshInterval` to 10 seconds, and keeps a value you
+set yourself. Each refresh is one `python3` call that reads the end of the
+transcript, not all of it.
+
+**It fails soft.** No python3, no transcript, a malformed line, a corrupt model or
+a call over one second prints nothing for this segment and leaves the rest of
+the line alone. `slt eta off` hides it (saved in `~/.claude/.statusline-eta`);
+`slt eta on` brings it back.
+
 ## Scripts (task runners)
 
 | Script | What it does |
@@ -328,7 +372,7 @@ clade/
 │   ├── hooks/               # 36 event hooks
 │   ├── agents/              # 40 agent definitions
 │   ├── output-styles/       # 2 output styles (system-prompt register; opt-in)
-│   └── scripts/             # 45 shell + 63 Python utilities
+│   └── scripts/             # 45 shell + 64 Python utilities
 ├── plugins/clade/           # Native Codex plugin (30 generated core skills + hooks)
 ├── .agents/plugins/         # Codex marketplace manifest
 ├── orchestrator/            # ← THE EXECUTION ADAPTER
