@@ -255,21 +255,27 @@ class SpawnedServer:
             )
         except OSError as exc:
             raise UsageError(f"Could not start `kimi web`: {exc}") from exc
-        deadline = time.monotonic() + self.boot_timeout
-        while time.monotonic() < deadline:
-            if self.process.poll() is not None:
-                raise UsageError(
-                    f"`kimi web` exited with status {self.process.returncode} before serving."
-                )
-            # The server registers itself before it listens, and may have
-            # moved to port+1 if ours was taken meanwhile: trust the registry
-            # entry carrying our pid, then wait for it to answer.
-            for info in live_instances(self.home):
-                if info["pid"] == self.process.pid and _healthy(info["port"]):
-                    self.port = info["port"]
-                    return self
-            time.sleep(0.1)
-        raise UsageError("Timed out waiting for `kimi web` to start.")
+        try:
+            deadline = time.monotonic() + self.boot_timeout
+            while time.monotonic() < deadline:
+                if self.process.poll() is not None:
+                    raise UsageError(
+                        f"`kimi web` exited with status {self.process.returncode} before serving."
+                    )
+                # The server registers itself before it listens, and may have
+                # moved to port+1 if ours was taken meanwhile: trust the registry
+                # entry carrying our pid, then wait for it to answer.
+                for info in live_instances(self.home):
+                    if info["pid"] == self.process.pid and _healthy(info["port"]):
+                        self.port = info["port"]
+                        return self
+                time.sleep(0.1)
+            raise UsageError("Timed out waiting for `kimi web` to start.")
+        except BaseException:
+            # A raise from __enter__ skips __exit__: stop the server here, or a
+            # slow boot leaves a `kimi web` running on the user's login.
+            self.__exit__()
+            raise
 
     def __exit__(self, *_exc: object) -> None:
         process = self.process

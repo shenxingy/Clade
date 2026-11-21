@@ -81,6 +81,22 @@ def test_spawned_server_is_loopback_only_headless_and_update_free() -> None:
     assert "--host" not in source
 
 
+def test_a_server_that_never_boots_is_stopped(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A boot timeout raises from __enter__, which skips __exit__: the helper must stop the process itself."""
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    fake = bin_dir / "kimi"
+    fake.write_text("#!/bin/sh\nexec sleep 60\n", encoding="utf-8")
+    fake.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{os.environ['PATH']}")
+    monkeypatch.setattr(kimi_usage, "SHUTDOWN_GRACE", 0.2)
+    server = kimi_usage.SpawnedServer(tmp_path / "home", boot_timeout=0.3)
+    with pytest.raises(kimi_usage.UsageError, match="Timed out"):
+        server.__enter__()
+    assert server.process is not None
+    assert server.process.poll() is not None, "a `kimi web` that never served is still running"
+
+
 # ─── Normalisation ───
 
 
