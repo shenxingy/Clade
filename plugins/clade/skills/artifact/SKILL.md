@@ -255,7 +255,7 @@ paths, and the facts or checks that could not be established.
 **Error:** `artifact-lint: FAIL as-of — no date in the first screen`
 **Cause:** the date is in the footer or nowhere.
 **Fix:** put "as of YYYY-MM-DD" (or "compiled …") in one short as-of line
-under the headline; the footer's provenance block does not count as the date.
+under the headline; the provenance block at the foot does not count as the date.
 
 **Error:** `FAIL lead — the lead … is at: 150 units below the headline` (or `none`)
 **Cause:** a byline, version note, contents bar, goal, method or row of number

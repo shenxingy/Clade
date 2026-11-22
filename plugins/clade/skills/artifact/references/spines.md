@@ -368,12 +368,13 @@ label keeps working. Publish to a stable slug so the page versions in place.
   heading (*"What exists, and what each one is"*, *"Why recall is stuck at
   about a quarter"*). Test: can the heading be false? *(lint:
   `headings-claim` — WARN below one claim in three.)*
-- **Mark section roles as data.** `id="key"`, `id="why"`, `id="limits"`,
-  `id="next"`, `id="method"`, `id="sources"` on the heading or section, and an
-  in-page nav that links to them. Claim headings hide the role words; the id is what a tool — and the
-  next agent — keys on. The same lesson that put the work-log header into
-  the manifest as data: seven markup shapes for four labels, and a scraper
-  that mistook a blocker paragraph for three tasks.
+- **Mark section roles as data.** `id="bottom-line"`, `id="key"`, `id="why"`,
+  `id="limits"`, `id="next"`, `id="method"`, `id="sources"` on the heading or
+  section, and an in-page nav that links to them. Claim headings hide the
+  role words; the id is what a tool — and the next agent — keys on. The
+  same lesson that put the work-log header into the manifest as data: seven
+  markup shapes for four labels, and a scraper that mistook a blocker
+  paragraph for three tasks.
 - **Every table gets a reading line.** Under the table: *"Reading the column:
   the same model flags 0.00% of pristine documents, 0.99% of independent
   issuer documents…"* and *"Highlighted: yellow = the recall comparison,
@@ -424,9 +425,9 @@ headline and it.
   the top of a handoff — numbered traps, each with what to do instead.
 - **Reading paths by reader and time budget**: "Only five minutes: §… → §… ·
   To review the architecture: §… · To manage progress: §…", plus
-  "reading time ~40 min" in the stamp.
+  "reading time ~40 min" on the line under the lead.
 - **A state strip** (round 1 analysed · round 2 live · prevalence still
-  open) beside the stamp, so the document's own status is a field.
+  open) directly under the lead, so the document's own status is a field.
 
 **Numbers**
 - **A reproduction table with a `match` column** — eleven metrics, ours vs
@@ -460,9 +461,10 @@ headline and it.
 - **A verdict on every row of a catalogue** — `COPY` / `AVOID` on each
   rebuilt screen, each carrying the file path and timecode it came from. A
   neutral catalogue defers the decision it was gathered to make.
-- **Provenance in the method section, not the footer**: commit, branch, the
-  directory on the host, and one line saying whose numbers these are —
-  *"vendor numbers are their own claims, not verified by us."*
+- **Provenance in the sources block at the foot (item 11), not a one-line
+  footer**: commit, branch, the directory on the host, and one line saying
+  whose numbers these are — *"vendor numbers are their own claims, not
+  verified by us."*
 
 **Argument**
 - **A "Falsification" section**: the claim, the test that would kill it,

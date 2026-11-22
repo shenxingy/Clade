@@ -22,8 +22,8 @@ and what the owner must do or decide from the first screen.** Full text: the
   header runs Human TODO · Blockers · Now · Goal.
 - **Argued-page headings are claims; labels are eyebrows.** Reference/worklog
   headings follow their lookup/state structure. Mark applicable roles as data:
-  `id="key"`, `id="why"`, `id="limits"`, `id="next"`, `id="method"`,
-  `id="sources"`.
+  `id="bottom-line"`, `id="key"`, `id="why"`, `id="limits"`, `id="next"`,
+  `id="method"`, `id="sources"`.
 - **Why the numbers look like this** (mechanism, what was ruled out) before
   the body; **what I did to find out** (read, ran, compared, in order) before
   the sources — the two sections the owner asks for by name.
