@@ -11,16 +11,19 @@ type/container, and the action or understanding the page should enable. Use
 the routing table in `spines.md`. Pick a primary question for a mixed topic;
 put supporting detail behind links or in an appendix, with sources intact.
 
-Set three acceptance answers from the evidence, without inventing facts:
+Set four acceptance answers from the evidence, without inventing facts:
 
 - What is this about, and why does it matter to this reader?
 - What is the current state or conclusion, as of when, and what remains unknown?
 - What happens next, or what can the reader now decide/do?
+- What must the page's owner do or decide, by when — or is nothing needed
+  from them? This one must be answerable from the first screen alone (§3).
 
 Use only the selected type's applicable checks. Reference/worklog pages do not
 need argued-page why/method sections; mark these N/A by type in the review.
-For a reference page, substitute what can be looked up and where; for a
-worklog, include the blocker and human action, including an explicit “none”.
+For a reference page, substitute what can be looked up and where, and mark
+the owner's ask N/A by type; for a worklog, include the blocker and human
+action, including an explicit “none” — Human TODO comes first in its header.
 “Thirty seconds” is a design target for the first screen, not a measured
 reading time unless a reader was actually timed. A newcomer should not need
 the originating chat, internal nicknames, source code or an author's narration
@@ -74,6 +77,18 @@ use per-figure crops or section screenshots if a full-page image is downscaled.
 Inspect raster pictures, external SVGs and canvas output as well as inline SVG.
 A thumbnail of a long page cannot establish that its smallest label is readable.
 
+**The first-screen review.** Take the phone first-viewport capture (390×844)
+and the desktop one, and answer from each image alone, before reading anything
+else: *from the first screen alone, what must the owner do or decide?* Quote
+the words and say where they sit. If the phone screen cannot answer it — the
+ask is below the fold, nowhere, or only implied by a deck — the page is
+NEEDS_REVISION, whatever the lint says; `lead` only checks that a lead block
+sits within reach of the headline, not that its words answer this question.
+"Nothing needed from you" passes only when the page says it. Then list what
+sits between the headline and the lead: a byline or provenance line, version
+notes, a contents bar, a goal, number tiles or a method there is the defect —
+move it below the lead or to the foot, recapture, and ask again.
+
 For HTML these are required where applicable: essential text with JavaScript
 off, 200% text/zoom, keyboard links
 and any controls the page actually uses. Test only relevant states, but name
@@ -122,6 +137,8 @@ Ask the reviewer to:
 
 1. Explain in their own words the subject, current state, main uncertainty and
    next action (or lookup path for a reference page), citing visible locations.
+   Before scrolling, say from the first screen alone what the owner must do or
+   decide; a reviewer who has to scroll to answer is reporting a defect.
 2. Explain each main figure from its marks, labels and caption; identify any
    term or comparison whose meaning required guessing.
 3. Identify contradictions, unreadable areas and missing context; state the
@@ -143,6 +160,8 @@ reader's main flow). Record:
 Artifact: exact file/URL, revision or SHA256, review time
 Reader / question / type / container:
 Expected first-screen answers:
+First screen: what the owner must do or decide, quoted from the phone capture
+  (or "nothing needed", quoted) -> PASS; not answerable from it -> NEEDS_REVISION
 Static: commands, FAIL/WARN, retained warnings and reasons
 Rendered: viewport × theme × state -> screenshot paths, observed result
 Figures: each figure -> intended takeaway, observed defect or pass
@@ -153,9 +172,10 @@ Delivery: served URL/wrapper checked, or local-only scope
 Verdict: PASS / NEEDS_REVISION / UNVERIFIED, with remaining limitations
 ```
 
-**NEEDS_REVISION** blocks ready/publish claims for wrong takeaways, important
-unexplained terms, invisible content, misleading charts, clipped labels or
-broken essential controls/assets. Fix before publishing; visual failure is
+**NEEDS_REVISION** blocks ready/publish claims for wrong takeaways, an owner's
+ask that the first screen cannot answer, important unexplained terms,
+invisible content, misleading charts, clipped labels or broken essential
+controls/assets. Fix before publishing; visual failure is
 not a lint warning that can be waived with a footnote. **UNVERIFIED** means a
 required render/review lane could not run: preserve the draft and name the
 missing evidence, never present it as passed. Optional polish can remain with

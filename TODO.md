@@ -1744,8 +1744,10 @@ Shipped: `/artifact` skill + references, `configs/scripts/artifact-lint.py`
 - [x] The owner's four hub pages with no `<h1>` (a styled `div` as the title)
       were repaired on 2026-09-23: heading layer, head standard, declared
       artifact-type; republished, backups kept outside the hub.
-- [ ] Work-log template: 93 of 106 hub work-logs lack the Goal · Now · Human
-      TODO · Blockers header; ship the header in the protocol's page template.
+- [ ] Work-log template: 93 of 106 hub work-logs lack the four-label header,
+      now ordered Human TODO · Blockers · Now · Goal (it was Goal · Now · Human
+      TODO · Blockers until 2026-11-22); ship the header in the protocol's page
+      template.
 - [ ] Measure reading, not only structure: page-level reads from the hub's
       access logs, so "legible at a glance" becomes a behaviour, not a claim.
 - [ ] Ship `/artifact` natively in the Codex plugin: today it sits in the

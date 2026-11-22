@@ -1,6 +1,7 @@
 You are the Artifact skill. You write one HTML page that a reader with three
 heads — PhD, PM, engineer — can read at a glance: what the problem is now, how
-sure we are, what the next step is, and the evidence for all three.
+sure we are, what the next step is, what the page's owner must do or decide,
+and the evidence for all of it.
 
 ## Why this skill exists
 
@@ -10,6 +11,14 @@ never explain why the numbers look like this, 88% never say what was done to
 find out, and no page passes every check. The pages readers forward all share one
 shape; nothing named it, so nothing could check it. This skill names it and
 `artifact-lint.py` checks it.
+
+A second measurement, on 2026-11-22: 54 recent pages on one internal artifact
+hub, judged by two independent reviewers from phone and desktop screenshots.
+Both passed 1 of 54. One reviewer found the owner's ask — what they must do or
+decide — on the phone's first screen in 14 of 54 and below the fold or nowhere
+in 27. Bylines, version notes, contents bars, goals and number tiles sat where
+the ask belonged. So every argued page and work-log now leads with it, and the
+lint's `lead` check holds the position.
 
 ## Input
 
@@ -66,10 +75,28 @@ Read the selected spine in `references/spines.md`; use its questions to order
 the page. Pick the parts from `references/anatomy.md` — the element inventory of the
 strongest published reports, slides and decks — instead of inventing
 sections.
-An argued page opens with the dated subject, conclusion/current state,
-certainty and next action. Use the front matter in `spines.md`, combining
-short sections where helpful. Quantitative claims need denominators; a
-qualitative decision needs its trade-off, not a manufactured number strip.
+
+An argued page opens with the **lead**. Above it sit only a one-line eyebrow,
+the headline (which may carry the verdict and the ask itself) and one short
+as-of line. The lead is the first block under them:
+
+```html
+<section id="bottom-line">
+  <p><strong>Bottom line:</strong> the verdict or answer, one or two sentences.</p>
+  <p><strong>Needs you:</strong> each action or decision the owner must take, by 2026-11-25.</p>
+  <!-- or: <p><strong>Needs you:</strong> Nothing needed from you.</p> -->
+</section>
+```
+
+Chinese pages use `结论：` and `需要你：` (or `不需要你做什么。`). Add a blocker
+line only when the owner must know it now. Everything else goes below the
+lead: bylines and provenance ("drafted by …", "prepared for …"), version notes
+and corrections, contents bars, terms and keys, goals, methods, timelines and
+number tiles; provenance and version history go to the foot of the page. Then
+follow the front matter in `spines.md` (deck, key evidence, graded verdict,
+key & terms), combining short sections where helpful. Quantitative claims
+need denominators; a qualitative decision needs its trade-off, not a
+manufactured number strip.
 Define unfamiliar terms at first use, and keep colour meanings consistent.
 Then answer **why this is the current state / why the numbers look like this** —
 the mechanism, what was ruled out, how sure (`id="why"`). Then the body
@@ -86,10 +113,10 @@ Run the meaning edit in `references/review.md` before styling: the headline,
 summary, captions and body must agree, and an unfamiliar reader must not need
 the originating conversation to interpret them.
 
-Mark section roles as data: `id="key"`, `id="why"`, `id="limits"`,
-`id="next"`, `id="method"`, `id="sources"`, and an in-page nav for anything
-over ~2,500 words. Every
-table gets a "Reading:" line beneath it. Declare the type in the head:
+Mark section roles as data: `id="bottom-line"`, `id="key"`, `id="why"`,
+`id="limits"`, `id="next"`, `id="method"`, `id="sources"`, and an in-page nav
+for anything over ~2,500 words (below the lead, never above it). Every table
+gets a "Reading:" line beneath it. Declare the type in the head:
 `<meta name="artifact-type" content="finding">`.
 
 ### Step 3 — Figures
@@ -152,9 +179,12 @@ contrast pairs and type-size floors.
 ### Step 7 — Render, read, repair, repeat
 
 Execute `references/review.md`: inspect the first screen, full page and every
-figure in all four theme/viewport combinations; check relevant interaction,
-JavaScript-off and enlargement states. Verify actual theme activation and
-computed paint when an image disappears. A captured screenshot is not a pass.
+figure in all four theme/viewport combinations. From the phone first screen
+alone, answer *what must the owner do or decide?* — if that screen cannot
+answer it, the page is NEEDS_REVISION whatever the lint says. Then check
+relevant interaction, JavaScript-off and enlargement states. Verify actual
+theme activation and computed paint when an image disappears. A captured
+screenshot is not a pass.
 
 Perform the fresh-reader review against the acceptance answers, without
 supplying those answers to the reviewer. Fix misunderstandings and visual
@@ -176,7 +206,9 @@ the first-screen, figure, theme and essential-control checks; publishing may
 change rendering even when the local file passed. Claude Artifact: the
 Artifact tool, with the
 `artifact-design` skill loaded. Work-log: the stable `worklog-<branch>` slug
-with the header passed as data as well as prose. Report the URL, the lint
+with the header passed as data as well as prose, in the order Human TODO ·
+Blockers · Now · Goal (same labels as the older Goal-first order, so readers
+that find sections by label keep working). Report the URL, the lint
 summary (FAIL/WARN counts and retained reasons), the review verdict and evidence
 paths, and the facts or checks that could not be established.
 
@@ -184,16 +216,32 @@ paths, and the facts or checks that could not be established.
 
 - The page file, linted clean or with every remaining WARN explained on it.
 - The complete applicable render matrix, inspected, and `artifact-review.md`.
-- The published URL (or file path) and a five-line summary: headline · the
-  key evidence · the verdict grade · the next step and owner · what was not
-  measured.
+- The published URL (or file path) and a six-line summary: headline · what
+  the owner must do or decide (or "nothing needed") · the key evidence · the
+  verdict grade · the next step and owner · what was not measured.
 
 ## Common issues
 
 **Error:** `artifact-lint: FAIL as-of — no date in the first screen`
 **Cause:** the date is in the footer or nowhere.
-**Fix:** put "as of YYYY-MM-DD" (or "compiled …") in the header stamp under
-the headline; the footer's provenance block does not count.
+**Fix:** put "as of YYYY-MM-DD" (or "compiled …") in one short as-of line
+under the headline; the footer's provenance block does not count as the date.
+
+**Error:** `FAIL lead — the lead … is at: 150 units below the headline` (or `none`)
+**Cause:** a byline, version note, contents bar, goal, method or row of number
+tiles sits between the headline and the bottom line — or there is no lead.
+**Fix:** put `<section id="bottom-line">` (Bottom line + Needs you) directly
+under the headline and the as-of line; move the rest below it, and provenance
+and version notes to the foot. The finding quotes what is in the way.
+
+**Error:** `WARN lead-ask — the lead states no ask`
+**Cause:** the bottom line is there, but it does not say what the owner must do.
+**Fix:** add `Needs you: <action or decision> by <date>`, or the literal
+"Nothing needed from you." / 「不需要你做什么。」 — never silence.
+
+**Error:** `FAIL lead — work-log header puts Goal before Human TODO`
+**Cause:** the header still runs in the old order, Goal · Now · Human TODO · Blockers.
+**Fix:** reorder it to Human TODO · Blockers · Now · Goal; keep the labels.
 
 **Error:** `WARN headings-claim — 2/9 section headings state a finding`
 **Cause:** section headings are labels ("Results", "Evidence", "Timeline").

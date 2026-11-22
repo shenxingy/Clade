@@ -1,19 +1,25 @@
 ---
 paths: "**/artifacts/**/*.html, **/artifact*/**/*.html, **/worklog*.html, **/report*/*.html, **/reports/**/*.html"
 ---
-**Report page — a reader must get the problem, the certainty and the next step
-from the first screen.** Full text: the `artifact` skill's `references/`
-(`spines.md`, `figures.md`, `diagrams.md`, `review.md`); the mechanical half is
+**Report page — a reader must get the problem, the certainty, the next step
+and what the owner must do or decide from the first screen.** Full text: the
+`artifact` skill's `references/` (`spines.md`, `figures.md`, `diagrams.md`,
+`review.md`); the mechanical half is
 `python3 ~/.claude/scripts/artifact-lint.py <file>`.
 
 - **Choose the reader question first:** use `spines.md` to select the type and
   container. A status page need not be an architecture diagram. Use only
   figures and numbers that answer the question; never fill a template with
   invented metrics. Define unfamiliar terms where first used.
-- **Front matter for argued pages:** date stamp ("as of …") · headline that could be
-  false · deck ≤ 120 words with key evidence · relevant numbers, each with its
-  denominator and window · graded verdict (verified / inferred / speculation)
-  · key & terms with one colour per entity, reused everywhere on the page.
+- **Front matter for argued pages:** headline that could be false, with one
+  short as-of line · the **lead** directly under it, `<section
+  id="bottom-line">`: "Bottom line: …" then "Needs you: … by <date>" or
+  "Nothing needed from you." (结论 / 需要你 / 不需要你做什么。) — nothing else
+  above it · deck ≤ 120 words with key evidence · relevant numbers, each with
+  its denominator and window · graded verdict (verified / inferred /
+  speculation) · key & terms with one colour per entity, reused everywhere on
+  the page. Bylines, provenance and version notes go to the foot. A work-log's
+  header runs Human TODO · Blockers · Now · Goal.
 - **Argued-page headings are claims; labels are eyebrows.** Reference/worklog
   headings follow their lookup/state structure. Mark applicable roles as data:
   `id="key"`, `id="why"`, `id="limits"`, `id="next"`, `id="method"`,
@@ -33,7 +39,8 @@ from the first screen.** Full text: the `artifact` skill's `references/`
   first; `<meta name="artifact-type">`; `:root` tokens + `prefers-color-scheme`
   block; no CDN script, stylesheet or font; readable with JavaScript off.
 - **Before ready/publishing:** execute `references/review.md`: lint, inspect
-  light/dark × desktop/phone first screens and every figure at displayed size,
+  light/dark × desktop/phone first screens (the phone one alone must say what
+  the owner must do or decide) and every figure at displayed size,
   then a fresh-reader review without the author's explanation. Fix wrong
   takeaways, invisible content, collisions and clipping; recapture after edits.
   Record the exact revision, screenshots, reader answers and verdict in

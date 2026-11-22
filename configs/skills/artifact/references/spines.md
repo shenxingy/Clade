@@ -4,8 +4,9 @@ Read this before writing any page. The reader is one person with three heads —
 PhD, PM, engineer — and one question: *what is the state of this thing, and
 what do I do about it?* A page passes when, from the first screen, that reader
 can say what the problem is **now**, how sure we are, and what the **next
-step** is. Everything below the first screen is the evidence for those three
-sentences.
+step** is — above all, what the page's owner must do or decide, or that
+nothing is needed from them. Everything below the first screen is the evidence
+for those sentences.
 
 ## Where this comes from
 
@@ -19,6 +20,14 @@ sentences.
   never say what was done to find out; no page passes every check. The full
   table, per author, is in the study — this file states the rules, the study
   holds the numbers. The gap is the missing standard, not any one author.
+- **A first-screen judgement.** 54 recent pages on one internal artifact hub,
+  judged by two independent reviewers from phone (390×844) and desktop
+  screenshots on 2026-11-22: both passed 1 of 54. One reviewer found the
+  owner's ask — what they must do or decide — on the phone's first screen in
+  14 of 54 and below the fold or nowhere in 27 of 54. What sat between the
+  headline and the ask, most often: a byline or provenance line, a deck
+  without the ask, number tiles, a method, a goal, a contents bar, version
+  notes. That is why the lead comes first (below) and provenance goes to the foot.
 - **Answer-first writing.** BLUF (US Army AR 25-50), Minto's pyramid and SCQA,
   Amazon's six-page narrative, Alley's assertion–evidence headings.
 - **Engineering documents.** Google design docs (Ubl: goals, non-goals,
@@ -48,7 +57,7 @@ update. Name one primary question before drafting.
 | What should we choose, and why? | `decision` | Recommendation, decisive trade-off, decision owner/deadline | Options matrix with consistent criteria; sensitivity if measured |
 | How can I take over and continue? | `handoff` | Current state, first executable step, traps and open work | Task/dependency flow when it prevents a mistake |
 | Where do I find or learn this specific thing? | `reference` | Scope, lookup route, definitions and a worked example | Indexed table or annotated example |
-| What is this branch doing right now? | `worklog` | Goal, now, human action, blockers, freshness | Compact state list; timeline below it |
+| What is this branch doing right now? | `worklog` | Human action, blockers, now, goal, freshness | Compact state list; timeline below it |
 
 Use a table for lookup, prose for a short argument, a chart for a pattern,
 and a diagram for relationships. A concept explanation fits a reference with
@@ -68,39 +77,75 @@ causes, failed experiments or a diagram to satisfy a template. A compact
 answer should not grow an empty research-report shell. Apply `review.md` to
 test whether this choice actually works for a newcomer.
 
-## The shared front matter — answer first, details after
+## The shared front matter — the lead first, details after
 
 An *argued* page is a finding, status report, architecture page, RCA, handoff
 or decision memo. A reference register and a work-log have their own shape
-(below) and skip items 1–4.
+(below): a register skips items 1–5; a work-log skips 1 and 3–5, because its
+header, Human TODO first, is its lead.
 
-0. **Header stamp.** One line: what this page is · the date it describes
-   ("as of 2026-09-23", "compiled 2026-09-03 from 255 threads") · the exact
-   commit, model version or dataset version · author · where the sources
-   live. An undated report is wrong within a week and nobody can tell.
+**Only three things may sit above the lead:** a one-line eyebrow above the
+headline, the headline, and one short as-of line. Everything else goes below
+the lead — provenance and bylines ("drafted by …", "prepared for …", "by an
+AI agent"), version notes and corrections, contents bars, terms and keys,
+goals, methods, timelines and rounds, number tiles. Provenance and version
+history belong at the foot of the page.
+
+0. **As-of line.** One short line: the date the page describes ("as of
+   2026-09-23", "compiled 2026-09-03 from 255 threads"). An undated report is
+   wrong within a week and nobody can tell. The exact commit, model or dataset
+   version, author and where the sources live are provenance: they go in the
+   sources block at the foot (item 11), not above the lead.
    *(lint: `as-of` — FAIL when the first screen carries no date.)*
 1. **Headline = the finding.** A sentence that could be false: *"v9 learned
    the pipeline, not the tampering."* not *"v9 evaluation"*. If the page has
    no finding yet, the headline is the question, ending in `?`. A noun phrase
-   is a label; a label makes the reader read the body to learn the point.
-   *(lint: `title-claim`.)*
-2. **Deck.** ≤ 120 words directly under the headline: the subject, conclusion,
-   key evidence (with population for measurements), and what the reader should
-   do. This is the BLUF; a reader who stops here must leave with the right
-   belief. Whatever a skill calls this paragraph — deck, bottom line, BLUF —
-   it is one contract: the conclusion the reader acts on comes before any
-   rounds, dates or timeline. *(lint: `deck`.)*
-3. **Key evidence.** For quantitative questions, a compact number strip, each
+   is a label; a label makes the reader read the body to learn the point. A
+   headline may carry the verdict and the ask itself (*"…, and needs your
+   sign-off by Friday"*). *(lint: `title-claim`.)*
+2. **The lead — bottom line, then what the owner must do.** The first block
+   under the headline, `id="bottom-line"`:
+   1. **Bottom line** — the verdict or answer in one or two sentences.
+   2. **Needs you** — each action or decision the owner must take, with a
+      date when there is one; or the literal line "Nothing needed from you."
+      / 「不需要你做什么。」 Leaving the line out is not the same as saying it:
+      the owner cannot tell "nothing" from "forgot".
+   3. Any blocker or risk the owner must know now (optional; omit when none).
+
+   ```html
+   <section id="bottom-line">
+     <p><strong>Bottom line:</strong> …</p>
+     <p><strong>Needs you:</strong> … by 2026-11-25.</p>   <!-- or: Nothing needed from you. -->
+   </section>
+   ```
+
+   Chinese: `<strong>结论：</strong>` … `<strong>需要你：</strong>` … /
+   `不需要你做什么。` Whatever a skill calls this block — bottom line, BLUF,
+   lead — it is one contract: what the owner acts on comes before any rounds,
+   dates or timeline. *(lint: `lead` — FAIL when no lead sits within 100
+   units of the headline, about one phone screen: ~100 English words or ~200
+   Chinese characters, hidden navigation not counted; `lead-ask` — WARN when
+   the lead says nothing the owner must do or decide. It finds the lead by
+   `id="bottom-line"` (or `needs-you`, `next`, `ask`, `decision`, `tldr`), by
+   a paragraph that opens with `Bottom line:` / `Needs you:` / `结论：` /
+   `需要你：`, or by a heading that starts with those words; a headline that
+   carries the ask is its own lead. Position and markup only — whether the
+   words answer the owner is the first-screen review in `review.md`.)*
+3. **Deck.** ≤ 120 words under the lead: the subject, the conclusion's key
+   evidence (with population for measurements) and its reach. A reader who
+   stops here must leave with the right belief. A bottom line of 35 words or
+   more can be the deck too. *(lint: `deck`.)*
+4. **Key evidence.** For quantitative questions, a compact number strip, each
    with its **denominator and window** on the same line: *"0 / 24 held-out frauds flagged at τ"*,
    *"33.4% recall of 12,152 forgeries at 1% real-clean FPR (n = 1,921)"*. A
    rate without its population is a mood. For a qualitative page, state the
    decisive evidence or trade-off instead; do not manufacture metrics. *(lint: `denominators`.)*
-4. **Verdict, graded.** For each headline claim: **Reproduced / Confirmed /
+5. **Verdict, graded.** For each headline claim: **Reproduced / Confirmed /
    Not supported / Not measured**, with a visible confidence mark (●●●○) and
    one line of why. Verified fact, inference and speculation are separated
    typographically, never interleaved — the first of Lipton & Steinhardt's
    troubling trends is exactly that interleaving.
-5. **Key & terms.** Every named entity (model, dataset, cohort, service) and
+6. **Key & terms.** Every named entity (model, dataset, cohort, service) and
    every metric, defined once with its denominator; one colour per entity,
    used identically in every chip, table and chart on the page. The pages on
    the hub that readers found legible all carry this section; 53% of pages
@@ -194,7 +239,8 @@ content="finding">`. The lint relaxes claim-heading, next-step and why
 checks for `reference` and `worklog`. **Limits does not relax**: a register is
 exactly where a reader turns "not listed" into "does not exist", so it owes a
 line on what it does not cover. An undeclared page is linted as a `finding`,
-the strictest shape.
+the strictest shape. Every argued spine below starts after the lead: its first
+row is never above the bottom line and the owner's ask.
 
 ### `finding` — a research result
 
@@ -242,64 +288,77 @@ archaeology; use it when the scope is more than one repository.
 
 ### `rca` — a post-mortem
 
-Google SRE's template field order, verbatim, because every reader has seen it:
-title with incident id · date · authors · **status** ("complete, action items
+Google SRE's template field order, because every reader has seen it, with one
+change: the lead comes first. Title with incident id · date · **the lead**
+(bottom line: the impact now and whether it is fixed; needs you: the action
+items the owner must approve or staff) · **status** ("complete, action items
 in progress") · summary · **impact, quantified with the null statement** ("1.21
 B queries lost, no revenue impact") · root causes · trigger · resolution ·
 detection · **action items table: item · type · owner · link** · lessons
 learned in three fixed parts: *what went well / what went wrong / where we
-got lucky* · timeline · supporting information. "Human error" as a root cause
-ends the investigation instead of starting it; write the constraint the human
-was under.
+got lucky* · timeline · supporting information · authors, at the foot with
+the provenance. "Human error" as a root cause ends the investigation instead
+of starting it; write the constraint the human was under.
 
 ### `handoff` — for the next person
 
-Read this first · what the work claims · where everything lives (paths,
-hosts, buckets, credentials and who grants them) · what is done and what is
-open · **open, unverified and known-wrong** as three separate lists · how to
-rebuild the artefact from scratch · conventions and hard rules · who knows
-what. Number the sections; a handoff is read in order, once.
+The lead (the state in one sentence, then what the next person must do first
+and what the owner must decide) · read this first · what the work claims ·
+where everything lives (paths, hosts, buckets, credentials and who grants
+them) · what is done and what is open · **open, unverified and known-wrong**
+as three separate lists · how to rebuild the artefact from scratch ·
+conventions and hard rules · who knows what. Number the sections; a handoff
+is read in order, once.
 
 ### `decision` — a memo that asks for a ruling
 
-The recommendation first, then the options with the trade-off that loses for
-each, the evidence, what it costs to be wrong, and the exact decision wanted
-by whom by when. One page; the analysis goes in an appendix.
+The lead first: the recommendation as the bottom line and the exact decision
+wanted, by whom, by when, as the ask. Then the options with the trade-off that
+loses for each, the evidence, and what it costs to be wrong. One page; the
+analysis goes in an appendix.
 
 ### `reference` — a register, manual or catalogue
 
 Label headings are correct here (the reader looks things up), so the lint does
-not ask for claims. It still asks for the header stamp, a key, a limits
+not ask for claims or a lead. It still asks for the as-of line, a key, a limits
 section ("what this register does not cover") and a "working with it"
 section that names the file and the command.
 
 ### `worklog` — the living page for one branch
 
-Header rewritten every publish — **Goal · Now · Human TODO · Blockers** — over
-an append-only, newest-first timeline of `HH:MM — what happened`. One item
-per job in Human TODO; a row that bundles three jobs never leaves the list.
-Publish to a stable slug so the page versions in place. *(lint:
+Header rewritten every publish — **Human TODO · Blockers · Now · Goal** — over
+an append-only, newest-first timeline of `HH:MM — what happened`. The order is
+the lead rule applied to a work-log: what the owner must do first, then what
+stops the work, then where it stands, then what it is for. Human TODO says
+"none" in words when nothing is needed — an empty section reads as unknown.
+One item per job in Human TODO; a row that bundles three jobs never leaves the
+list. The labels are the same four words as before (the order was Goal · Now ·
+Human TODO · Blockers until 2026-11-22), so a reader that finds sections by
+label keeps working. Publish to a stable slug so the page versions in place.
+*(lint: `lead` — FAIL when Goal or Now comes before Human TODO;
 `worklog-header`, `worklog-timeline`.)*
 
 ## The universal back matter — every argued page
 
-6. **What did not work.** Each attempt: what it was, why it was dropped,
+7. **What did not work.** Each attempt: what it was, why it was dropped,
    whether the door is closed or parked. A reader without this re-proposes
    it. *(lint: `failed-attempts`, INFO.)*
-7. **Limits, and claims we do not make.** What was not measured, not covered,
+8. **Limits, and claims we do not make.** What was not measured, not covered,
    or not claimed — in those words. NeurIPS accepts "not applicable" with a
    reason; it does not accept silence, and neither does a reader. Include
    "what I could not establish from code and docs". *(lint: `limits`.)*
-8. **Next step — one, then the backlog.** Exactly one action with its
+9. **Next step — one, then the backlog.** Exactly one action with its
    definition of done, verifier, owner and date; a list of five is a backlog
    and defers the decision the page exists to force. The backlog follows,
    ranked, each item with an owner. *(lint: `next`.)*
-9. **What I did to find this out.** The research log described above: what
+10. **What I did to find this out.** The research log described above: what
    was read, run and compared, in order, with dates. *(lint: `method`.)*
-10. **Sources and reproduction.** For every number: where it came from, the
-    date; the command that rebuilds the page's figures; the commit. *(lint:
-    `sources`.)*
-11. **What this page does not cover.** The declared scope boundary — "nothing
+11. **Sources and reproduction.** For every number: where it came from, the
+    date; the command that rebuilds the page's figures; the commit. The page's
+    own provenance lives here too — author or agent, who it was prepared for,
+    the exact model or dataset version — with the version notes: the foot of
+    the page, never between the headline and the lead. *(lint: `sources`.)*
+12. **What this page does not cover.** The declared scope boundary — "nothing
     missing" is only honest if what is out of scope is written down.
 
 ## Writing rules that make the spine legible
@@ -324,7 +383,10 @@ Publish to a stable slug so the page versions in place. *(lint:
   issuer PDFs from 82 issuers"*. Four things get called "clean"; say which.
 - **Corrections stay on the page.** *"An earlier version of this page reported
   1.72×; that compared two different quantities."* A silent fix teaches the
-  reader nothing and hides that the page moves.
+  reader nothing and hides that the page moves. Put the correction beside the
+  claim it corrects, or in the version notes at the foot — not between the
+  headline and the lead; a correction that changes the bottom line changes the
+  lead itself.
 - **Verified / inferred / speculation are marked**, per claim, with a
   consistent device (●●●○ dots, a chip, a fenced block) — never by tone.
 - **Length.** Amazon's calibration: six narrative pages (~3,000 words) that a
@@ -351,7 +413,8 @@ stating a finding). Its comparison devices were not in this list and are
 grouped under **Comparison tables** below; its failure is the one that produced
 the index rule above.
 
-**Front matter**
+**Front matter** — each of these sits below the lead, never between the
+headline and it.
 - **Evidence-grade chips as a legend at the top** — "Measured / published ·
   vendor's own claim · our inference" — and every number on the page wears
   one. The reader never has to ask how sure.
@@ -451,6 +514,10 @@ the index rule above.
     a summariser, or for a slow client.
 11. Bullet lists in place of argument — the reason Amazon banned slides.
 12. "Human error" as a root cause.
+13. A byline, version note, contents bar, goal or row of number tiles between
+    the headline and the lead, so the owner scrolls past provenance to learn
+    what they must do — on 2026-11-22, 1 of 54 recent pages put the owner's
+    ask first well enough for two reviewers to pass it.
 
 ## Sources
 

@@ -26,8 +26,15 @@ Key contracts:
   smoke the health endpoint plus key pages through the proxy URL, check
   process error logs, and state the rollback path before declaring done.
 - Report: URL + what changed (commits) + smoke evidence + parked items.
-- Bottom line first: every published report opens with a "Bottom line" section — the
-  conclusion the reader acts on, in one paragraph, before any rounds, dates or timeline.
-  The evidence sections follow it. A page whose first screen is a chronology gets sent
-  back (2026-09-23: "你不要给我时间线…直接给我最终的结论").
-  Deploying is outward state: confirm ambiguous version intent first.
+- Lead first: every published report opens, directly under its headline and one as-of
+  line, with the lead block `<section id="bottom-line">` — **Bottom line**: the verdict
+  the reader acts on, in one or two sentences; **Needs you**: each action or decision the
+  owner must take, with a date, or the literal "Nothing needed from you." /
+  「不需要你做什么。」; a blocker line only when the owner must know it now. Bylines,
+  provenance, version notes, contents bars, goals and number tiles go below it, and
+  provenance and version history go to the foot. A page whose first screen is a
+  chronology gets sent back (2026-09-23: "你不要给我时间线…直接给我最终的结论"), and so
+  does one whose first screen does not say what its owner must do (2026-11-22).
+  Work-log headers run Human TODO · Blockers · Now · Goal. `artifact-lint.py` holds the
+  position (`lead` FAIL, `lead-ask` WARN); the first-screen review judges the words.
+- Deploying is outward state: confirm ambiguous version intent first.

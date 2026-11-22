@@ -9,9 +9,9 @@ user_invocable: true
 # Artifact
 
 One page that answers, from its first screen, what the problem is now, how
-sure we are, and what the next step is — then carries the evidence. The
-executable instructions live in `prompt.md`; this body is the Codex-facing
-summary.
+sure we are, what the next step is and what its owner must do or decide —
+then carries the evidence. The executable instructions live in `prompt.md`;
+this body is the Codex-facing summary.
 
 ## What it does
 
@@ -22,8 +22,12 @@ summary.
    grades each claim verified / inferred / speculation.
 3. Uses the selected spine as question coverage, combining short answers and
    choosing only relevant parts from `references/anatomy.md`. Argued pages
-   lead with the answer, evidence and uncertainty; reference/worklog pages
-   retain their lookup/state structure. No invented metrics or empty sections.
+   open with the lead block (`id="bottom-line"`) directly under the headline:
+   the bottom line, then what the owner must do or decide ("Needs you: … by
+   <date>", or "Nothing needed from you."); evidence and uncertainty follow,
+   and bylines, provenance and version notes go to the foot. Reference pages
+   keep their lookup structure; a work-log's header runs Human TODO · Blockers
+   · Now · Goal. No invented metrics or empty sections.
 4. Draws the figures needed to answer the question (`references/figures.md`)
    and, for architecture pages, C4 context and container diagrams with a
    legend (`references/diagrams.md`) — inline SVG, tokens for both themes,
@@ -32,9 +36,10 @@ summary.
    the facts, using `references/review.md`.
 6. Runs `python3 ~/.claude/scripts/artifact-lint.py <page>`; fixes every FAIL
    and fixes or explains WARNs. Reviews all figures and the first screen in
-   light/dark at desktop/phone widths, then performs a fresh-reader review.
-   Repairs and re-renders until the applicable checks pass; records evidence
-   in `artifact-review.md`. Checks the served output after authorized publishing.
+   light/dark at desktop/phone widths — the first screen must answer, on its
+   own, what the owner must do or decide, or the page fails — then performs a
+   fresh-reader review. Repairs and re-renders until the applicable checks
+   pass; records evidence in `artifact-review.md`. Checks the served output after authorized publishing.
    An invisible figure or wrong takeaway blocks completion even with clean lint.
 
 ## Usage
@@ -44,7 +49,7 @@ summary.
 /artifact status                            # where the project stands, from the repo + hub
 /artifact architecture apps/halo            # as-built system page with C4 L1 + L2
 /artifact rca incident-2026-09-21.md        # post-mortem in the SRE field order
-/artifact worklog                           # the living Goal · Now · Human TODO · Blockers page
+/artifact worklog                           # the living Human TODO · Blockers · Now · Goal page
 ```
 
 Publishing goes through `/internal-deploy` (hub) or the Artifact tool
