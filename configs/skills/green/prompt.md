@@ -44,11 +44,14 @@ say so, then fall back to the gates the project documents itself (its
 Never report a build green on the strength of a runner that found no gates.
 
 Read what will be skipped and why. A job needing a platform this machine is not
-belongs on the machine that has it, not on a hosted runner at 2x or 10x. A
-workflow triggered by `pull_request_target` and by no push or pull_request, and
-a job whose `if:` is false on every push and pull_request (a schedule or
-dispatch tier), genuinely do not run here; say so rather than reporting a clean
-run that covered less than it looks.
+belongs on the machine that has it, not on a hosted runner at 2x or 10x; the
+runner labels are compared case-insensitively, as GitHub does, so
+`[self-hosted, macOS]` and an `ARM64` label name a platform. A workflow
+triggered by `pull_request_target` and by no push or pull_request, a workflow
+whose push trigger filters on `tags:` alone (a tag tier, run on a head that
+carries a tag), and a job whose `if:` is false on every push and pull_request
+(a schedule or dispatch tier) genuinely do not run here; say so rather than
+reporting a clean run that covered less than it looks.
 
 A `↳ UNPROVEN` line is different in kind: a lane the hosted run executes on
 every push that this runner cannot reproduce — a job using `services:`,

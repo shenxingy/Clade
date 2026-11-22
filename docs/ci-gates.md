@@ -30,7 +30,16 @@ python3 configs/scripts/ci-local.py --json   # machine-readable, for /green
 It stands in for `actions/setup-python` with a cached venv outside the tree, so
 `pip install` steps work on a PEP 668 system Python, and it closes stdin the way
 a runner does — inheriting the terminal's instead made one suite hang for 13
-minutes at 9% CPU. `/green` drives it to green without weakening a gate.
+minutes at 9% CPU. Each job gets what a runner gives it: an empty
+`$RUNNER_TEMP`, `$GITHUB_WORKSPACE`, and its own `$GITHUB_ENV`, `$GITHUB_PATH`,
+`$GITHUB_OUTPUT`, `$GITHUB_STEP_SUMMARY` and `$GITHUB_STATE` files, so a step
+run inside a hosted job never writes the outer job's; `$GITHUB_ENV` and
+`$GITHUB_PATH` writes reach the job's later steps, and outputs are written but
+not read (`${{ steps.<id>.outputs.* }}` stays unproven). Runner labels compare
+case-insensitively, so `[self-hosted, macOS]` or an `ARM64` label is a
+platform skip on another machine, and a workflow whose push trigger filters on
+`tags:` alone is a tag tier, skipped with its reason on a head that carries no
+tag (`--all` runs it). `/green` drives it to green without weakening a gate.
 
 A lane it cannot reproduce — `services:`, `container:`, `strategy:`, a
 reusable workflow, a `defaults:` other than `run: shell: bash`, a job body it
@@ -57,8 +66,9 @@ range with `${{ github.event_name }}`, so a local run does not execute it. Both 
 skipped as GitHub-side, and the four key-gated tiers, the only steps here that
 use a secret, gate on `schedule`/`workflow_dispatch`, which is harmless.
 `tests/test-ci-local.sh` pins the classes (the rerun and FLAKY cases in
-`tests/lib/ci-local-flaky.sh`, which it sources) and removes each guard from a
-copy of the runner to show the suite notices.
+`tests/lib/ci-local-flaky.sh`, the labels, tag tiers and runner files in
+`tests/lib/ci-local-runner.sh`, both of which it sources) and removes each
+guard from a copy of the runner to show the suite notices.
 
 The list below is the EXPLANATION — why each gate exists and what it caught.
 `check-ci-checklist.py` keeps it complete. Run it by hand only when you want
