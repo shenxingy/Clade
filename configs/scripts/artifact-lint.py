@@ -182,11 +182,27 @@ _VOID = frozenset({"area", "base", "br", "col", "embed", "hr", "img", "input", "
 # A label anchor is the first text inside one of these, outside a heading.
 _LEAD_BLOCKS = frozenset({"p", "li", "dt", "dd", "div", "section", "td", "th", "blockquote", "header",
                           "article", "strong", "b"})
+_HEADINGS = frozenset({"h1", "h2", "h3", "h4", "h5", "h6"})
 
 
 def units(s: str) -> float:
     """Words, with a CJK character counting half: the measure of a phone screen."""
     return len(_CJK.sub(" ", s).split()) + len(_CJK.findall(s)) / 2
+
+
+# One unit of units(): a CJK character (half) or a run of other non-space characters (one).
+_UNIT_TOKEN = re.compile(rf"{_CJK.pattern}|(?:(?!{_CJK.pattern})\S)+")
+
+
+def _cut_units(s: str, n: float) -> str:
+    """The longest prefix of `s` holding at most `n` units, cut at a unit boundary."""
+    used, end = 0.0, 0
+    for m in _UNIT_TOKEN.finditer(s):
+        used += 0.5 if _CJK.fullmatch(m.group()) else 1
+        if used > n:
+            break
+        end = m.end()
+    return s[:end]
 
 
 # ─── Parse ───────────────────────────────────────────────────────────────────
@@ -288,14 +304,20 @@ class _Page(HTMLParser):
                     self._lead_close_heading()
                 return
 
+    def _in_heading(self) -> bool:
+        return any(t in _HEADINGS for t, _ in self._lstack)
+
     def _lead_data(self, data: str) -> None:
-        if self._lead_hidden() or not data.strip():
-            return
+        if self._lead_hidden():
+            return  # hidden text is not counted
+        # a heading's text keeps the spaces between its inline elements
         if self._lhead is not None:
             self._lhead[1] = str(self._lhead[1]) + data
         if self._in_h1:
             self.h1_text += data
-        if self._fresh and self._lhead is None and _LEAD_LABEL_RE.search(data):
+        if not data.strip():
+            return  # whitespace between tags is never a block's first text
+        if self._fresh and not self._in_heading() and _LEAD_LABEL_RE.search(data):
             self.lead_anchors.append((self.lead_units, "label", _norm(data)))
         self._fresh = False
         self.lead_text.append((self.lead_units, data))
@@ -500,6 +522,23 @@ _LEAD_FIX = ("put a #bottom-line block (Bottom line + Needs you / 结论 + 需�
              "and move provenance, version notes, contents, terms, goals and tiles below it")
 
 
+def _lead_window(p: _Page, start: float) -> str:
+    """The visible text from the anchor up to anchor + LEAD_WINDOW units.
+
+    Whole text nodes while they fit, then the last one cut at a unit boundary,
+    so an ask 200 units down the same paragraph is outside the window.
+    """
+    end = start + LEAD_WINDOW
+    parts: list[str] = []
+    for u, d in p.lead_text:
+        if u < start:
+            continue  # text above the anchor is not the lead's
+        if u >= end:
+            break
+        parts.append(_cut_units(d, end - u))
+    return _norm(" ".join(parts))
+
+
 def lead_findings(p: _Page, kind: str) -> list[Finding]:
     """The lead check: is the owner's block first under the headline, and does it ask?
 
@@ -537,8 +576,7 @@ def lead_findings(p: _Page, kind: str) -> list[Finding]:
                                     f"first after the h1: {shown!r} — {_LEAD_FIX}"))
 
     if within and anchor is not None:
-        start = anchor[0]
-        window = h1_text + " " + _norm(" ".join(d for u, d in p.lead_text if start <= u < start + LEAD_WINDOW))
+        window = h1_text + " " + _lead_window(p, anchor[0])
         asks = bool(_ASK.search(window))
         if anchor[1] == "role":
             asks = asks or "needs-you" in anchor[2].split()
@@ -965,6 +1003,48 @@ def _self_test() -> int:
     messy = _lead_page('<nav><ul><li>' + " ".join(["toc"] * 80) + '<li>' + " ".join(["toc"] * 80) + '</ul></nav>'
                        '<p>As of 2026-11-22.<br><hr>').replace("<body>", '<body><img src="x" alt="" aria-hidden="true"><input hidden>')
     expect(lead_of(messy) == [], f"unclosed <p>/<li> and void tags leave the hidden stack intact, got {lead_of(messy)}")
+    # where an anchor counts: after the headline, as a block's first text, outside any heading
+    wrapped = _lead_page(prose(150)).replace("<h1>", '<header id="next"><h1>').replace("</h1>", "</h1></header>")
+    expect([f for f, _ in lead_of(wrapped)] == ["lead"],
+           f"a lead id on an element that opens before the headline is no lead, got {lead_of(wrapped)}")
+    mid = lead_of(_lead_page('<p>As of 2026-11-22. See <a href="#x">plan</a> next step: ship</p>' + prose(150), ""))
+    expect([f for f, _ in mid] == ["lead"] and "none" in mid[0][1],
+           f"a label-shaped phrase in the middle of a paragraph is no label anchor, got {mid}")
+    indented = _lead_page(asof, "<p>\n  <span>Needs you:</span> approve the release by Friday.</p>")
+    expect(lead_of(indented) == [], f"hand-indented markup before a label keeps it the block's first text, got {lead_of(indented)}")
+    in_h5 = lead_of(_lead_page(asof + "<div><h5>Next step: ship it</h5></div>" + prose(150), ""))
+    expect([f for f, _ in in_h5] == ["lead"] and "none" in in_h5[0][1],
+           f"a label inside a heading (h5 too) is no label anchor, got {in_h5}")
+    under = _lead_page(asof, '<div class="bottom_line"><p>It ships on Friday. Nothing needed from you.</p></div>')
+    expect(lead_of(under) == [], f"an id or class spelled with _ (bottom_line) marks the lead, got {lead_of(under)}")
+    second = _lead_page(asof, _LEAD_OK + prose(150) + "<h1>A second headline</h1>")
+    expect(lead_of(second) == [], f"only the first <h1> is the headline, got {lead_of(second)}")
+    branded = _lead_page(prose(150), "", h1="解析器修好了，周五发布，要你拍板。").replace("<body>", "<body><nav><h1>Brand</h1></nav>")
+    expect(lead_of(branded) == [], f"an <h1> inside a nav is not the headline; the first visible one is, got {lead_of(branded)}")
+    spans = _lead_page(prose(150), "", h1="The parser ships Friday; <em>you</em> <em>must</em> approve it.")
+    expect(lead_of(spans) == [], f"the headline's text keeps the space between inline elements, got {lead_of(spans)}")
+    # the ask must sit in the first LEAD_WINDOW units from the anchor, measured to the unit, not the text node
+    bl = "<strong>Bottom line:</strong>"   # 2 units; with the parser sentence below, 6
+    above = _lead_page("<p>Drafted for you to review.</p>", f'<section id="bottom-line"><p>{bl} the parser is fixed.</p></section>')
+    expect([f for f, _ in lead_of(above)] == ["lead-ask"], f"an ask above the lead is not the lead's ask, got {lead_of(above)}")
+
+    def window_case(k: int, *, split: bool, zh: bool = False) -> list[str]:
+        if zh:
+            body, h1 = "<p><strong>结论：</strong>" + "字" * k + "要你批准。</p>", "解析器修好了，周五发布。"
+        elif split:
+            body, h1 = f"<p>{bl} the parser is fixed.</p>" + prose(k).replace("byline", "word") + "<p>You must approve it.</p>", None
+        else:
+            body, h1 = f"<p>{bl} " + " ".join(["word"] * k) + " you must approve it.</p>", None
+        page = _lead_page("", f'<section id="bottom-line">{body}</section>', **({"h1": h1} if h1 else {}))
+        return [f for f, _ in lead_of(page)]
+
+    # 6 + k + 2 ("You must") ≤ LEAD_WINDOW; 2 + k + 2 ≤ LEAD_WINDOW; 2 + (k + 2) / 2 ≤ LEAD_WINDOW
+    for k, split, zh, label in ((LEAD_WINDOW - 8, True, False, "split across nodes"),
+                                (LEAD_WINDOW - 4, False, False, "in one text node"),
+                                (2 * LEAD_WINDOW - 6, False, True, "in one Chinese text node")):
+        expect(window_case(k, split=split, zh=zh) == [], f"an ask that ends at the window's last unit, {label}, counts")
+        expect(window_case(k + 1, split=split, zh=zh) == ["lead-ask"],
+               f"an ask one unit past the window, {label}, does not count, got {window_case(k + 1, split=split, zh=zh)}")
 
     # a stack held in a custom property is a stack
     tok = _GOOD.replace("body{font-family:Menlo,monospace;", "body{font-family:var(--mono);").replace(":root{--ink:#0a0a0a;", ":root{--mono:Menlo,monospace;--ink:#0a0a0a;")
