@@ -121,6 +121,8 @@ semantic versioning。
 
 ### 修复
 
+- 每周的 Dependency Audit 任务恢复为绿。`orchestrator/web` 中的 `npm audit --audit-level=high` 对 lockfile 报出两个高危公告：vite 6.4.3（`GHSA-9jrq-w75r-8gcw`、`GHSA-rq7h-c2jc-7f22`，以及它内置的 `launch-editor`：`GHSA-698v-4r3x-3vcv`、`GHSA-r825-w8mm-5pxw`、`GHSA-587h-7wmj-h5pm`）和 source-map-js 1.2.1（`GHSA-68fv-2mgg-jv7q`）。2026-10-12 至 2026-11-16 的六次定时 CI 运行全部在这一步失败。用 `npm audit fix`（不是 `--force`）把 vite 升到 6.4.6、source-map-js 升到 1.2.4，都是现有版本范围内的补丁升级；`package.json`、`--audit-level` 和该任务本身都未改动。按 CI 的方式验证：`npm ci`、审计（0 个漏洞）、构建，以及在 vite 开发服务器上跑的 11 个 Playwright 测试。
+
 - `kimi-usage` 在服务器 30 秒启动窗口内未应答时，不再留下仍在运行的 `kimi web`。`SpawnedServer.__enter__` 在启动循环中抛错，而 `__enter__` 抛错会跳过 `__exit__`，于是启动的服务器继续挂在用户的 Kimi 登录上、在调用方放弃后仍刷新其令牌。现在它会先停止服务器再重新抛出。`test_a_server_that_never_boots_is_stopped` 启动一个从不应答的 `kimi`，在旧代码上失败。
 
 - dotfiles 同步仓库不再把 Claude Code auto-dream 的锁文件（`.consolidate-lock`）和会话日志（`projects-memory/*/logs/`）纳入 git；`sync-health.sh` 改为在原生 MEMORY.md 上限 25,000 字符的 80% 时提醒，而不是 25,600 字节。Claude Code 2.1.283 自带后台记忆整理（auto-dream），作者账号上被服务端开关关闭，在作者主机上从未触发过（任何 Claude 配置目录和同步仓库里都没有 `.consolidate-lock`，仓库历史中也没有）。一旦开关打开，`sync-push.sh` 会提交这个锁——它记录本机 PID，mtime 就是 dream 的时钟，另一台机器 pull 后时钟会被重置——还会把原始会话日志推到 GitHub。上限值读自二进制（`Z3=25000`，与去掉首尾空白后的 index 字符串长度比较）；按字节计数在非 ASCII 的 index 上只会提早、不会推迟提醒。已有的同步仓库在下一次 push 时补上这两条规则。
