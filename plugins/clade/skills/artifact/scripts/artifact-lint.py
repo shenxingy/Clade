@@ -975,8 +975,9 @@ def _self_test() -> int:
     expect(lead_of(_lead_page("<p>" + "字" * (2 * LEAD_BUDGET) + "</p>")) == [], "a CJK character counts half a unit")
     expect([f for f, _ in lead_of(_lead_page("<p>" + "字" * (2 * LEAD_BUDGET + 2) + "</p>"))] == ["lead"],
            "two CJK characters over the budget fail")
-    for wrap in ("<nav>{}</nav>", "<aside>{}</aside>", '<div class="reading-contents">{}</div>', '<div id="toc">{}</div>',
-                 '<div role="navigation">{}</div>', "<div hidden>{}</div>", '<div aria-hidden="true">{}</div>'):
+    for wrap in ("<nav>{}</nav>", "<aside>{}</aside>", '<div class="reading-contents">{}</div>',
+                 '<div class="reading_contents">{}</div>', '<div id="toc">{}</div>', '<div role="navigation">{}</div>',
+                 "<div hidden>{}</div>", '<div aria-hidden="true">{}</div>'):
         hid = lead_of(_lead_page(wrap.format(prose(150))))
         expect(hid == [], f"text inside {wrap.format('…')} is not counted against the lead, got {hid}")
     decoy = lead_of(_lead_page('<aside id="bottom-line"><p>Needs you: nothing.</p></aside>' + prose(150)))
@@ -1028,23 +1029,23 @@ def _self_test() -> int:
     above = _lead_page("<p>Drafted for you to review.</p>", f'<section id="bottom-line"><p>{bl} the parser is fixed.</p></section>')
     expect([f for f, _ in lead_of(above)] == ["lead-ask"], f"an ask above the lead is not the lead's ask, got {lead_of(above)}")
 
-    def window_case(k: int, *, split: bool, zh: bool = False) -> list[str]:
-        if zh:
+    def window_case(k: int, shape: str) -> list[str]:
+        h1 = "The parser is fixed and ships on Friday."
+        if shape == "chinese":
             body, h1 = "<p><strong>结论：</strong>" + "字" * k + "要你批准。</p>", "解析器修好了，周五发布。"
-        elif split:
-            body, h1 = f"<p>{bl} the parser is fixed.</p>" + prose(k).replace("byline", "word") + "<p>You must approve it.</p>", None
+        elif shape == "split":
+            body = f"<p>{bl} the parser is fixed.</p>" + prose(k).replace("byline", "word") + "<p>You must approve it.</p>"
         else:
-            body, h1 = f"<p>{bl} " + " ".join(["word"] * k) + " you must approve it.</p>", None
-        page = _lead_page("", f'<section id="bottom-line">{body}</section>', **({"h1": h1} if h1 else {}))
-        return [f for f, _ in lead_of(page)]
+            body = f"<p>{bl} " + " ".join(["word"] * k) + " you must approve it.</p>"
+        return [f for f, _ in lead_of(_lead_page("", f'<section id="bottom-line">{body}</section>', h1=h1))]
 
     # 6 + k + 2 ("You must") ≤ LEAD_WINDOW; 2 + k + 2 ≤ LEAD_WINDOW; 2 + (k + 2) / 2 ≤ LEAD_WINDOW
-    for k, split, zh, label in ((LEAD_WINDOW - 8, True, False, "split across nodes"),
-                                (LEAD_WINDOW - 4, False, False, "in one text node"),
-                                (2 * LEAD_WINDOW - 6, False, True, "in one Chinese text node")):
-        expect(window_case(k, split=split, zh=zh) == [], f"an ask that ends at the window's last unit, {label}, counts")
-        expect(window_case(k + 1, split=split, zh=zh) == ["lead-ask"],
-               f"an ask one unit past the window, {label}, does not count, got {window_case(k + 1, split=split, zh=zh)}")
+    for k, shape, label in ((LEAD_WINDOW - 8, "split", "split across nodes"),
+                            (LEAD_WINDOW - 4, "single", "in one text node"),
+                            (2 * LEAD_WINDOW - 6, "chinese", "in one Chinese text node")):
+        expect(window_case(k, shape) == [], f"an ask that ends at the window's last unit, {label}, counts")
+        expect(window_case(k + 1, shape) == ["lead-ask"],
+               f"an ask one unit past the window, {label}, does not count, got {window_case(k + 1, shape)}")
 
     # a stack held in a custom property is a stack
     tok = _GOOD.replace("body{font-family:Menlo,monospace;", "body{font-family:var(--mono);").replace(":root{--ink:#0a0a0a;", ":root{--mono:Menlo,monospace;--ink:#0a0a0a;")
