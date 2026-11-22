@@ -41,10 +41,13 @@ instruments in this repository have already shipped.
 Skips come in two kinds, and only one of them leaves the result intact:
 
   skipped    a workflow triggered by pull_request_target and by no push or
-             pull_request, or a job whose `if:` is false on every push and
-             pull_request — a schedule/dispatch tier, failure() (the hosted
-             push/PR run does not execute it either); a job for another
-             platform (proven on the machine that has it).
+             pull_request, a workflow whose push trigger filters on tags alone
+             (a tag tier, run on a head that carries a tag), or a job whose
+             `if:` is false on every push and pull_request — a
+             schedule/dispatch tier, failure() (the hosted push/PR run does not
+             execute it either); a job whose runner labels name another OS or
+             architecture, compared case-insensitively as GitHub does
+             (`[self-hosted, macOS]`; proven on the machine that has it).
   unproven   a lane this runner cannot reproduce: a job using services:,
              container:, strategy:, a reusable workflow, a defaults: other
              than `run: shell: bash`, an env block scalar, a steps: block or a
@@ -68,6 +71,12 @@ a pass on rerun is a failure nobody has explained (measured: one case of 206
 in a context-policy suite failed once on a host at load ~80 and passed on an
 immediate rerun, and the run said FAILED with no record that it was a flake).
 A step that hit the step timeout is not rerun. --no-rerun turns reruns off.
+
+Each job gets what a runner gives it: an empty $RUNNER_TEMP, $GITHUB_WORKSPACE,
+and fresh $GITHUB_ENV, $GITHUB_PATH, $GITHUB_OUTPUT and $GITHUB_STEP_SUMMARY
+files per step. What a step writes to $GITHUB_ENV and $GITHUB_PATH reaches the
+later steps of that job; outputs are written and never read, since
+`${{ steps.<id>.outputs.* }}` is an expression this runner does not evaluate.
 
 Exit 1 when a job that ran failed. Otherwise any unproven lane makes the
 summary read PARTIAL, a step that passed only on rerun makes it read FLAKY,
@@ -101,6 +110,13 @@ import sys
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
+
+# What a runner gives a job beyond the workflow text (runner labels, tag-only
+# push tiers, the files every step gets) lives in ci_local_runner.py beside
+# this file, which sits at the 1500-line cap. No bytecode is written there.
+sys.dont_write_bytecode = True
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import ci_local_runner as runner  # noqa: E402
 
 # ─── Workflow parsing ────────────────────────────────────────────────────────
 # Line-based, not a YAML parser: configs/scripts/ is stdlib-only and workflow
@@ -152,12 +168,7 @@ _UNMODELLED_JOB_KEYS = frozenset({"strategy", "container", "services"})
 # most of them guard an upload action and the job is perfectly runnable.
 _UNMODELLED_STEP_KEYS = frozenset({"continue-on-error"})
 
-# Runner label -> the platform.system() value that can execute it.
-_PLATFORM = {
-    "ubuntu": "Linux",
-    "macos": "Darwin",
-    "windows": "Windows",
-}
+# Which runner labels name which platform: ci_local_runner.platform_need.
 
 
 @dataclass
@@ -210,6 +221,9 @@ class Job:
     # `uses:` is one whose body this parser did not read (keys at another
     # indent, flow style): it reported "setup-only", a reasoned skip.
     keys: set[str] = field(default_factory=set)
+    # Its workflow's tag filter when only a tag push starts it (tags: ["v*"]):
+    # a tier the hosted run of a branch push or PR never executes.
+    tag_tier: str | None = None
 
     @property
     def display(self) -> str:
@@ -285,22 +299,9 @@ def _job_header(raw: str) -> tuple[str, str]:
     return _scalar(m.group(1)), _scalar(m.group(2) or "")
 
 
-def _flow_names(text: str) -> list[str]:
-    """Top-level names of a flow value: `push`, `[push, pull_request]`, or
-    `{push: {branches: [main]}, pull_request: {}}`."""
-    t = text.strip()
-    if t[:1] in ("[", "{"):
-        t = t[1:-1] if t[-1:] in ("]", "}") else t[1:]
-    items, depth, cur = [], 0, ""
-    for c in t:
-        depth += (c in "[{") - (c in "]}")
-        if c == "," and depth == 0:
-            items.append(cur)
-            cur = ""
-        else:
-            cur += c
-    items.append(cur)
-    return [it.split(":", 1)[0].strip().strip("'\"") for it in items if it.strip()]
+# Top-level names of a flow value: `push`, `[push, pull_request]`, or
+# `{push: {branches: [main]}, pull_request: {}}`.
+_flow_names = runner.flow_names
 
 
 def workflow_triggers(on_block: str) -> set[str]:
@@ -515,6 +516,11 @@ def parse_workflow(path: Path) -> tuple[list[Job], str]:
             assert current.defaults is not None
             current.defaults.append(raw)
             continue
+        elif job_block == "runs-on" and len(raw) - len(raw.lstrip()) > 4:
+            # A bare `runs-on:` with its labels below: a `- macOS` list, or a
+            # group/labels mapping. Dropped, the job named no platform and ran.
+            current.runs_on += raw.strip() + "\n"
+            continue
 
         jk = _KEY.match(raw)
         if jk:
@@ -527,7 +533,7 @@ def parse_workflow(path: Path) -> tuple[list[Job], str]:
             # A job's own `env:` — every step inherits it. Dropped until
             # 2026-11, so a job declaring DATABASE_URL=sqlite ran against
             # whatever DATABASE_URL the developer's shell happened to export.
-            job_block = key if key in ("env", "defaults") and bare else ""
+            job_block = key if key in ("env", "defaults", "runs-on") and bare else ""
             in_steps = key == "steps"
             if key == "steps":
                 current.declares_steps = True
@@ -544,7 +550,7 @@ def parse_workflow(path: Path) -> tuple[list[Job], str]:
             if key == "name":
                 current.name = _scalar(value)
             elif key == "runs-on":
-                current.runs_on = value
+                current.runs_on = "" if bare else value
             elif key == "if":
                 current.condition = value
 
@@ -553,7 +559,9 @@ def parse_workflow(path: Path) -> tuple[list[Job], str]:
         # `defaults: run: working-directory/shell` moves or reinterprets every
         # step. Dropping it silently runs them in the wrong place.
         workflow_unmodelled.append("workflow-level defaults")
+    tier = runner.tag_tier(on_block, workflow_triggers(on_block))
     for job in jobs:
+        job.tag_tier = tier
         if job.defaults is not None and not _defaults_modelled(job.defaults):
             job.unmodelled.append("defaults")
         if job.declares_steps and not job.steps:
@@ -771,7 +779,8 @@ class Skip:
     unproven: bool = False
 
 
-def skip_reason(job: Job, on_block: str, include_conditional: bool) -> Skip | None:
+def skip_reason(job: Job, on_block: str, include_conditional: bool,
+                head_tags: list[str] | None = None) -> Skip | None:
     """Why this job will not run here, or None if it will.
 
     The reasoned classes are tested FIRST. A pull_request_target workflow or a
@@ -783,6 +792,11 @@ def skip_reason(job: Job, on_block: str, include_conditional: bool) -> Skip | No
     triggers = workflow_triggers(on_block)
     if "pull_request_target" in triggers and not triggers & _PUSH_PR_EVENTS:
         return Skip("runs on GitHub's side only (pull_request_target)")
+    # A tag tier, like a schedule tier: only a tag push starts it. On a head
+    # that carries a tag it runs (the filter's patterns are not matched).
+    if job.tag_tier and not head_tags and not include_conditional:
+        return Skip(f"tag-only tier — push fires on {job.tag_tier[:40]} alone and this "
+                    "head carries no tag (use --all)")
     cond = job_condition(job.condition) if job.condition else "run"
     if cond == "off" and not include_conditional:
         if success_path_if(job.condition) is False:
@@ -791,11 +805,9 @@ def skip_reason(job: Job, on_block: str, include_conditional: bool) -> Skip | No
         return Skip(f"conditional — {shown[:60]} (use --all)")
     # An expression runs-on names no platform yet: it is decided below.
     if "${{" not in job.runs_on:
-        for label, system in _PLATFORM.items():
-            if label in job.runs_on:
-                if system != local_platform():
-                    return Skip(f"needs {system}; this machine is {local_platform()}")
-                break
+        need = runner.platform_need(job.runs_on, local_platform(), platform.machine())
+        if need:
+            return Skip(need)
     # The fifth class: the hosted run executes these, this runner cannot.
     if job.unmodelled:
         what = ", ".join(sorted(set(job.unmodelled)))
@@ -976,6 +988,9 @@ def run_job(job: Job, repo: Path, tail_lines: int, echo: bool, timeout: int,
         bindir = ensure_python_env(repo, echo)
         if bindir is not None:
             extra_path = str(bindir)
+    # RUNNER_TEMP and the command files, per job: a step's $GITHUB_ENV and
+    # $GITHUB_PATH writes reach the later steps of this job and no other.
+    files = runner.JobFiles(repo)
 
     for step in job.steps:
         plan = plan_step(step)
@@ -1001,7 +1016,11 @@ def run_job(job: Job, repo: Path, tail_lines: int, echo: bool, timeout: int,
             env["HOME"] = str(_CLEAN_HOME)
             env["CLAUDE_CONFIG_DIR"] = str(_CLEAN_HOME / ".claude")
             env["XDG_CACHE_HOME"] = str(_CLEAN_HOME / ".cache")
+        # The runner's order: workflow and job env < $GITHUB_ENV < the step's own env.
+        env.update(files.env)
         for key, value in step.env.items():
+            if key in step.inherited and key in files.env:
+                continue
             if _EXPR.search(value):
                 # Only the hosted run can set it (plan_step). Unset, not the
                 # developer's own exported value standing in for it.
@@ -1015,10 +1034,14 @@ def run_job(job: Job, repo: Path, tail_lines: int, echo: bool, timeout: int,
             env["VIRTUAL_ENV"] = str(Path(extra_path).parent)
             # A venv already on PATH makes an inherited PYTHONHOME poisonous.
             env.pop("PYTHONHOME", None)
+        if files.path:
+            # $GITHUB_PATH entries of earlier steps go first, the newest first.
+            env["PATH"] = os.pathsep.join(files.path + [env.get("PATH", "")])
 
         if echo:
             print(f"    · {step.display} … ", end="", flush=True)
-        rc, elapsed, tail, timed_out = _attempt(step.run, cwd, env, timeout, tail_lines)
+        rc, elapsed, tail, timed_out = _attempt(step.run, cwd, {**env, **files.begin_step()},
+                                                timeout, tail_lines)
         first_exit: int | None = None
         first_tail = ""
         # One rerun of a failed step, same command, env and cwd: green the
@@ -1029,8 +1052,13 @@ def run_job(job: Job, repo: Path, tail_lines: int, echo: bool, timeout: int,
             if echo:
                 print(f"FAILED ({elapsed:.0f}s, exit {rc}), rerunning once … ", end="", flush=True)
             first_exit, first_tail = rc, tail
-            rc, again, tail, timed_out = _attempt(step.run, cwd, env, timeout, tail_lines)
+            rc, again, tail, timed_out = _attempt(step.run, cwd, {**env, **files.begin_step()},
+                                                  timeout, tail_lines)
             elapsed += again
+        # A $GITHUB_ENV the runner cannot read fails the step that wrote it.
+        bad_files = files.end_step() if rc == 0 and not timed_out else ""
+        if bad_files:
+            rc, tail = 1, f"{tail}\n{bad_files}".strip()
 
         if timed_out:
             if echo:
@@ -1066,7 +1094,7 @@ def run_job(job: Job, repo: Path, tail_lines: int, echo: bool, timeout: int,
                 step.display, "fail", elapsed, rc,
                 # A step that ran without inherited env says so: that may be
                 # the whole cause, and a fixer should not chase it in the code.
-                reason=plan.reason,
+                reason="; ".join(filter(None, [plan.reason, bad_files])),
                 command=step.run,
                 # After a rerun, the rerun's output: that is the failure reported.
                 output_tail=tail, first_exit=first_exit,
@@ -1076,13 +1104,15 @@ def run_job(job: Job, repo: Path, tail_lines: int, echo: bool, timeout: int,
         # GitHub stops a job at its first failed step; match that.
         break
 
+    files.close()
     result.seconds = time.time() - started
     return result
 
 
 # ─── Reporting ───────────────────────────────────────────────────────────────
 
-def collect_jobs(repo: Path, include_conditional: bool) -> list[tuple[Job, Skip | None]]:
+def collect_jobs(repo: Path, include_conditional: bool,
+                 head_tags: list[str] | None = None) -> list[tuple[Job, Skip | None]]:
     workflow_dir = repo / ".github" / "workflows"
     if not workflow_dir.is_dir():
         return []
@@ -1090,7 +1120,7 @@ def collect_jobs(repo: Path, include_conditional: bool) -> list[tuple[Job, Skip 
     for path in sorted(workflow_dir.glob("*.y*ml")):
         jobs, on_block = parse_workflow(path)
         for job in jobs:
-            out.append((job, skip_reason(job, on_block, include_conditional)))
+            out.append((job, skip_reason(job, on_block, include_conditional, head_tags)))
     return out
 
 
@@ -1210,12 +1240,14 @@ def main() -> int:
         return 1
 
     head, dirty = checkout_state(repo)
+    # Tags at HEAD: a tag-only tier runs on such a head, as its tag push would.
+    tags = runner.head_tags(repo)
 
     # An explicitly named job runs even if it is conditional — but it is still
     # planned in full. Clearing only the "conditional" verdict afterwards would
     # now run a conditional job that also uses services:, because the reasoned
     # classes are tested first and the unproven one was never reached.
-    plan = collect_jobs(repo, include_conditional=args.all or bool(args.job))
+    plan = collect_jobs(repo, include_conditional=args.all or bool(args.job), head_tags=tags)
 
     if args.job:
         wanted = {w.lower() for w in args.job}
@@ -1236,6 +1268,8 @@ def main() -> int:
         # that is not about to happen.
         conditional = [j for j, r in plan
                        if j.condition and r is None and job_condition(j.condition) != "run"]
+        conditional += [j for j, r in plan
+                        if r is None and j.tag_tier and not tags and j not in conditional]
         if conditional:
             print("--all also runs these normally-skipped jobs:")
             for job in conditional:

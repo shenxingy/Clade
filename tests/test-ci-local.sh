@@ -17,15 +17,17 @@
 # here; the suite asserts they come back UNPROVEN (summary PARTIAL, JSON
 # `unproven`, exit 2 under --strict) and never as passed. A step that passes
 # only on its rerun must come back FLAKY, never green (tests/lib/
-# ci-local-flaky.sh). The last suite removes each guard from a copy of
-# ci-local.py and requires this suite to go red; an anchor that no longer
-# matches is a failure.
+# ci-local-flaky.sh); runner labels, tag-only tiers and the runner files are in
+# tests/lib/ci-local-runner.sh. The last suite removes each guard from a copy
+# of ci-local.py and ci_local_runner.py and requires this suite to go red; an
+# anchor that no longer matches is a failure.
 #
 # Usage:
 #   bash tests/test-ci-local.sh        # Run all tests
 #   bash tests/test-ci-local.sh -v     # Verbose mode
 # Internal (the mutation suite sets these for each mutant run):
-#   CI_LOCAL_RUNNER=PATH   test this copy of ci-local.py instead of the repo's
+#   CI_LOCAL_RUNNER=PATH   test this copy of ci-local.py (ci_local_runner.py
+#                          beside it) instead of the repo's
 #   CI_LOCAL_MUTANT=1      stop at the first failure; skip the mutation suite
 
 set -uo pipefail
@@ -1155,6 +1157,10 @@ assert_eq "$RC" "2" "a run of only an action-gated job is not green under --stri
 # shellcheck source=lib/ci-local-flaky.sh
 . "$REPO_ROOT/tests/lib/ci-local-flaky.sh"
 
+# ─── 8h. Runner labels, tag-only tiers, the files every step gets ────
+# shellcheck source=lib/ci-local-runner.sh
+. "$REPO_ROOT/tests/lib/ci-local-runner.sh"
+
 # ─── 8g. The JSON names the commit it judged ────────────────────────
 # land-pr.py merges a PR whose head a green record names, so a record must say
 # which commit it tested and whether the tree held more than that commit.
@@ -1185,24 +1191,30 @@ MUT_DIR="$SANDBOX/mutants"; mkdir -p "$MUT_DIR"
 NMUT=0; MUT_NAMES=(); MUT_EXPECT=()
 
 # mutation EXPECT NAME ANCHOR REPLACEMENT [ANCHOR REPLACEMENT ...] — literal
-# text, no regex; each anchor must match the current copy exactly once. Builds
-# the mutant only; they all run, bounded-parallel, after the list.
+# text, no regex; each anchor must match the current copies exactly once,
+# across ci-local.py and the ci_local_runner.py it imports, and is applied to
+# the file that holds it. Each mutant is a directory holding both. Builds the
+# mutant only; they all run, bounded-parallel, after the list.
 mutation() {
   local expect="$1" name="$2" out
-  out="$MUT_DIR/m$NMUT.py"
+  out="$MUT_DIR/m$NMUT"
   shift 2
-  cp "$RUNNER" "$out"
+  mkdir -p "$out"
+  cp "$RUNNER" "$out/ci-local.py"
+  cp "$(dirname "$RUNNER")/ci_local_runner.py" "$out/ci_local_runner.py"
   while [[ "$#" -ge 2 ]]; do
-    if ! CL_A="$1" CL_R="$2" python3 - "$out" <<'PY'
+    if ! CL_A="$1" CL_R="$2" python3 - "$out/ci-local.py" "$out/ci_local_runner.py" <<'PY'
 import os, sys
-path, a, r = sys.argv[1], os.environ["CL_A"], os.environ["CL_R"]
-text = open(path, encoding="utf-8").read()
-if text.count(a) != 1:
+a, r = os.environ["CL_A"], os.environ["CL_R"]
+texts = {p: open(p, encoding="utf-8").read() for p in sys.argv[1:]}
+if sum(t.count(a) for t in texts.values()) != 1:
     sys.exit(3)
-open(path, "w", encoding="utf-8").write(text.replace(a, r))
+for path, text in texts.items():
+    if a in text:
+        open(path, "w", encoding="utf-8").write(text.replace(a, r))
 PY
     then
-      fail "mutation '$name': its anchor no longer matches ci-local.py exactly once"
+      fail "mutation '$name': its anchor no longer matches ci-local.py and ci_local_runner.py exactly once"
       return 0
     fi
     shift 2
@@ -1256,8 +1268,8 @@ mutation red "skipping a column-0 comment" \
             continue
 ' ''
 mutation red "planning a --job conditional in full" \
-  'plan = collect_jobs(repo, include_conditional=args.all or bool(args.job))' \
-  'plan = collect_jobs(repo, include_conditional=args.all)' \
+  'plan = collect_jobs(repo, include_conditional=args.all or bool(args.job), head_tags=tags)' \
+  'plan = collect_jobs(repo, include_conditional=args.all, head_tags=tags)' \
   '        if not plan:
             print(f"ci-local: no job matching {args.job}")
             return 1
@@ -1283,8 +1295,7 @@ mutation red "an inherited expression being unset, not the shell's value" \
 mutation red "a step run without inherited env reaching the lane list" \
   'if s.unproven and s.status != "fail"]' 'if s.unproven and s.status == "skip"]'
 mutation red "the failure naming the env its step ran without" \
-  '                reason=plan.reason,
-                command=step.run,' '                command=step.run,'
+  'reason="; ".join(filter(None, [plan.reason, bad_files])),' 'reason=bad_files,'
 mutation red "a \${{ }} in run: being unproven" \
   'return StepPlan(False, "uses a GitHub expression that cannot be evaluated locally",
                         unproven=True)' \
@@ -1419,6 +1430,8 @@ mutation red "uses: read as a YAML scalar" \
   'step.uses = _scalar(value)' 'step.uses = value'
 # The rerun and FLAKY guards: tests/lib/ci-local-flaky.sh, beside their fixtures.
 ci_local_flaky_mutations
+# Runner labels, tag tiers and runner files: tests/lib/ci-local-runner.sh.
+ci_local_runner_mutations
 
 # A shared host and a 4-core hosted runner both run this: at most 4 at once.
 CL_JOBS=$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 2)
@@ -1428,10 +1441,10 @@ CL_JOBS=$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 2)
 # only a run that printed a ✗ counts. 300 s is far past a red mutant's ~10 s.
 run_mutant() {
   if command -v timeout >/dev/null 2>&1; then
-    CI_LOCAL_RUNNER="$MUT_DIR/m$1.py" CI_LOCAL_MUTANT=1 timeout 300 \
+    CI_LOCAL_RUNNER="$MUT_DIR/m$1/ci-local.py" CI_LOCAL_MUTANT=1 timeout 300 \
       bash "$REPO_ROOT/tests/test-ci-local.sh" > "$MUT_DIR/m$1.log" 2>&1
   else
-    CI_LOCAL_RUNNER="$MUT_DIR/m$1.py" CI_LOCAL_MUTANT=1 \
+    CI_LOCAL_RUNNER="$MUT_DIR/m$1/ci-local.py" CI_LOCAL_MUTANT=1 \
       bash "$REPO_ROOT/tests/test-ci-local.sh" > "$MUT_DIR/m$1.log" 2>&1
   fi
 }

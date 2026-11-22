@@ -74,12 +74,15 @@ one such list in this toolkit was wrong twice, covering 4 of 7 gates and later
 
 **Reading its output honestly.** A skipped job is reported with its reason and
 never dropped — "nothing ran" and "everything passed" must not look alike. It
-skips four classes, and only three leave the result intact: a workflow
+skips five classes, and only four leave the result intact: a workflow
 triggered by `pull_request_target` and by no push or pull_request (it acts on
-the GitHub API, not the tree), a job whose `if:` is false on every push and
-pull_request — a `schedule`/`workflow_dispatch` tier or `failure()` (`--all`
-includes them) — and jobs whose `runs-on` names a platform this machine is not
-(proven only on that machine). The fourth is a lane the hosted run executes and
+the GitHub API, not the tree), a workflow whose push trigger filters on
+`tags:` alone (a tag tier; it runs on a head that carries a tag), a job whose
+`if:` is false on every push and pull_request — a `schedule`/`workflow_dispatch`
+tier or `failure()` (`--all` includes these and the tag tier) — and jobs whose
+runner labels name a platform this machine is not, compared case-insensitively
+as GitHub does (`[self-hosted, macOS]`, an `ARM64` label; proven only on that
+machine). The fifth is a lane the hosted run executes and
 this runner cannot reproduce: a job using `services:`, `container:`,
 `strategy:`, a reusable workflow or a `defaults:` other than `run: shell:
 bash`, or one whose body it cannot read; a `runs-on:` or job-level `if:` it
@@ -91,7 +94,9 @@ checkout, cache, artifact upload/download or a `setup-*` action, so a job whose
 only gates are a lint action or a local composite is unproven, not setup-only.
 A step whose *inherited* env holds a non-secret `${{ }}` value (a
 workflow-level `REPO: ${{ github.repository }}`) runs with that variable unset,
-and its pass is unproven too. Those are **unproven**: the
+and its pass is unproven too. (Each job gets its own `$RUNNER_TEMP` and
+command files, and a `$GITHUB_ENV`/`$GITHUB_PATH` write reaches its later steps;
+a `${{ steps.<id>.outputs.* }}` it does not read.) Those are **unproven**: the
 summary line reads `PARTIAL`, names each one, and the JSON lists them under
 `unproven`. A run in which no job ran at all reads `NOTHING RAN` (JSON
 `verdict: none`). **Neither is green** — prove those lanes hosted (or where
