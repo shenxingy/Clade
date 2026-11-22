@@ -1,0 +1,317 @@
+"""
+ci_local_runner.py — what a GitHub runner gives a job that the workflow text
+does not spell out. Imported by ci-local.py, which sits at this repository's
+1500-line cap; installed and bundled beside it.
+
+Three things, each found by running ci-local.py against real repositories that
+moved their CI to owned hardware (scamai, 2026-11-21):
+
+1. **Which machine a `runs-on:` can land on.** GitHub matches runner labels
+   case-insensitively, and a self-hosted runner carries OS labels spelled
+   `macOS`, `Linux`, `Windows` and architecture labels `X64`, `ARM`, `ARM64`.
+   ci-local.py matched lower-case substrings of the raw value, so
+   `[self-hosted, macOS, macserver-public]` named no platform at all: it RAN
+   on Linux, and a witty macOS job's steps executed on a Linux host.
+2. **Which pushes start a workflow.** A push trigger whose only filters are
+   `tags:`/`tags-ignore:` fires for tags and never for a branch. Run on a
+   branch head, such a workflow's "tag matches version" check failed by
+   construction (email-town-labeler's release.yml read `GITHUB_REF_NAME` as
+   empty), so every non-tag gate of that repository read `fail`.
+3. **The files and variables every step gets.** `$GITHUB_ENV`, `$GITHUB_PATH`,
+   `$GITHUB_OUTPUT`, `$GITHUB_STEP_SUMMARY`, `$RUNNER_TEMP` and
+   `$GITHUB_WORKSPACE` were unset, so `echo dir >> "$GITHUB_PATH"` failed
+   with `bash: : No such file or directory`. Inside a hosted job (this
+   repository's own CI runs ci-local's tests) a step inherited the OUTER
+   job's files instead, and wrote into the outer job's environment.
+
+Stdlib only, like ci-local.py.
+"""
+
+from __future__ import annotations
+
+import re
+import subprocess
+import tempfile
+from pathlib import Path
+
+# ─── YAML fragments ──────────────────────────────────────────────────────────
+
+
+def _uncomment(line: str) -> str:
+    return re.sub(r"(^|\s)#.*$", "", line).rstrip()
+
+
+def _indent(line: str) -> int:
+    return len(line) - len(line.lstrip())
+
+
+def flow_items(text: str) -> list[tuple[str, str]]:
+    """Top-level `(name, value)` items of a flow value: `push`,
+    `[push, pull_request]`, or `{push: {tags: [v*]}, workflow_dispatch: {}}`.
+    A bare name has the value ""."""
+    t = text.strip()
+    if t[:1] in ("[", "{"):
+        t = t[1:-1] if t[-1:] in ("]", "}") else t[1:]
+    items, depth, cur = [], 0, ""
+    for c in t:
+        depth += (c in "[{") - (c in "]}")
+        if c == "," and depth == 0:
+            items.append(cur)
+            cur = ""
+        else:
+            cur += c
+    items.append(cur)
+    out = []
+    for it in items:
+        if it.strip():
+            name, _, value = it.partition(":")
+            out.append((name.strip().strip("'\""), value.strip()))
+    return out
+
+
+def flow_names(text: str) -> list[str]:
+    """Top-level names of a flow value (see flow_items)."""
+    return [name for name, _ in flow_items(text)]
+
+
+# ─── 1. Runner labels ────────────────────────────────────────────────────────
+# A label names an OS when it holds one of these words, whatever its case:
+# the self-hosted OS labels (macOS, Linux, Windows), the hosted images
+# (ubuntu-24.04, macos-15, windows-2022) and third-party runner profiles built
+# on them (namespace-profile-ghostty-macos-tahoe). An architecture is named by
+# a self-hosted label exactly, or by a hosted image's `-arm` suffix
+# (ubuntu-24.04-arm, windows-11-arm). A label naming neither — `self-hosted`,
+# `macserver-public`, a runner group — says nothing about the platform, and a
+# job with no platform label at all runs here, as it always did.
+_OS_WORDS = (("macos", "Darwin"), ("windows", "Windows"), ("ubuntu", "Linux"), ("linux", "Linux"))
+_ARCH_LABELS = {"x64": "X64", "arm": "ARM", "arm64": "ARM64"}
+
+
+def runs_on_labels(runs_on: str) -> list[str]:
+    """The labels of a `runs-on:` value as ci-local.py collected it: one line
+    (`ubuntu-latest`, `[self-hosted, macOS]`, `{group: g, labels: [a, b]}`) or
+    the lines under a bare `runs-on:` (a `- label` list, or a mapping whose
+    `labels:` holds them; a `group:` name is not a label)."""
+    labels: list[str] = []
+    for raw in runs_on.splitlines():
+        line = _uncomment(raw).strip()
+        if line.startswith("- "):
+            line = line[2:].strip()
+        if line.startswith("{"):
+            labels += [lb for k, v in flow_items(line) if k == "labels" for lb in flow_names(v)]
+            continue
+        key, colon, rest = line.partition(":")
+        if colon and key.strip() in ("labels", "group"):
+            labels += flow_names(rest) if key.strip() == "labels" and rest.strip() else []
+            continue
+        labels += flow_names(line)
+    return [lb for lb in labels if lb]
+
+
+def machine_arch(machine: str) -> str:
+    """platform.machine() in the runner's own spelling (X64, ARM64, ARM)."""
+    m = machine.lower()
+    if m in ("x86_64", "amd64", "x64"):
+        return "X64"
+    if m in ("aarch64", "arm64"):
+        return "ARM64"
+    return "ARM" if m.startswith("arm") else machine
+
+
+def platform_need(runs_on: str, system: str, machine: str) -> str | None:
+    """Why a job with this `runs-on:` cannot land on a host of this
+    platform.system() and platform.machine(), or None when it can (or when its
+    labels name no platform). Labels compare case-insensitively, as GitHub
+    matches them."""
+    labels = [lb.lower() for lb in runs_on_labels(runs_on)]
+    systems = {s for lb in labels for word, s in _OS_WORDS if word in lb}
+    if systems and system not in systems:
+        return f"needs {'/'.join(sorted(systems))}; this machine is {system}"
+    arches = {_ARCH_LABELS[lb] for lb in labels if lb in _ARCH_LABELS}
+    arches |= {"ARM64" for lb in labels if lb.endswith("-arm") and any(w in lb for w, _ in _OS_WORDS)}
+    here = machine_arch(machine)
+    if arches and here not in arches:
+        return f"needs {'/'.join(sorted(arches))}; this machine is {here}"
+    return None
+
+
+# ─── 2. Tag-only push tiers ──────────────────────────────────────────────────
+# Events that never start a run for a branch push or a pull request. A workflow
+# whose push trigger filters on tags alone, and whose every other trigger is in
+# this list, is a tag tier: the hosted run of a branch push or PR never
+# executes it, exactly as it never executes a schedule tier. Any other trigger
+# (pull_request, workflow_call, workflow_run, merge_group, create …) may start
+# it on that path, so the workflow stays a push/PR workflow, as it was read
+# before this tier existed.
+_OFF_PUSH_PR = frozenset({"workflow_dispatch", "schedule", "release", "repository_dispatch"})
+
+
+def push_filters(on_block: str) -> dict[str, str] | None:
+    """The filters under an `on:` block's push trigger, name -> value text
+    ({"tags": '["v*"]'}; {} for a bare push), or None when push is not a
+    trigger. Flow and block styles, comments ignored."""
+    lines = [ln for ln in (_uncomment(x) for x in on_block.splitlines()) if ln.strip()]
+    if not lines:
+        return None
+    head = lines[0].split(":", 1)[1].strip() if ":" in lines[0] else ""
+    if head:                                   # on: push | [push, …] | {push: {…}}
+        value = dict(flow_items(head)).get("push")
+        return None if value is None else dict(flow_items(value)) if value.startswith("{") else {}
+    body = lines[1:]
+    if not body:
+        return None
+    pad = min(_indent(ln) for ln in body)
+    for i, ln in enumerate(body):
+        if _indent(ln) != pad:
+            continue
+        item = ln.strip()
+        if item.startswith("- "):              # on:\n  - push
+            if item[2:].strip().strip("'\"") == "push":
+                return {}
+            continue
+        name, _, rest = item.partition(":")
+        if name.strip().strip("'\"") != "push":
+            continue
+        if rest.strip():
+            return dict(flow_items(rest)) if rest.strip().startswith("{") else {}
+        kids = []
+        for nxt in body[i + 1:]:
+            if _indent(nxt) <= pad:
+                break
+            kids.append(nxt)
+        if not kids:
+            return {}
+        kid_pad = min(_indent(k) for k in kids)
+        return {k.strip().partition(":")[0].strip().strip("'\""): k.strip().partition(":")[2].strip()
+                for k in kids if _indent(k) == kid_pad}
+    return None
+
+
+def tag_tier(on_block: str, triggers: set[str]) -> str | None:
+    """The tag filter of a workflow that only a tag push starts — e.g.
+    `tags: ["v*"]` — or None. `triggers` is the workflow's event names."""
+    filters = push_filters(on_block)
+    if filters is None or "push" not in triggers:
+        return None
+    if not filters.keys() & {"tags", "tags-ignore"} or filters.keys() & {"branches", "branches-ignore"}:
+        return None
+    if not triggers - {"push"} <= _OFF_PUSH_PR:
+        return None
+    key = "tags" if "tags" in filters else "tags-ignore"
+    return f"{key}: {filters[key]}" if filters[key] else key   # a block list shows its key
+
+
+def head_tags(repo: Path) -> list[str]:
+    """The tags pointing at the checkout's HEAD; [] outside git."""
+    try:
+        proc = subprocess.run(["git", "-C", str(repo), "tag", "--points-at", "HEAD"],
+                              capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.TimeoutExpired):
+        return []
+    return proc.stdout.split() if proc.returncode == 0 else []
+
+
+# ─── 3. What every step gets ─────────────────────────────────────────────────
+
+
+def parse_env_file(text: str) -> tuple[dict[str, str], str]:
+    """$GITHUB_ENV as the runner reads it: `NAME=value` lines, and
+    `NAME<<DELIMITER` … `DELIMITER` for a multi-line value. (pairs, error); a
+    non-empty error is what makes the runner fail the step that wrote it."""
+    out: dict[str, str] = {}
+    lines = [ln.rstrip("\r") for ln in text.split("\n")]
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        i += 1
+        if not line:
+            continue
+        eq, here = line.find("="), line.find("<<")
+        if eq > 0 and (here < 0 or eq < here):
+            name, value = line.split("=", 1)
+        elif here > 0:
+            name, delimiter = line.split("<<", 1)
+            if not delimiter:
+                return out, f"invalid format {line[:60]!r}"
+            body: list[str] = []
+            while i < len(lines) and lines[i] != delimiter:
+                body.append(lines[i])
+                i += 1
+            if i >= len(lines):
+                return out, f"matching delimiter not found {delimiter[:40]!r}"
+            i += 1
+            value = "\n".join(body)
+        else:
+            return out, f"invalid format {line[:60]!r}"
+        out[name] = value
+    return out, ""
+
+
+def _read(path: str) -> str:
+    try:
+        return Path(path).read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return ""      # a step may delete its own command file
+
+
+class JobFiles:
+    """The per-job directory a runner gives a job: an empty RUNNER_TEMP, and a
+    fresh set of command files for every step attempt. What a step writes to
+    $GITHUB_ENV and $GITHUB_PATH reaches the later steps of the same job, and
+    no other job. $GITHUB_OUTPUT and $GITHUB_STEP_SUMMARY are written and not
+    read: ci-local.py evaluates no `${{ steps.<id>.outputs.* }}`, so a step
+    reading one stays unproven, as before. $GITHUB_STATE likewise."""
+
+    # $GITHUB_STATE too: only an action's post step reads it, but a run: step
+    # inside a hosted job must not write the outer job's.
+    _COMMANDS = {"GITHUB_ENV": "set_env", "GITHUB_PATH": "add_path", "GITHUB_OUTPUT": "set_output",
+                 "GITHUB_STEP_SUMMARY": "step_summary", "GITHUB_STATE": "save_state"}
+
+    def __init__(self, workspace: Path) -> None:
+        # TemporaryDirectory removes itself when collected, so an interrupted
+        # run leaves nothing behind either.
+        self._dir = tempfile.TemporaryDirectory(prefix="ci-local-job-")
+        root = Path(self._dir.name)
+        self.workspace = workspace
+        self.temp = root / "temp"
+        self.temp.mkdir()
+        self._commands = root / "commands"
+        self._commands.mkdir()
+        # Written by earlier steps: env (NAME -> value) and PATH entries, the
+        # newest first, as the runner prepends them.
+        self.env: dict[str, str] = {}
+        self.path: list[str] = []
+        self._attempt = 0
+        self._current: dict[str, str] = {}
+
+    def begin_step(self) -> dict[str, str]:
+        """Empty command files for one step attempt, and the variables that
+        name them. A rerun gets new files: the failed attempt's writes are not
+        applied."""
+        self._attempt += 1
+        self._current = {}
+        for var, stem in self._COMMANDS.items():
+            path = self._commands / f"{stem}_{self._attempt}"
+            path.write_text("", encoding="utf-8")
+            self._current[var] = str(path)
+        return {**self._current, "RUNNER_TEMP": str(self.temp),
+                "GITHUB_WORKSPACE": str(self.workspace)}
+
+    def end_step(self) -> str:
+        """Apply the passing attempt's $GITHUB_ENV and $GITHUB_PATH to the
+        later steps. Returns why the runner would fail the step instead ("" when
+        it would not)."""
+        env, error = parse_env_file(_read(self._current.get("GITHUB_ENV", "")))
+        if error:
+            return f"$GITHUB_ENV: {error} (the runner fails the step that wrote it)"
+        self.env.update(env)
+        for line in _read(self._current.get("GITHUB_PATH", "")).split("\n"):
+            entry = line.rstrip("\r")
+            if entry:
+                if entry in self.path:
+                    self.path.remove(entry)
+                self.path.insert(0, entry)
+        return ""
+
+    def close(self) -> None:
+        self._dir.cleanup()

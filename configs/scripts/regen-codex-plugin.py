@@ -176,6 +176,11 @@ DECLARED_RESOURCES = {
             REPO_ROOT / "configs" / "scripts" / "ci-local.py",
             Path("scripts/ci-local.py"),
         ),
+        # ci-local.py imports it from beside it.
+        (
+            REPO_ROOT / "configs" / "scripts" / "ci_local_runner.py",
+            Path("scripts/ci_local_runner.py"),
+        ),
     ),
     "merge-pr": (
         (

@@ -80,6 +80,9 @@ def test_green_is_native_and_bundles_the_exact_local_ci_runner() -> None:
     source = ROOT / "configs" / "scripts" / "ci-local.py"
     bundled = ROOT / "plugins" / "clade" / "skills" / "green" / "scripts" / "ci-local.py"
     assert bundled.read_bytes() == source.read_bytes()
+    # The module it imports from beside it travels with it, byte for byte.
+    sibling = source.with_name("ci_local_runner.py")
+    assert bundled.with_name(sibling.name).read_bytes() == sibling.read_bytes()
 
     generated = (
         ROOT / "plugins" / "clade" / "skills" / "green" / "SKILL.md"
