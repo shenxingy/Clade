@@ -4162,8 +4162,9 @@ base rate), so the estimate goes on the statusline as a range.
 - [x] 🔵 **Kimi and Codex footers drop the `git:(branch)` label** — 2026-11-23,
   owner: the trim "应该适用于cx kimi". `kimi_usage.py`, `codex_usage.py` and the
   Codex fork's formatter print the branch in red with no label, as the Claude
-  Code line has since 2026-11-20. Neither footer fits `COLUMNS`: Kimi and Codex
-  give a custom command no pane width, and neither shows task time.
+  Code line has since 2026-11-20. Stock Codex runs no custom footer command; its
+  native items read `Clade · main · weekly 71% left`. Neither footer fits
+  `COLUMNS` (Kimi gives its command no pane width) or shows task time.
 - [ ] 🔵 **#259 review residue** (independent review, round 2: 0 blocking; these
   are its non-blocking findings, each reproduced by the reviewer):
   - `task-eta.py` is 1,452 of 1,500 lines after the 2026-11-23 line trim.
