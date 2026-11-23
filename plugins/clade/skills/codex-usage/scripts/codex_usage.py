@@ -414,6 +414,9 @@ def _merge_status_line(text: str, layout: str = "merge") -> tuple[str, bool]:
 
 def setup_status_line(path: Path | None = None, layout: str = "merge") -> bool:
     path = path or codex_home() / "config.toml"
+    # Write through a symlink: Codex profiles link config.toml to one shared
+    # file, and replacing the link would detach the profile from it.
+    path = path.resolve()
     try:
         original = path.read_text(encoding="utf-8")
         original_mode = path.stat().st_mode & 0o777

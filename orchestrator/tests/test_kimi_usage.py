@@ -556,6 +556,19 @@ def test_setup_writes_tui_toml_and_requires_the_deployed_launcher(tmp_path: Path
     assert (tmp_path / "tui.toml").read_text(encoding="utf-8") == STOCK_TUI
 
 
+def test_setup_writes_through_a_symlinked_tui_toml(tmp_path: Path) -> None:
+    shared = tmp_path / "shared.toml"
+    shared.write_text(STOCK_TUI, encoding="utf-8")
+    (tmp_path / "tui.toml").symlink_to(shared)
+    launcher = tmp_path / "hooks" / "statusline.sh"
+    launcher.parent.mkdir()
+    launcher.write_text("#!/bin/sh\n", encoding="utf-8")
+
+    assert kimi_usage.setup_status_line(tmp_path) is True
+    assert (tmp_path / "tui.toml").is_symlink()
+    assert f'command = "{launcher}"' in shared.read_text(encoding="utf-8")
+
+
 # ─── Server discovery and the documented API ───
 
 

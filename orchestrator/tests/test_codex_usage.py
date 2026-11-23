@@ -107,6 +107,21 @@ def test_setup_adds_recommended_footer_when_tui_is_missing(tmp_path: Path) -> No
     assert codex_usage.setup_status_line(config) is False
 
 
+def test_setup_writes_through_a_symlinked_config(tmp_path: Path) -> None:
+    # Codex profiles link config.toml to one shared file; setup must edit that
+    # file, not replace the link with a detached copy.
+    shared = tmp_path / "shared" / "config.toml"
+    shared.parent.mkdir()
+    shared.write_text('[tui]\nstatus_line = ["custom", "model-with-reasoning"]\n', encoding="utf-8")
+    link = tmp_path / "profile" / "config.toml"
+    link.parent.mkdir()
+    link.symlink_to(shared)
+
+    assert codex_usage.setup_status_line(link, layout="minimal") is True
+    assert link.is_symlink() and link.resolve() == shared.resolve()
+    assert json.dumps(codex_usage.MINIMAL_STATUS_LINE) in shared.read_text(encoding="utf-8")
+
+
 def test_setup_merges_usage_fields_without_replacing_existing_items(tmp_path: Path) -> None:
     config = tmp_path / "config.toml"
     config.write_text(

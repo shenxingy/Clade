@@ -994,7 +994,8 @@ def setup_status_line(home: Path | None = None, enable: bool = True) -> bool:
     import tempfile
 
     home = home or kimi_home()
-    path = home / "tui.toml"
+    # Write through a symlink, so a linked tui.toml stays linked to its target.
+    path = (home / "tui.toml").resolve()
     try:
         original = path.read_text(encoding="utf-8")
         mode = path.stat().st_mode & 0o777
