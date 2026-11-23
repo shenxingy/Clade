@@ -127,7 +127,8 @@ _GREY = re.compile(r"^#(?:([0-9a-f])\1\1|([0-9a-f]{2})\2\2)$", re.I)
 _DOCTYPE = re.compile(r"^\s*<!doctype html>", re.I)
 _CHARSET = re.compile(r"<meta\s+charset", re.I)
 _VIEWPORT = re.compile(r"<meta\s+name=[\"']?viewport", re.I)
-_DECK_HINT = re.compile(r"deck|lede|abstract|summary|tldr|tl;dr|short version|一句话|先看结论|摘要", re.I)
+# tldr and tl;dr are not here: they name the lead (LEAD_IDS, _LEAD_LABEL), and a lead is not the deck
+_DECK_HINT = re.compile(r"deck|lede|abstract|summary|short version|一句话|先看结论|摘要", re.I)
 
 
 # ─── Lead ────────────────────────────────────────────────────────────────────
@@ -175,6 +176,11 @@ _ASK = re.compile(
 _LEAD_NAVLIKE = re.compile(r"(?:^|\s)(?:toc|contents|reading-contents|tour|modal)(?:\s|$)", re.I)
 _WL_TODO = re.compile(r"^(?:\d+\s*[·.、]?\s*)?(?:human todo|needs you|需要你|要你)", re.I)
 _WL_GOAL_NOW = re.compile(r"^(?:\d+\s*[·.、]?\s*)?(?:goal|now|目标|现在|当前)\b", re.I)
+
+# A label or heading anchor is its own ask when its opening words say so
+# (Needs you, Human TODO): the first this many characters, not a whole text
+# node that only mentions Human TODO further on.
+_ANCHOR_CHARS = 60
 
 # Hidden text is not counted and carries no anchors.
 _LEAD_HIDDEN_TAGS = frozenset({"script", "style", "svg", "noscript", "template", "dialog", "nav", "aside"})
@@ -274,8 +280,8 @@ class _Page(HTMLParser):
         self.lead_units = 0.0
         self.h1_end: float | None = None             # units at the end of the first visible <h1>
         self.h1_text = ""
-        self._in_h1 = False
-        self._lhead: tuple[str, float, int] | None = None  # the open heading: (tag, start, stack index)
+        self._h1_at: int | None = None               # stack index of the headline while it is open
+        self._lhead: tuple[str, float, int] | None = None  # the open h2-h4: (tag, start, stack index)
         self._lhead_text = ""                        # and its text so far
         self._fresh: int | None = None               # stack index of a block opened with no text yet
         self.lead_heads: list[tuple[str, str, float]] = []     # visible h2-h4: (tag, text, start)
@@ -302,6 +308,10 @@ class _Page(HTMLParser):
         self._lead_implied_end(tag)  # before the void check: <hr> ends a <p>
         if tag in _VOID:
             return  # no end tag will ever pop it
+        if tag in _HEADINGS and self._lstack and self._lstack[-1][0] in _HEADINGS:
+            # HTML's rule: a heading's start tag ends a heading that is the
+            # current node, so <h2>Now<h2>Human TODO</h2> is two headings
+            self._lead_pop_to(len(self._lstack) - 1)
         toks = {t.lower().replace("_", "-") for t in (a.get("id", "") + " " + a.get("class", "") + " " + a.get("data-role", "")).split()}
         hidden = (self._lead_hidden() or tag in _LEAD_HIDDEN_TAGS or a.get("role", "").lower() == "navigation"
                   or "hidden" in a or a.get("aria-hidden", "").lower() == "true"
@@ -316,26 +326,15 @@ class _Page(HTMLParser):
             return  # hidden elements carry no anchors
         if toks & LEAD_IDS:
             self.lead_anchors.append((self.lead_units, "role", " ".join(sorted(toks & LEAD_IDS))))
-        if tag in ("h1", "h2", "h3", "h4"):
-            if tag == "h1" and self.h1_end is None:
-                self._in_h1 = True
+        if tag == "h1" and self.h1_end is None and self._h1_at is None:
+            self._h1_at = here           # the headline: the lead is measured from its end
+        # a heading opened inside an open h2-h4 (in a <span>, say) is part of
+        # that heading's text, not a heading of its own; the headline is kept
+        # apart above and never joins the work-log order
+        if tag in ("h2", "h3", "h4") and self._lhead is None:
             self._lhead, self._lhead_text = (tag, self.lead_units, here), ""
         elif tag in _LEAD_BLOCKS:
             self._fresh = here
-
-    def _lead_close_heading(self) -> None:
-        if self._in_h1:
-            self._in_h1 = False
-            self.h1_end = self.lead_units
-        if self._lhead is None:
-            return
-        tag, start, _ = self._lhead
-        text = _norm(self._lhead_text)
-        self._lhead = None
-        if tag != "h1":
-            self.lead_heads.append((tag, text, start))
-            if _LEAD_HEAD.search(text):
-                self.lead_anchors.append((start, "head", text))
 
     def _lead_end(self, tag: str) -> None:
         # void, stray or already closed: changes nothing, and costs nothing —
@@ -355,7 +354,15 @@ class _Page(HTMLParser):
             self._lopen[entry[0]] -= 1
         del self._lstack[i:]
         if self._lhead is not None and self._lhead[2] >= i:
-            self._lead_close_heading()   # the open heading was among them
+            tag, start, _ = self._lhead  # the open heading was among them
+            text = _norm(self._lhead_text)
+            self._lhead = None
+            self.lead_heads.append((tag, text, start))
+            if _LEAD_HEAD.search(text):
+                self.lead_anchors.append((start, "head", text[:_ANCHOR_CHARS]))
+        if self._h1_at is not None and self._h1_at >= i:
+            self._h1_at = None           # and so was the headline
+            self.h1_end = self.lead_units
         if self._fresh is not None and self._fresh >= i:
             self._fresh = None           # the block closed with no text: what follows is not inside it
 
@@ -366,15 +373,20 @@ class _Page(HTMLParser):
         # a heading's text keeps the spaces between its inline elements
         if self._lhead is not None:
             self._lhead_text += data
-        if self._in_h1:
+        if self._h1_at is not None:
             self.h1_text += data
         if not data.strip():
             return  # whitespace between tags is never a block's first text
         if self._fresh is not None and not self._in_heading() and _LEAD_LABEL_RE.search(data):
-            self.lead_anchors.append((self.lead_units, "label", _norm(data)))
+            self.lead_anchors.append((self.lead_units, "label", _norm(data)[:_ANCHOR_CHARS]))
         self._fresh = None
         self.lead_text.append((self.lead_units, data))
         self.lead_units += units(data)
+
+    def close(self) -> None:
+        super().close()
+        if self._lstack:
+            self._lead_pop_to(0)   # what the page never closed ends with it, a heading too
 
     # tags ---------------------------------------------------------------
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
@@ -732,10 +744,11 @@ def lint_html(html: str, *, declared_type: str | None = None) -> tuple[list[Find
     if kind != "worklog" and kind != "landing":
         # the deck sits under the lead: the lead's own paragraphs (inside a
         # LEAD_IDS element, or opening with a lead label) are not the deck and
-        # do not use up the six places it is looked for in
+        # do not use up the six places it is looked for in. Any other <p>
+        # takes a place, an empty or image-only one too, as before the lead.
         under = [x for x, in_lead in zip(p.pars, p.par_lead)
-                 if x and not in_lead and not _LEAD_LABEL_RE.search(x.replace("\u00a0", " "))]
-        first = under[:6]
+                 if not in_lead and not _LEAD_LABEL_RE.search(x.replace("\u00a0", " "))]
+        first = [x for x in under[:6] if x]
         deck = max(first, key=lambda x: len(x.split()) + len(_CJK.findall(x)) // 2, default="")
         deck_len = len(deck.split()) + len(_CJK.findall(deck)) // 2
         total = sum(len(x.split()) + len(_CJK.findall(x)) // 2 for x in first)
@@ -1217,6 +1230,53 @@ def _self_test() -> int:
     places = deck_of(_lead_page(asof, '<section id="bottom-line">' + "<p>Point.</p>" * 6 + "</section>"
                                       f"<p>{long_words}</p>"))
     expect(places == [], f"six lead paragraphs do not use up the places a deck under the lead is looked for in, got {places}")
+    # ... while any other <p> takes a place, an empty or image-only one too, and the places are six
+    empties = deck_of(_lead_page(asof + "<p></p>" * 3 + '<p><img src="x" alt=""></p>' * 2, _LEAD_OK + f"<p>{long_words}</p>"))
+    expect(len(empties) == 1, f"empty and image-only paragraphs take places as they did before the lead, got {empties}")
+    sixth = deck_of(_lead_page(asof, _LEAD_OK + "<p>Point.</p>" * 4 + f"<p>{long_words}</p>"))
+    expect(sixth == [], f"a deck in the sixth place counts, got {sixth}")
+    seventh = deck_of(_lead_page(asof, _LEAD_OK + "<p>Point.</p>" * 5 + f"<p>{long_words}</p>"))
+    expect(len(seventh) == 1, f"a deck in the seventh place does not, got {seventh}")
+    # a tldr lead is the lead, so it does not stand in for the deck under it, by id or by heading
+    for tldr in ('<section id="tldr"><p><strong>Bottom line:</strong> the parser is fixed.</p>'
+                 "<p><strong>Needs you:</strong> approve it.</p></section>",
+                 "<h2>TL;DR</h2><p>The parser is fixed. Needs you: approve it.</p>"):
+        no_deck = deck_of(_lead_page(asof, tldr))
+        expect(len(no_deck) == 1, f"a TL;DR lead with no deck under it has no deck, got {no_deck} for {tldr[:24]!r}")
+
+    # (round 4) only anchors at the lead's own place are the lead: a Needs you heading far below is not its ask
+    far_ask = lead_of(_lead_page(asof, '<section id="bottom-line"><p><strong>Bottom line:</strong> the parser is fixed.</p></section>'
+                                       + prose(150) + "<h2>Needs you</h2><p>approve the release.</p>"))
+    expect([f for f, _ in far_ask] == ["lead-ask"], f"a Needs you heading 150 units below the lead is not the lead's ask, got {far_ask}")
+    todo_label = lead_of(_lead_page(asof, "<p>Human TODO: ship it.</p>"))
+    expect(todo_label == [], f"a Human TODO: label is itself the ask, got {todo_label}")
+    late_todo = lead_of(_lead_page(asof, "<p>Bottom line: " + " ".join(["word"] * 15) + " and a Human TODO later.</p>"))
+    expect([f for f, _ in late_todo] == ["lead-ask"],
+           f"a label is its own ask by its first {_ANCHOR_CHARS} characters, not by a Human TODO further on, got {late_todo}")
+    late_head = lead_of(_lead_page(asof, "<h2>Next steps for every arm of the full evaluation, and then the Human TODO list</h2>"
+                                         "<p>The parser is fixed.</p>"))
+    expect([f for f, _ in late_head] == ["lead-ask"],
+           f"a heading is its own ask by its first {_ANCHOR_CHARS} characters too, got {late_head}")
+    # a heading's start tag ends a heading that is the current node, as HTML ends it;
+    # one opened deeper inside a heading is part of that heading's text
+    for nested in ("<h2>Needs you<h3>approve the release</h3></h2>", "<h2><span>Needs you <h3>approve the release</h3></span></h2>"):
+        got = lead_of(_lead_page(asof, nested + "<p>The parser is fixed.</p>"))
+        expect(got == [], f"{nested} keeps its Needs you heading, got {got}")
+    two = lead_of(_WORKLOG.replace("<h2>Human TODO</h2>", "<h2>Now<h2>Human TODO</h2>"))
+    expect([f for f, _ in two] == ["lead"] and "puts Now before Human TODO" in two[0][1],
+           f"<h2>Now<h2>Human TODO</h2> is two headings, Now first, got {two}")
+    eof = lead_of(_lead_page(asof, "").replace("<h2>Evidence</h2><p>Body text.</p></body></html>", "<h2>Needs you: approve the release"))
+    expect(eof == [], f"a heading the page never closes ends with the page, got {eof}")
+    # the work-log order reads every numbered separator and both languages, and Goals is not Goal
+    for heads, named in (("<h2>1. Goal</h2><p>g</p><h2>2. Human TODO</h2>", "Goal"),
+                         ("<h2>1、目标</h2><p>g</p><h2>2、需要你</h2>", "Goal"),
+                         ("<h2>现在</h2><p>n</p><h2>要你决定</h2>", "Now")):
+        got = lead_of(re.sub(r"<h2>Human TODO</h2>.*?(?=<h2>Timeline)",
+                             heads + "<ul><li>a</li></ul><h2>Blockers</h2><p>none</p>", _WORKLOG, flags=re.S))
+        expect([f for f, _ in got] == ["lead"] and f"puts {named} before Human TODO" in got[0][1],
+               f"{heads} puts {named} before the owner's part, got {got}")
+    goals = lead_of(_WORKLOG.replace("<h2>Human TODO</h2>", "<h2>Goals</h2><p>g</p><h2>Human TODO</h2>"))
+    expect(goals == [], f"a Goals heading is not the Goal label, got {goals}")
 
     # a stack held in a custom property is a stack
     tok = _GOOD.replace("body{font-family:Menlo,monospace;", "body{font-family:var(--mono);").replace(":root{--ink:#0a0a0a;", ":root{--mono:Menlo,monospace;--ink:#0a0a0a;")
