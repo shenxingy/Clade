@@ -4189,3 +4189,16 @@ base rate), so the estimate goes on the statusline as a range.
     `CLADE_TASK_ETA_FIT_DELAY=3` outlasting five calls on a loaded host.
   - The slt skill's `when_to_use` now says "eta" and "time left". Watch
     whether it attracts unrelated ETA questions.
+
+## 2026-11-23 Codex profile follow-ups
+
+- [ ] 🟡 **Codex profiles with their own files miss Clade's hooks and agents.**
+  `install.sh` writes `~/.codex` only, and since 2026-11-23 also refreshes the
+  instruction block in each `~/.codex-profiles/*/AGENTS.md` that is a file of
+  its own. Nothing else reaches such a profile. On the author's host the
+  daily-use profile's `hooks.json` (last written 2026-10-28) carried 1 hook
+  command against 4 in `~/.codex/hooks.json`, missing `decision-to-codex.sh`,
+  so the Clade hook wirings never run under it. Decide whether `install.sh`
+  merges hooks into every profile (`codex-hooks-merge.py` per target) or
+  links each profile's `hooks.json` to `~/.codex`, as the linked profiles
+  already do for `config.toml` and `AGENTS.md`.

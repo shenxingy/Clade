@@ -394,6 +394,14 @@ mkdir -p "$CLAUDE_DIR/output-styles"
 printf '%s\n' '---' 'name: My Own Style' 'description: User-authored.' '---' \
   > "$CLAUDE_DIR/output-styles/my-own.md"
 
+# Codex profiles (CODEX_HOME=~/.codex-profiles/<name>): one with its own
+# AGENTS.md carrying a stale block, one linked to ~/.codex/AGENTS.md, one with none.
+PROFILES="$HOME/.codex-profiles"
+mkdir -p "$PROFILES/own" "$PROFILES/linked" "$PROFILES/none"
+printf '%s\n' '# profile-user-rule-7f3a' '' '<!-- BEGIN CLADE ADAPTIVE DELEGATION -->' \
+  'stale-profile-block-7f3a' '<!-- END CLADE ADAPTIVE DELEGATION -->' > "$PROFILES/own/AGENTS.md"
+ln -s "$CODEX_DIR/AGENTS.md" "$PROFILES/linked/AGENTS.md"
+
 install_log2="$SANDBOX/install-2.log"
 if bash "$SRC/install.sh" </dev/null >"$install_log2" 2>&1; then
   pass "second install.sh run exits 0 (idempotent)"
@@ -401,6 +409,28 @@ else
   fail "second install.sh run exits 0 (idempotent)" "see $install_log2"
   tail -30 "$install_log2"
 fi
+
+section "Codex profiles with their own AGENTS.md get the current block"
+own="$PROFILES/own/AGENTS.md"
+own_user=$(grep -c 'profile-user-rule-7f3a' "$own" 2>/dev/null || true)
+own_block=$(grep -c '<!-- BEGIN CLADE ADAPTIVE DELEGATION -->' "$own" 2>/dev/null || true)
+own_delivery=$(grep -c '^## Delivery Completion$' "$own" 2>/dev/null || true)
+if [[ "${own_user:-0}" -eq 1 && "${own_block:-0}" -eq 1 && "${own_delivery:-0}" -eq 1 ]] \
+   && ! grep -q 'stale-profile-block-7f3a' "$own"; then
+  pass "a profile's own AGENTS.md: stale block replaced, user text kept once"
+else
+  fail "a profile's own AGENTS.md: stale block replaced, user text kept once" \
+    "user=$own_user block=$own_block delivery=$own_delivery stale=$(grep -c stale-profile-block-7f3a "$own")"
+fi
+[[ -L "$PROFILES/linked/AGENTS.md" ]] \
+  && pass "a profile's linked AGENTS.md stays a link" \
+  || fail "a profile's linked AGENTS.md stays a link"
+[[ ! -e "$PROFILES/none/AGENTS.md" ]] \
+  && pass "a profile with no AGENTS.md gets none created" \
+  || fail "a profile with no AGENTS.md gets none created"
+grep -qF "Refreshed the Clade block in $own" "$install_log2" \
+  && pass "install names each refreshed profile file" \
+  || fail "install names each refreshed profile file" "see $install_log2"
 
 if [[ -e "$CLAUDE_DIR/agents/available-skills.md" ]]; then
   fail "reinstall migrates away stale agents/available-skills.md"
