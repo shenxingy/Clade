@@ -312,9 +312,11 @@ class _Page(HTMLParser):
             # HTML's rule: a heading's start tag ends a heading that is the
             # current node, so <h2>Now<h2>Human TODO</h2> is two headings
             self._lead_pop_to(len(self._lstack) - 1)
+        # values are compared trimmed: aria-hidden=" true " hides, role="navigation " is
+        # navigation, and split() trims each id/class/data-role token; hidden counts by presence
         toks = {t.lower().replace("_", "-") for t in (a.get("id", "") + " " + a.get("class", "") + " " + a.get("data-role", "")).split()}
-        hidden = (self._lead_hidden() or tag in _LEAD_HIDDEN_TAGS or a.get("role", "").lower() == "navigation"
-                  or "hidden" in a or a.get("aria-hidden", "").lower() == "true"
+        hidden = (self._lead_hidden() or tag in _LEAD_HIDDEN_TAGS or a.get("role", "").strip().lower() == "navigation"
+                  or "hidden" in a or a.get("aria-hidden", "").strip().lower() == "true"
                   or bool(_LEAD_NAVLIKE.search(" ".join(sorted(toks)))))
         here = len(self._lstack)
         near = tuple(here if tag in kind else (-1 if tag in scope else n)
@@ -1277,6 +1279,39 @@ def _self_test() -> int:
                f"{heads} puts {named} before the owner's part, got {got}")
     goals = lead_of(_WORKLOG.replace("<h2>Human TODO</h2>", "<h2>Goals</h2><p>g</p><h2>Human TODO</h2>"))
     expect(goals == [], f"a Goals heading is not the Goal label, got {goals}")
+
+    # (v3) every page but a declared reference or landing is checked: an unknown type is the argued default
+    report = lead_of(_lead_page(prose(150), kind="report"))
+    expect([f for f, _ in report] == ["lead"], f"a page declaring the unknown type report is checked, got {report}")
+    expect(lead_of(_lead_page(prose(150), kind="reference")) == [], "the same page declaring reference is not")
+    # (v3) a heading's start tag ends an h1 that is the current node; a heading opened deeper joins the open one
+    open_h1 = lead_of(_lead_page("", "<h2>Needs you: approve.</h2>").replace("</h1>", "", 1))
+    expect(open_h1 == [], f"<h1>Title<h2>Needs you: approve.</h2> ends the h1 at the h2, got {open_h1}")
+    # ... which shows only when the page asks nothing: an h1 left open would run to the end and hold every anchor
+    open_h1_quiet = lead_of(_lead_page("", "<h2>Next steps</h2><p>Ship it on Friday.</p>").replace("</h1>", "", 1))
+    expect([f for f, _ in open_h1_quiet] == ["lead-ask"],
+           f"<h1>Title<h2>Next steps</h2> ends the h1 at the h2, so Next steps is the lead, got {open_h1_quiet}")
+    joined = lead_of(_lead_page(asof, "<h2>Next steps <span><h3>x</h3></span></h2><p>You must approve.</p>"))
+    expect(joined == [], f"<h2>Next steps <span><h3>x</h3></span></h2> is one Next steps heading, got {joined}")
+    # (v3) the headline is the first h1 only: an h1 opened inside it does not move where it ends
+    inner_h1 = lead_of(_lead_page(prose(150), "", h1="The parser ships <span><h1>Friday</h1></span>; you must approve it."))
+    expect(inner_h1 == [], f"an h1 inside the open headline neither ends it nor takes its place, got {inner_h1}")
+    # (v3) the page's end ends every element still open, the innermost and the ones around it
+    tail = lead_of(_WORKLOG.replace("<h2>Human TODO</h2><ul><li>a</li></ul>", "").replace("</body></html>", "<h2>Human TODO"))
+    expect([f for f, _ in tail] == ["lead"] and "puts Now before Human TODO" in tail[0][1],
+           f"an unclosed final <h2>Human TODO is still a work-log heading, got {tail}")
+    wrapped_eof = lead_of(_lead_page(asof, "").replace("<h2>Evidence</h2><p>Body text.</p></body></html>",
+                                                       "<h2>Needs you: approve the release <em>by Friday"))
+    expect(wrapped_eof == [], f"an unclosed heading around an unclosed <em> still ends with the page, got {wrapped_eof}")
+    # (v3) a <p> carrying a lead token itself is a lead paragraph, so it is not the deck
+    own_tldr = deck_of(_lead_page(asof, f'<p id="tldr">{long_words}</p><p><strong>Needs you:</strong> approve it.</p>'))
+    expect(len(own_tldr) == 1, f"<p id=\"tldr\"> is the lead by its own token, not the deck, got {own_tldr}")
+    # (v3) attribute values are compared trimmed, and an id/class/data-role token is trimmed of every space
+    for wrap in ('<div aria-hidden=" true ">{}</div>', '<div role="navigation ">{}</div>'):
+        padded = lead_of(_lead_page(wrap.format(prose(150))))
+        expect(padded == [], f"text inside {wrap.format('…')} is hidden as it is unpadded, got {padded}")
+    tabbed = lead_of(_lead_page(asof, '<div id="\tbottom-line ">\n<p>It ships on Friday. Nothing needed from you.</p></div>'))
+    expect(tabbed == [], f"id=\"\\tbottom-line \" marks the lead, got {tabbed}")
 
     # a stack held in a custom property is a stack
     tok = _GOOD.replace("body{font-family:Menlo,monospace;", "body{font-family:var(--mono);").replace(":root{--ink:#0a0a0a;", ":root{--mono:Menlo,monospace;--ink:#0a0a0a;")
