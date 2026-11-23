@@ -4122,36 +4122,21 @@ on 1,137 human-started episodes (450 main-thread transcripts, five profiles,
 A model-written ETA is ruled out (no clock; its estimates add little beyond a
 base rate), so the estimate goes on the statusline as a range.
 
-- [ ] 🟠 **Statusline task-ETA segment** — #259 (`feat/statusline-task-eta`,
-  open 2026-11-19): `configs/scripts/task-eta.py` prints task elapsed
-  plus a p25-p75 remaining band from a 30-day survival lookup, "beyond history"
-  past its support, and the in-flight background job when the main thread is
-  idle; `install.sh` sets `statusLine.refreshInterval: 10` unless the user set
-  one. Acceptance: ci-local green, mutations red, and a live screenshot of the
-  segment updating during a background Workflow.
-- [ ] 🟠 **Owner: decide the three knob trials.** None of these has a measured
-  wall-time effect; the research measured only how much time each governs.
-  Run each as a concurrent treated-vs-control split through one project's
-  `.claude/settings.local.json` (all five profiles share one `settings.json`,
-  and Workflow use fell after 11-10, so before/after is confounded), with
-  `outcome-scorecard.py --since 14` as the rework guard:
-  1. `ultracode` opt-in with `workflowSizeGuideline: "medium"` — governs the
-     Workflow wait, 21.3% of episode wall (1,585 h, n = 1,137).
-  2. Default effort `medium`, xhigh or `ultrathink` on hard turns — governs
-     model time, 56.3% of turn wall (423.4 h, 3,749 turns).
-  3. `stop-check.sh` warns instead of blocking — it blocked 634 of 3,945 Stop
-     events in 30 d and the model continued after 632, 20.16 h of re-entry.
-- [ ] 🟡 **Commit the time decomposer as an instrument.** The trials above need
-  it, and the research copy lives in a scratch directory that will be deleted.
-  Port the run's `decompose.py` (turn/episode segmentation, interval-union tool
-  time, background-wait attribution) and `stopreentry.py` into
-  `configs/scripts/`, with a `--self-test` whose mutations go red. Validation to
-  keep: model time 0.95x `totalAPIDuration` and tool time 1.03x
-  `totalToolDuration` in 301 sessions without subagents.
-- [ ] 🟡 **Why did 39% of main-thread Opus 5.5 calls run at `max` effort?**
-  30,937 of 79,002 calls (30 d), while `settings.json` says `xhigh`. Find what
-  raises it (ultracode, `ultrathink` keywords, a skill, a Workflow `effort`)
-  before the effort trial, or the trial's control is not what it seems.
+- [x] 🟠 **Statusline task-ETA segment** — #259 and #260, merged 2026-11-20:
+  task elapsed, the job waited on, a Monitor's bound, the line fitted to
+  `COLUMNS`; `install.sh` sets `statusLine.refreshInterval: 10` unless the user
+  set one. The remaining-time band left the line on 2026-11-23.
+- [x] 🟠 **The three knob trials — owner decided not to run them, 2026-11-23.**
+  "我不希望影响到cc自己的实力，再来一轮，自动选择effort我认为是智力的体现": the
+  Workflow-size and default-effort trials would buy speed with capability, and
+  the owner settled on "不要过于追求时间" — a task with a hard limit gets a
+  budget stated in the conversation (`configs/CLAUDE.md` § Autonomy). Closed
+  with them: committing the time decomposer as an instrument (the trials were
+  its only consumer; the research copy stays in the run's scratch directory)
+  and tracing why 39% of main-thread Opus 5.5 calls ran at `max` (a
+  precondition of the effort trial; the effort choice is the model's). The
+  third trial, `stop-check.sh` warning instead of blocking, is a hook, not the
+  model's judgement, and was not raised again; re-open it on its own evidence.
 - [ ] 🟡 **`commit-archeology.sh` hit its 15 s SessionStart timeout 26 times
   in 181 recorded starts** (main thread, 30 d). A timed-out SessionStart hook
   delivers nothing and delays the first turn. Profile it on the largest repo
