@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # test-statusline-eta.sh — the status line's task-time segment, end to end.
 #
-# configs/scripts/task-eta.py prints "wait 20m · workflow 20m" (and, with
-# --forms, two shorter forms); configs/scripts/statusline-command.sh calls it
+# configs/scripts/task-eta.py prints "20m workflow" (and, with --forms, the
+# shorter "20m" too); configs/scripts/statusline-command.sh calls it
 # inline with the status-line JSON and fits the whole line to COLUMNS, the pane's
 # width; install.sh adds statusLine.refreshInterval so the line keeps
 # refreshing while the main thread is idle. This runs install.sh against a
@@ -12,12 +12,12 @@
 #   install: a fresh install sets refreshInterval 10 and installs task-eta.py; a
 #   reinstall keeps a refreshInterval the user set and adds 10 where it is
 #   absent (the Windows/Git Bash rewrite is pinned in tests/test-install.sh);
-#   the line: a Workflow in flight after its turn reads "wait … · workflow", and
+#   the line: a Workflow in flight after its turn reads "20m workflow", and
 #   still does after a later prompt; a Workflow stopped with TaskStop, or one
-#   whose launch was refused, is not shown; no estimate past 4 h; the fit to a
-#   pane 94, 90, 80, 46, 35 and 29 columns wide (at 90 the drop-in alone is too
-#   much), with no "git:(" label, the task state last to go and a dropped piece
-#   put back where a later step made room;
+#   whose launch was refused, is not shown (idle prints nothing); no estimate
+#   past 4 h; the fit to a pane 94, 80, 70, 46, 35 and 29 columns wide (at 80
+#   the drop-in alone is too much), with no "git:(" label and the task time
+#   last to go;
 #   a missing model prints elapsed time only and starts ONE detached refit
 #   that writes the model; five concurrent calls start one refit, not five;
 #   fail soft: no transcript, an empty one, a directory, malformed lines, stdin
@@ -246,7 +246,7 @@ section "No model yet: elapsed only, and one detached refit"
 
 rm -f "$MODEL" "$LOCK" "$FITLOG"
 sl "$T20" "$FIX/wf.jsonl"
-if [[ $RC -eq 0 && "$OUT" == "work wait 20m · workflow 20m" ]]; then
+if [[ $RC -eq 0 && "$OUT" == "work 20m workflow" ]]; then
   pass "elapsed only while the model is missing: '$OUT'"
 else
   fail "elapsed only while the model is missing" "rc=$RC out='$OUT' err='$ERR'"
@@ -263,36 +263,36 @@ fi
 section "The segment, with a model fitted from the synthetic history"
 
 sl "$T20" "$FIX/wf.jsonl"
-if [[ $RC -eq 0 && "$OUT" == "work wait 20m · workflow 20m" ]]; then
-  pass "wait · workflow, its band too wide to print: '$OUT'"
+if [[ $RC -eq 0 && "$OUT" == "work 20m workflow" ]]; then
+  pass "elapsed and the job it waits on, no band: '$OUT'"
 else
-  fail "wait · workflow, its band too wide to print" "rc=$RC out='$OUT' err='$ERR'"
+  fail "elapsed and the job it waits on, no band" "rc=$RC out='$OUT' err='$ERR'"
 fi
-if [[ "$RAW" == *$'\033[2mwait 20m'* ]]; then
+if [[ "$RAW" == *$'\033[2m20m workflow'* ]]; then
   pass "the segment is dim"
 else
   fail "the segment is dim" "raw=$(printf '%q' "$RAW")"
 fi
 sl "$T30" "$FIX/wf-later-prompt.jsonl"
-if [[ "$OUT" == "work wait 20m · workflow 30m" ]]; then
+if [[ "$OUT" == "work 20m workflow" ]]; then
   pass "a prompt typed while the Workflow runs still shows it: '$OUT'"
 else
   fail "a prompt typed while the Workflow runs still shows it" "out='$OUT'"
 fi
 sl "$T2" "$FIX/stopped.jsonl"
-if [[ $RC -eq 0 && "$OUT" == "work idle 57s · took 1m" ]]; then   # T2 is whole seconds: 57.893 s idle
+if [[ $RC -eq 0 && "$OUT" == "work" ]]; then   # idle: the segment prints nothing
   pass "a Workflow stopped with TaskStop is no longer shown in flight: '$OUT'"
 else
   fail "a Workflow stopped with TaskStop is no longer shown in flight" "rc=$RC out='$OUT' err='$ERR'"
 fi
 sl "$T20" "$FIX/refused.jsonl"
-if [[ $RC -eq 0 && "$OUT" == "work idle 20m · took 9s" ]]; then
+if [[ $RC -eq 0 && "$OUT" == "work" ]]; then
   pass "a Workflow whose launch was refused is not shown in flight: '$OUT'"
 else
   fail "a Workflow whose launch was refused is not shown in flight" "rc=$RC out='$OUT' err='$ERR'"
 fi
 sl "$T300" "$FIX/fg.jsonl"
-if [[ "$OUT" == "work run 5.0h" ]]; then
+if [[ "$OUT" == "work 5.0h" ]]; then
   pass "past 4 h: elapsed only, no estimate: '$OUT'"
 else
   fail "past 4 h: elapsed only, no estimate" "out='$OUT'"
@@ -320,21 +320,21 @@ else
   fail "stdin that is not JSON" "rc=$RC out='$OUT' err='$ERR'"
 fi
 sl "$T20" "$FIX/malformed.jsonl"
-if [[ $RC -eq 0 && "$OUT" == "work wait 20m · workflow 20m" && "$ERR" != *Traceback* ]]; then
+if [[ $RC -eq 0 && "$OUT" == "work 20m workflow" && "$ERR" != *Traceback* ]]; then
   pass "malformed lines are skipped, the rest still read: '$OUT'"
 else
   fail "malformed lines are skipped, the rest still read" "rc=$RC out='$OUT' err='$ERR'"
 fi
 printf '{"version": 1, "grid_s": "corrupt"' > "$MODEL"
 sl "$T20" "$FIX/wf.jsonl"
-if [[ $RC -eq 0 && "$OUT" == "work wait 20m · workflow 20m" && "$ERR" != *Traceback* ]]; then
+if [[ $RC -eq 0 && "$OUT" == "work 20m workflow" && "$ERR" != *Traceback* ]]; then
   pass "a corrupt model reads as no model: elapsed only"
 else
   fail "a corrupt model reads as no model: elapsed only" "rc=$RC out='$OUT' err='$ERR'"
 fi
 wait_for_model >/dev/null    # that call refits too; let it finish before the lock case
 CLAUDE_CONFIG_DIR="$SANDBOX/no-such-config-dir" sl "$T20" "$FIX/wf.jsonl"
-if [[ $RC -eq 0 && "$OUT" == "work wait 20m · workflow 20m" && "$ERR" != *Traceback* ]]; then
+if [[ $RC -eq 0 && "$OUT" == "work 20m workflow" && "$ERR" != *Traceback* ]]; then
   pass "a missing config dir (no lock can be made): elapsed only"
 else
   fail "a missing config dir (no lock can be made): elapsed only" "rc=$RC out='$OUT' err='$ERR'"
@@ -372,7 +372,7 @@ if [[ "$OUT" == "work" ]]; then pass "slt eta off drops the segment"
 else fail "slt eta off drops the segment" "out='$OUT'"; fi
 bash "$CLAUDE_DIR/scripts/statusline-toggle.sh" eta on >/dev/null
 sl "$T20" "$FIX/wf.jsonl"
-if [[ "$OUT" == "work wait 20m"* ]]; then pass "slt eta on brings it back"
+if [[ "$OUT" == "work 20m workflow" ]]; then pass "slt eta on brings it back"
 else fail "slt eta on brings it back" "out='$OUT'"; fi
 
 NOPY="$SANDBOX/no-python-bin"
@@ -400,11 +400,10 @@ fi
 # A long repository name, a long branch, usage data and a drop-in, at the pane
 # widths seen on the author's tmux (2026-11-20). Claude Code indents the line two
 # columns and keeps two free, so the line must fit COLUMNS - 4. Widths are counted
-# in characters, which needs a UTF-8 locale ("·" and "…" are one column, three
-# bytes); without one the composer overcounts and drops a piece early, so the
+# in characters, which needs a UTF-8 locale ("…" is one column, three bytes); without one the composer overcounts and drops a piece early, so the
 # exact strings are checked only where a UTF-8 locale exists.
 
-section "COLUMNS: the line fits the pane, the task state last to go"
+section "COLUMNS: the line fits the pane, the task time last to go"
 
 UTF8=""
 for l in C.UTF-8 C.utf8 en_US.UTF-8 en_US.utf8; do
@@ -427,13 +426,13 @@ slw() {  # slw COLUMNS — the long repository, five days of usage data, the dro
 }
 nchars() { python3 -c 'import sys; print(len(sys.argv[1]))' "$1"; }
 
-for w in 227 94 90 80 46 35 29; do
+for w in 227 94 80 70 46 35 29 24; do
   slw "$w"
   n=$(nchars "$OUT")
-  if [[ "$n" -le $((w - 4)) && "$OUT" == *"wait 20m"* && "$OUT" != *"git:("* ]]; then
-    pass "COLUMNS=$w: $n columns, the task state kept: '$OUT'"
+  if [[ "$n" -le $((w - 4)) && "$OUT" == *" 20m"* && "$OUT" != *"git:("* ]]; then
+    pass "COLUMNS=$w: $n columns, the task time kept: '$OUT'"
   else
-    fail "COLUMNS=$w: fits in $((w - 4)) with the task state" "$n columns: '$OUT'"
+    fail "COLUMNS=$w: fits in $((w - 4)) with the task time" "$n columns: '$OUT'"
   fi
 done
 
@@ -443,12 +442,12 @@ if [[ -n "$UTF8" ]]; then
     if [[ "$OUT" == "$want" ]]; then pass "COLUMNS=$w gives '$want'"
     else fail "COLUMNS=$w gives '$want'" "got '$OUT'"; fi
   done <<'CASES'
-94|faceswap-platform-100 feat/statusline-compact wait 20m · workflow 20m +53% (5d) amsg ✓104
-90|faceswap-platform-100 feat/statusline-compact wait 20m · workflow 20m +53% (5d)
-80|faceswap-platform-100 feat/statusline-compact wait 20m · workflow 20m +53%
-46|faceswap-plat… wait 20m · workflow +53%
-35|faceswap-plat… wait 20m +53%
-29|faceswap-plat… wait 20m
+94|faceswap-platform-100 feat/statusline-compact 20m workflow +53% (5d) amsg ✓104
+80|faceswap-platform-100 feat/statusline-compact 20m workflow +53% (5d)
+70|faceswap-platform-100 feat/statusline-compact 20m workflow +53%
+46|faceswap-plat… feat/status… 20m +53%
+29|faceswap-plat… 20m +53%
+24|faceswap-plat… 20m
 CASES
 else
   echo "  (no UTF-8 locale: exact strings skipped, the fit checks above still ran)"
@@ -457,7 +456,7 @@ fi
 payload=$(jq -cn --arg cwd "$LONG" --arg t "$FIX/wf.jsonl" '{cwd: $cwd, transcript_path: $t}')
 RAW=$(printf '%s' "$payload" | env -u COLUMNS CLADE_TASK_ETA_NOW="$T20" bash "$SL" 2>/dev/null)
 OUT=$(plain "$RAW")
-if [[ "$OUT" == "faceswap-platform-100 feat/statusline-compact wait 20m · workflow 20m"*"amsg ✓104" ]]; then
+if [[ "$OUT" == "faceswap-platform-100 feat/statusline-compact 20m workflow"*"amsg ✓104" ]]; then
   pass "no COLUMNS: everything prints, as before: '$OUT'"
 else
   fail "no COLUMNS: everything prints" "out='$OUT'"
@@ -503,10 +502,8 @@ mutation red "the segment reaches the output" statusline-command.sh \
   '[ -n "$eta" ] && output+=" \033[2m${eta}\033[0m"' ':'
 mutation red "the line is fitted to COLUMNS" statusline-command.sh \
   '*) budget=$((COLUMNS - 4)) ;;' '*) ;;'
-mutation red "the fit keeps the task state: its forms are read" statusline-command.sh \
+mutation red "the fit keeps the task time: its forms are read" statusline-command.sh \
   '      eta_short)  eta=$eta_short ;;' '      eta_short)  eta="" ;;'
-mutation red "the fit puts back what a later step made room for" statusline-command.sh \
-  '    [ "$(width)" -le "$budget" ] || usage="" usage_plain=""' '    usage="" usage_plain=""'
 mutation red "the width counts the drop-in segments" statusline-command.sh \
   '  for p in "$dir" "$branch" "$eta" "$usage_plain" "$extra_plain"; do' \
   '  for p in "$dir" "$branch" "$eta" "$usage_plain"; do'

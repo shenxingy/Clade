@@ -14,11 +14,14 @@ summary: >
   base rate. A survival lookup on elapsed time, tested on a held-out week,
   gives an honest p25-p75 band (40-54% coverage) but no trustworthy point
   (within 2x 20-41%), and nothing visible mid-task narrowed it. So the ETA
-  belongs on the statusline as a range, with statusLine.refreshInterval set.
+  went on the statusline as a range, with statusLine.refreshInterval set; the
+  2026-11-23 follow-up removed the range from the line, which now shows elapsed
+  time and the job waited on only.
   How much any setting shortens a run is not measured.
 integrated_items:
   - "Statusline task-elapsed + history-based remaining range, refreshInterval 10 (#259, merged 2026-11-20)"
-  - "2026-11-20: the band prints only when at most 4x wide, a Monitor's timeout bounds it, and the line fits COLUMNS (branch feat/statusline-compact)"
+  - "2026-11-20: the band prints only when at most 4x wide, a Monitor's timeout bounds it, and the line fits COLUMNS (#260, merged 2026-11-20)"
+  - "2026-11-23: the line prints no band and no run/wait/idle word or job age: `25m`, `20m workflow`, nothing when idle (branch feat/statusline-terse)"
   - "TODO.md § 2026-11-19 task-ETA and bottleneck follow-ups"
   - "2026-11-23, owner decided: no knob trials. Workflow size and effort are not traded for speed (\"再来一轮，自动选择effort我认为是智力的体现\"); a hard limit is a budget stated in the conversation. The decomposer port and the max-effort trace served only the trials and are closed with them"
 needs_work_items: []
@@ -375,7 +378,7 @@ is +0.8 points (95% CI -8.9..+11.0).
 - **Workflows.** A Workflow's journal always shows its agents started and
   finished, which is a fact rather than an estimate.
 
-**What changed (branch `feat/statusline-compact`).**
+**What changed (#260, merged 2026-11-20).**
 - The line prints the band only when p75 is at most 4x p25. On this history it
   never is, and `--json` still carries the band.
 - A Monitor prints `≤<time> left` from its timeout.
@@ -387,3 +390,10 @@ is +0.8 points (95% CI -8.9..+11.0).
 **Not built.** `sleep N` countdowns and Workflow agents-done counts are both
 facts. The second needs the run's journal path from the launch result.
 
+**2026-11-23: the band is gone from the line (branch `feat/statusline-terse`).**
+The owner settled on not chasing time remaining: a task with a hard limit gets a
+budget stated in the conversation. The line keeps only what a glance needs: the
+task's elapsed time (`25m`), the job it waits on while no turn runs
+(`20m workflow`), a Monitor's timeout (`≤8m left`), and nothing when idle. The
+`run`/`wait`/`idle` words, the job's age, the `+N` count and the band are gone;
+`--json` still carries the band.
