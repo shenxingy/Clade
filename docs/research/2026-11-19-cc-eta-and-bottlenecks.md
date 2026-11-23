@@ -2,7 +2,7 @@
 title: "How long is left, and where does the time go? Claude Code task duration, measured"
 date: 2026-11-19
 review_date: 2027-01-19
-status: needs_work
+status: integrated
 summary: >
   The owner asked whether Claude Code can say how much longer the current task
   will run, and where the time goes. Measured on 1,137 human-started episodes
@@ -20,10 +20,8 @@ integrated_items:
   - "Statusline task-elapsed + history-based remaining range, refreshInterval 10 (#259, merged 2026-11-20)"
   - "2026-11-20: the band prints only when at most 4x wide, a Monitor's timeout bounds it, and the line fits COLUMNS (branch feat/statusline-compact)"
   - "TODO.md § 2026-11-19 task-ETA and bottleneck follow-ups"
-needs_work_items:
-  - "Owner: decide the three knob trials (ultracode/Workflow size, default effort, stop-check diet), each as a concurrent treated-vs-control split"
-  - "Commit the time decomposer as an instrument so the trials can be measured"
-  - "Trace why 39% of main-thread Opus 5.5 calls ran at max effort"
+  - "2026-11-23, owner decided: no knob trials. Workflow size and effort are not traded for speed (\"再来一轮，自动选择effort我认为是智力的体现\"); a hard limit is a budget stated in the conversation. The decomposer port and the max-effort trace served only the trials and are closed with them"
+needs_work_items: []
 reference_items:
   - "NOT MEASURED: the wall-time effect of any knob; time inside Workflow runs; the statusline refresh on screen"
 ---
@@ -234,6 +232,8 @@ All five profiles share one `settings.json` and one `CLAUDE.md` [K]. The "Govern
 | 8 | Prompt Stop hook | 0.7% of T's wall; 4 blocks in 2,527 checks (14 d) | Removing it saves at most that 0.7% | A1, H, K |
 | 9 | Sync Bash hooks | 1.2-2.5 h in 30 d (main thread) | Small | H |
 | 10 | `/fast` (paid, opt-in only) | Model time | Vendor claim "up to 2.5x faster", at a higher per-token price | K |
+
+**Owner decision, 2026-11-23: none of these trials is run.** The owner does not trade capability for speed ("再来一轮，自动选择effort我认为是智力的体现"), and a task with a hard limit gets a budget stated in the conversation (`configs/CLAUDE.md` § Autonomy). The plan below is kept as the measurement design, should the question reopen.
 
 **Three trials to run first.** These are K's measurement plan, adapted. Run each as a concurrent treated-vs-control split, using a project's `.claude/settings.local.json` as the treatment. Profiles cannot be split because they share one settings file. Do not run a before/after comparison: Workflow use fell after 11-10, from 470 runs before the cutoff to 25 in the test week. Use `outcome-scorecard.py --since 14` as the quality guard, so that a speed-up that causes rework shows up.
 1. **`ultracode` opt-in, Workflow size `"medium"`.** Measure with `decompose.py`: episode wall p50/p75/p90, plus Workflow wait and Workflow calls per episode, for 7 days.

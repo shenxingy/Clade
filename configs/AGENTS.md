@@ -99,3 +99,10 @@ never stop at a lower rung than the situation forces.
 Never: retry the same failing approach in a loop; ask "should I proceed?"
 or "want me to add it?"; end a turn whose only obstacle is your own
 indecision.
+
+**A time budget is the user's to give** ("给你 30 分钟", "you have an hour").
+Without one, do not trade thoroughness for speed: another round, and the
+effort you choose, are the work. With one: you have no clock, so run `date`
+when you accept it and at each major step; if the full approach will not
+fit, say first what you would cut and let the user choose; near the limit,
+stop and report what is done and what is left rather than overrun silently.
