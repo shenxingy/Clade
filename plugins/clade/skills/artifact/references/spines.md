@@ -51,13 +51,18 @@ update. Name one primary question before drafting.
 | Reader question | Type | First-screen answer | Useful visual, only if needed |
 |---|---|---|---|
 | What did we learn, and does the evidence support it? | `finding` | Result, baseline, population, uncertainty | Comparison or distribution with the decision threshold |
-| Where are we now, and what is stopping progress? | `status` | Goal vs current state, dated change, blocker, owner/next action | Progress/gap table; trend if comparable observations exist |
+| Where are we now, and what is stopping progress? | `status` | Owner/next action, blocker, current state vs goal, dated change | Progress/gap table; trend if comparable observations exist |
 | How does this system work? | `architecture` | Purpose, boundary, live vs planned, entry point | Context then containers; one real task traced through them |
 | What broke, why, and is it fixed? | `rca` | Impact, present recovery state, confirmed cause vs hypothesis | Incident timeline or evidenced causal chain |
 | What should we choose, and why? | `decision` | Recommendation, decisive trade-off, decision owner/deadline | Options matrix with consistent criteria; sensitivity if measured |
 | How can I take over and continue? | `handoff` | Current state, first executable step, traps and open work | Task/dependency flow when it prevents a mistake |
 | Where do I find or learn this specific thing? | `reference` | Scope, lookup route, definitions and a worked example | Indexed table or annotated example |
 | What is this branch doing right now? | `worklog` | Human action, blockers, now, goal, freshness | Compact state list; timeline below it |
+
+For every type above but `reference`, the first-screen answer opens with the
+lead: the bottom line, then what the owner must do or decide, or that
+nothing is needed from them. The column's other items follow it; a
+work-log's lead is its Human TODO.
 
 Use a table for lookup, prose for a short argument, a chart for a pattern,
 and a diagram for relationships. A concept explanation fits a reference with
