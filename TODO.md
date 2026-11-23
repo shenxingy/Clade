@@ -4172,11 +4172,11 @@ base rate), so the estimate goes on the statusline as a range.
   a Workflow's agents done / started from its run journal (every test run had
   one; needs the journal path from the launch result), and a countdown for a
   bare `sleep N` job (exact on 73 of 1,106 test jobs).
-- [ ] 🔵 **Kimi and Codex footers still print `git:(branch)`**
-  (`configs/skills/kimi-usage/scripts/kimi_usage.py`,
-  `configs/skills/codex-usage/scripts/codex_usage.py`). The Claude Code line
-  dropped the label and fits `COLUMNS` since 2026-11-20; decide whether those
-  footers follow (both have their own tests pinning the label).
+- [x] 🔵 **Kimi and Codex footers drop the `git:(branch)` label** — 2026-11-23,
+  owner: the trim "应该适用于cx kimi". `kimi_usage.py`, `codex_usage.py` and the
+  Codex fork's formatter print the branch in red with no label, as the Claude
+  Code line has since 2026-11-20. Neither footer fits `COLUMNS`: Kimi and Codex
+  give a custom command no pane width, and neither shows task time.
 - [ ] 🔵 **#259 review residue** (independent review, round 2: 0 blocking; these
   are its non-blocking findings, each reproduced by the reviewer):
   - `task-eta.py` is 1,470 of 1,500 lines after #259 and the 2026-11-20 line

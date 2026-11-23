@@ -360,7 +360,7 @@ def test_statusline_renders_from_the_cache_without_refreshing(tmp_path: Path, mo
     monkeypatch.setattr(kimi_usage, "_detach_refresh", lambda *a: pytest.fail("no refresh due"))
     line = _plain(kimi_usage.statusline(_payload(), tmp_path, NOW))
     delta = kimi_usage._signed(float(kimi_usage.pace_row(_rows_ahead())["pace_delta"]))
-    assert line == f"proj git:(main)  ◉ {delta} (15d) · 5h 40% (3h)"
+    assert line == f"proj main  ◉ {delta} (15d) · 5h 40% (3h)"
 
 
 def test_statusline_honors_kimis_own_items_list(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -374,10 +374,10 @@ def test_statusline_honors_kimis_own_items_list(tmp_path: Path, monkeypatch: pyt
     tui.write_text(STOCK_TUI + '\n[status_line]\nitems = ["mode", "goal", "model", "tasks", "cwd", "git", "tips"]\n', encoding="utf-8")
     assert kimi_usage.status_line_items(tmp_path) == ("mode", "model", "cwd", "git")
     line = _plain(kimi_usage.statusline(_payload(), tmp_path, NOW))
-    assert line == f"[Never Ask] [plan]  K2.8 Preview  proj git:(main)  ◉ {delta} (15d) · 5h 40% (3h)"
+    assert line == f"[Never Ask] [plan]  K2.8 Preview  proj main  ◉ {delta} (15d) · 5h 40% (3h)"
     tui.write_text(STOCK_TUI + '\n[status_line]\nitems = ["git", "mode"]\n', encoding="utf-8")
     line = _plain(kimi_usage.statusline(_payload(planMode=False), tmp_path, NOW))
-    assert line == f"git:(main)  [Never Ask]  ◉ {delta} (15d) · 5h 40% (3h)"
+    assert line == f"main  [Never Ask]  ◉ {delta} (15d) · 5h 40% (3h)"
     tui.write_text(STOCK_TUI, encoding="utf-8")  # no active table: the default
     assert kimi_usage.status_line_items(tmp_path) == kimi_usage.DEFAULT_ITEMS
     tui.write_text(STOCK_TUI + '\n[status_line]\nitems = ["tips"]\n', encoding="utf-8")
@@ -388,7 +388,7 @@ def test_statusline_cold_cache_detaches_a_refresh_and_still_draws_the_rest(tmp_p
     detached: list[tuple[Any, ...]] = []
     monkeypatch.setattr(kimi_usage, "_detach_refresh", lambda *a: detached.append(a))
     line = _plain(kimi_usage.statusline(_payload(permissionMode="manual", planMode=False), tmp_path, NOW))
-    assert line == "proj git:(main)"
+    assert line == "proj main"
     assert detached == [(tmp_path, "s1", 10)]
 
 
@@ -398,7 +398,7 @@ def test_statusline_off_yields_nothing_and_error_only_cache_shows_a_marker(tmp_p
     assert kimi_usage.statusline(_payload(), tmp_path, NOW) == ""
     (tmp_path / kimi_usage.STYLE_NAME).unlink()
     kimi_usage.write_cache({"error": "boom", "error_at": NOW - 5, "seen": {}}, tmp_path)
-    assert _plain(kimi_usage.statusline(_payload(), tmp_path, NOW)).endswith("proj git:(main)  quota ?")
+    assert _plain(kimi_usage.statusline(_payload(), tmp_path, NOW)).endswith("proj main  quota ?")
 
 
 def test_statusline_falls_back_to_git_head_for_the_branch(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -421,7 +421,7 @@ def test_statusline_falls_back_to_git_head_for_the_branch(tmp_path: Path, monkey
     assert kimi_usage._git_branch(str(repo)) == "0123456"
     assert kimi_usage._git_branch(str(tmp_path / "nowhere")) is None
     line = _plain(kimi_usage.statusline(_payload(cwd=str(worktree), gitBranch=None), tmp_path, NOW))
-    assert "wt git:(wt-branch)" in line
+    assert "wt wt-branch" in line
 
 
 def test_launcher_hands_off_to_the_helper_and_stays_silent_without_it(tmp_path: Path) -> None:
@@ -450,8 +450,8 @@ def test_launcher_hands_off_to_the_helper_and_stays_silent_without_it(tmp_path: 
     )
     assert result.returncode == 0
     assert result.stdout.count("\n") == 1
-    assert "proj git:(main)" in _plain(result.stdout) and "5h 90%" in _plain(result.stdout)
-    assert _plain(result.stdout).startswith("proj git:(main)  +")
+    assert "proj main" in _plain(result.stdout) and "5h 90%" in _plain(result.stdout)
+    assert _plain(result.stdout).startswith("proj main  +")
     assert "\033[38;2;212;180;119m" in result.stdout
     assert "\033[38;2;210;160;135m5h 90%" in result.stdout
 

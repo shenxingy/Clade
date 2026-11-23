@@ -122,7 +122,7 @@ and `/codex-usage` use. `install.sh` also wires Kimi's footer (`[status_line]`
 in `~/.kimi-code/tui.toml`) to the same indicator:
 
 ```text
-Clade git:(main)  ● +3% (29d) · 5h 0% (5h)
+Clade main  ● +3% (29d) · 5h 0% (5h)
 ```
 
 Left to right: project directory and branch, then the long window's pace

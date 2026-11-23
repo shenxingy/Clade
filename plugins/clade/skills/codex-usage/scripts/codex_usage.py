@@ -325,9 +325,9 @@ def format_rows(
     if project is None:
         project, detected_branch = _project_context()
         branch = branch or detected_branch
-    context = f"{project} git:({branch})" if branch else str(project)
+    context = f"{project} {branch}" if branch else str(project)  # no git:(…) label, as in Claude Code
     if style == "minimal":
-        return f"{context}{sign}{display_delta}% ({primary['resets_in']})"
+        return f"{context} {sign}{display_delta}% ({primary['resets_in']})"
     if style == "icon":
         return (
             f"{context} {_symbol(delta, theme, projected)} "
@@ -465,8 +465,8 @@ def set_style(name: str | None) -> int:
         current = _style_name()
         print("Available styles:")
         examples = {
-            "minimal": "project git:(main)-9% (6d)",
-            "icon": "project git:(main) 🐥 -9% (6d)",
+            "minimal": "project main -9% (6d)",
+            "icon": "project main 🐥 -9% (6d)",
             "detail": "Codex week: 42% used · 🐥 -9% pace · resets in 6d",
         }
         for candidate in STYLES:
