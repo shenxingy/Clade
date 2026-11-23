@@ -87,6 +87,12 @@ _SCORECARD_LOW_UTIL = (
     "        )\n"
 )
 
+# artifact-lint.py's hidden elements, verbatim: one mutation per tag drops that tag, and each must turn the
+# self-test red (2026-11-22: six of the eight could be deleted with the suite green).
+_LEAD_HIDDEN_LINE = (
+    '_LEAD_HIDDEN_TAGS = frozenset({"script", "style", "svg", "noscript", "template", "dialog", "nav", "aside"})')
+_LEAD_HIDDEN_TAGS = ("script", "style", "svg", "noscript", "template", "dialog", "nav", "aside")
+
 # script -> [(what the mutation removes, exact source before, exact source after)]
 MUTATIONS: dict[str, list[tuple[str, str, str]]] = {
     "configs/scripts/artifact-lint.py": [
@@ -211,6 +217,18 @@ MUTATIONS: dict[str, list[tuple[str, str, str]]] = {
         ("an element opened inside a heading is inside the heading",
          "self._in_heading() or tag in _HEADINGS",
          "tag in _HEADINGS"),
+        *[(f"<{tag}> is hidden from the lead", _LEAD_HIDDEN_LINE,
+           _LEAD_HIDDEN_LINE.replace(f'"{tag}", ', "").replace(f', "{tag}"', ""))
+          for tag in _LEAD_HIDDEN_TAGS],
+        ("lead anchors and hiding read data-role tokens",
+         'a.get("class", "") + " " + a.get("data-role", "")).split()}',
+         'a.get("class", "")).split()}'),
+        ("only a newly opened block makes its first text a label anchor",
+         "elif tag in _LEAD_BLOCKS:",
+         "else:"),
+        ("the Human TODO-first order is asked of work-logs only",
+         'if kind == "worklog":\n        heads = ',
+         'if True:\n        heads = '),
         # omitted end tags end where a browser ends them, each row and each scope
         ("omitted end tags end at the start tag that implies them",
          "self._lead_implied_end(tag)  # before the void check: <hr> ends a <p>",

@@ -1021,8 +1021,8 @@ def _self_test() -> int:
     expect([f for f, _ in lead_of(_lead_page("<p>" + "字" * (2 * LEAD_BUDGET + 2) + "</p>"))] == ["lead"],
            "two CJK characters over the budget fail")
     for wrap in ("<nav>{}</nav>", "<aside>{}</aside>", '<div class="reading-contents">{}</div>',
-                 '<div class="reading_contents">{}</div>', '<div id="toc">{}</div>', '<div role="navigation">{}</div>',
-                 "<div hidden>{}</div>", '<div aria-hidden="true">{}</div>'):
+                 '<div class="reading_contents">{}</div>', '<div id="toc">{}</div>', '<div data-role="toc">{}</div>',
+                 '<div role="navigation">{}</div>', "<div hidden>{}</div>", '<div aria-hidden="true">{}</div>'):
         hid = lead_of(_lead_page(wrap.format(prose(150))))
         expect(hid == [], f"text inside {wrap.format('…')} is not counted against the lead, got {hid}")
     decoy = lead_of(_lead_page('<aside id="bottom-line"><p>Needs you: nothing.</p></aside>' + prose(150)))
@@ -1125,6 +1125,22 @@ def _self_test() -> int:
            f"a block opened inside a heading is inside the heading, so its label is no anchor, got {h5_strong}")
     stray = _lead_page(asof + "</span></div></li>")
     expect(lead_of(stray) == [], f"a stray end tag changes nothing, got {lead_of(stray)}")
+
+    # every hidden element is a guard, not only nav and aside: an inline script,
+    # a style block or a labelled drawing between the headline and the lead
+    for tag, wrap in (("script", '<script>var help = "{}";</script>'), ("style", "<style>/* {} */</style>"),
+                      ("svg", '<svg role="img" aria-label="flow"><text>{}</text></svg>'),
+                      ("noscript", "<noscript><p>{}</p></noscript>"), ("template", "<template><p>{}</p></template>"),
+                      ("dialog", "<dialog><p>{}</p></dialog>")):
+        got = lead_of(_lead_page(wrap.format(filler)))
+        expect(got == [], f"text inside <{tag}> is not counted against the lead, got {got}")
+    by_role = _lead_page(asof, '<div data-role="bottom-line"><p>It ships on Friday. Nothing needed from you.</p></div>')
+    expect(lead_of(by_role) == [], f"a data-role marks the lead as an id does, got {lead_of(by_role)}")
+    inline = lead_of(_lead_page("<p>As of today. <em>Next step:</em> nothing yet.</p>" + prose(150), ""))
+    expect([f for f, _ in inline] == ["lead"] and "none" in inline[0][1],
+           f"a label inside an inline element mid-paragraph is no label anchor, got {inline}")
+    goal_first = _lead_page(asof, _LEAD_OK + "<h2>Goal of the study</h2><p>g</p><h2>Needs you: approval</h2><p>a</p>")
+    expect(lead_of(goal_first) == [], f"the Human TODO-first order is asked of work-logs only, got {lead_of(goal_first)}")
 
     # a stack held in a custom property is a stack
     tok = _GOOD.replace("body{font-family:Menlo,monospace;", "body{font-family:var(--mono);").replace(":root{--ink:#0a0a0a;", ":root{--mono:Menlo,monospace;--ink:#0a0a0a;")
