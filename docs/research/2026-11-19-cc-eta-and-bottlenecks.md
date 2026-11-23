@@ -2,7 +2,7 @@
 title: "How long is left, and where does the time go? Claude Code task duration, measured"
 date: 2026-11-19
 review_date: 2027-01-19
-status: needs_work
+status: integrated
 summary: >
   The owner asked whether Claude Code can say how much longer the current task
   will run, and where the time goes. Measured on 1,137 human-started episodes
@@ -14,16 +14,17 @@ summary: >
   base rate. A survival lookup on elapsed time, tested on a held-out week,
   gives an honest p25-p75 band (40-54% coverage) but no trustworthy point
   (within 2x 20-41%), and nothing visible mid-task narrowed it. So the ETA
-  belongs on the statusline as a range, with statusLine.refreshInterval set.
+  went on the statusline as a range, with statusLine.refreshInterval set; the
+  2026-11-23 follow-up removed the range from the line, which now shows elapsed
+  time and the job waited on only.
   How much any setting shortens a run is not measured.
 integrated_items:
   - "Statusline task-elapsed + history-based remaining range, refreshInterval 10 (#259, merged 2026-11-20)"
-  - "2026-11-20: the band prints only when at most 4x wide, a Monitor's timeout bounds it, and the line fits COLUMNS (branch feat/statusline-compact)"
+  - "2026-11-20: the band prints only when at most 4x wide, a Monitor's timeout bounds it, and the line fits COLUMNS (#260, merged 2026-11-20)"
+  - "2026-11-23: the line prints no band and no run/wait/idle word or job age: `25m`, `20m workflow`, nothing when idle (branch feat/statusline-terse)"
   - "TODO.md § 2026-11-19 task-ETA and bottleneck follow-ups"
-needs_work_items:
-  - "Owner: decide the three knob trials (ultracode/Workflow size, default effort, stop-check diet), each as a concurrent treated-vs-control split"
-  - "Commit the time decomposer as an instrument so the trials can be measured"
-  - "Trace why 39% of main-thread Opus 5.5 calls ran at max effort"
+  - "2026-11-23, owner decided: no knob trials. Workflow size and effort are not traded for speed (\"再来一轮，自动选择effort我认为是智力的体现\"); a hard limit is a budget stated in the conversation. The decomposer port and the max-effort trace served only the trials and are closed with them"
+needs_work_items: []
 reference_items:
   - "NOT MEASURED: the wall-time effect of any knob; time inside Workflow runs; the statusline refresh on screen"
 ---
@@ -235,6 +236,8 @@ All five profiles share one `settings.json` and one `CLAUDE.md` [K]. The "Govern
 | 9 | Sync Bash hooks | 1.2-2.5 h in 30 d (main thread) | Small | H |
 | 10 | `/fast` (paid, opt-in only) | Model time | Vendor claim "up to 2.5x faster", at a higher per-token price | K |
 
+**Owner decision, 2026-11-23: none of these trials is run.** The owner does not trade capability for speed ("再来一轮，自动选择effort我认为是智力的体现"), and a task with a hard limit gets a budget stated in the conversation (`configs/CLAUDE.md` § Autonomy). The plan below is kept as the measurement design, should the question reopen.
+
 **Three trials to run first.** These are K's measurement plan, adapted. Run each as a concurrent treated-vs-control split, using a project's `.claude/settings.local.json` as the treatment. Profiles cannot be split because they share one settings file. Do not run a before/after comparison: Workflow use fell after 11-10, from 470 runs before the cutoff to 25 in the test week. Use `outcome-scorecard.py --since 14` as the quality guard, so that a speed-up that causes rework shows up.
 1. **`ultracode` opt-in, Workflow size `"medium"`.** Measure with `decompose.py`: episode wall p50/p75/p90, plus Workflow wait and Workflow calls per episode, for 7 days.
 2. **Effort `medium` by default,** with xhigh or `ultrathink` on hard turns and a per-stage `effort` in Workflows. First trace why 39% of main-thread Opus 5.5 calls ran at max. Measure model time per turn, per-call p50 by effort, and output tokens per turn.
@@ -375,7 +378,7 @@ is +0.8 points (95% CI -8.9..+11.0).
 - **Workflows.** A Workflow's journal always shows its agents started and
   finished, which is a fact rather than an estimate.
 
-**What changed (branch `feat/statusline-compact`).**
+**What changed (#260, merged 2026-11-20).**
 - The line prints the band only when p75 is at most 4x p25. On this history it
   never is, and `--json` still carries the band.
 - A Monitor prints `≤<time> left` from its timeout.
@@ -387,3 +390,10 @@ is +0.8 points (95% CI -8.9..+11.0).
 **Not built.** `sleep N` countdowns and Workflow agents-done counts are both
 facts. The second needs the run's journal path from the launch result.
 
+**2026-11-23: the band is gone from the line (branch `feat/statusline-terse`).**
+The owner settled on not chasing time remaining: a task with a hard limit gets a
+budget stated in the conversation. The line keeps only what a glance needs: the
+task's elapsed time (`25m`), the job it waits on while no turn runs
+(`20m workflow`), a Monitor's timeout (`≤8m left`), and nothing when idle. The
+`run`/`wait`/`idle` words, the job's age, the `+N` count and the band are gone;
+`--json` still carries the band.

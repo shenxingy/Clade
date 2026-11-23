@@ -4122,56 +4122,43 @@ on 1,137 human-started episodes (450 main-thread transcripts, five profiles,
 A model-written ETA is ruled out (no clock; its estimates add little beyond a
 base rate), so the estimate goes on the statusline as a range.
 
-- [ ] 🟠 **Statusline task-ETA segment** — #259 (`feat/statusline-task-eta`,
-  open 2026-11-19): `configs/scripts/task-eta.py` prints task elapsed
-  plus a p25-p75 remaining band from a 30-day survival lookup, "beyond history"
-  past its support, and the in-flight background job when the main thread is
-  idle; `install.sh` sets `statusLine.refreshInterval: 10` unless the user set
-  one. Acceptance: ci-local green, mutations red, and a live screenshot of the
-  segment updating during a background Workflow.
-- [ ] 🟠 **Owner: decide the three knob trials.** None of these has a measured
-  wall-time effect; the research measured only how much time each governs.
-  Run each as a concurrent treated-vs-control split through one project's
-  `.claude/settings.local.json` (all five profiles share one `settings.json`,
-  and Workflow use fell after 11-10, so before/after is confounded), with
-  `outcome-scorecard.py --since 14` as the rework guard:
-  1. `ultracode` opt-in with `workflowSizeGuideline: "medium"` — governs the
-     Workflow wait, 21.3% of episode wall (1,585 h, n = 1,137).
-  2. Default effort `medium`, xhigh or `ultrathink` on hard turns — governs
-     model time, 56.3% of turn wall (423.4 h, 3,749 turns).
-  3. `stop-check.sh` warns instead of blocking — it blocked 634 of 3,945 Stop
-     events in 30 d and the model continued after 632, 20.16 h of re-entry.
-- [ ] 🟡 **Commit the time decomposer as an instrument.** The trials above need
-  it, and the research copy lives in a scratch directory that will be deleted.
-  Port the run's `decompose.py` (turn/episode segmentation, interval-union tool
-  time, background-wait attribution) and `stopreentry.py` into
-  `configs/scripts/`, with a `--self-test` whose mutations go red. Validation to
-  keep: model time 0.95x `totalAPIDuration` and tool time 1.03x
-  `totalToolDuration` in 301 sessions without subagents.
-- [ ] 🟡 **Why did 39% of main-thread Opus 5.5 calls run at `max` effort?**
-  30,937 of 79,002 calls (30 d), while `settings.json` says `xhigh`. Find what
-  raises it (ultracode, `ultrathink` keywords, a skill, a Workflow `effort`)
-  before the effort trial, or the trial's control is not what it seems.
+- [x] 🟠 **Statusline task-ETA segment** — #259 and #260, merged 2026-11-20:
+  task elapsed, the job waited on, a Monitor's bound, the line fitted to
+  `COLUMNS`; `install.sh` sets `statusLine.refreshInterval: 10` unless the user
+  set one. The remaining-time band left the line on 2026-11-23.
+- [x] 🟠 **The three knob trials — owner decided not to run them, 2026-11-23.**
+  "我不希望影响到cc自己的实力，再来一轮，自动选择effort我认为是智力的体现": the
+  Workflow-size and default-effort trials would buy speed with capability, and
+  the owner settled on "不要过于追求时间" — a task with a hard limit gets a
+  budget stated in the conversation (`configs/CLAUDE.md` § Autonomy). Closed
+  with them: committing the time decomposer as an instrument (the trials were
+  its only consumer; the research copy stays in the run's scratch directory)
+  and tracing why 39% of main-thread Opus 5.5 calls ran at `max` (a
+  precondition of the effort trial; the effort choice is the model's). The
+  third trial, `stop-check.sh` warning instead of blocking, is a hook, not the
+  model's judgement, and was not raised again; re-open it on its own evidence.
 - [ ] 🟡 **`commit-archeology.sh` hit its 15 s SessionStart timeout 26 times
   in 181 recorded starts** (main thread, 30 d). A timed-out SessionStart hook
   delivers nothing and delays the first turn. Profile it on the largest repo
   and cache or bound its git walk.
-- [ ] 🔵 **Task list as a progress display.** `CLAUDE_CODE_ENABLE_TODO_TOOLS=1`
-  turns on the native step N/M list, which is gated off for Opus 5.5 in 2.1.283.
-  It is a display, not a predictor: even an oracle done/total fraction for
-  Workflows reached only 46-49% within 2x (461 runs). Measure its context cost
-  before enabling it.
-- [ ] 🔵 **ETA follow-ups after the statusline lands:** read live Workflow
-  progress from the run's phases; a per-transcript offset cache for the one
-  transcript (of 40) that took 182 ms against a 150 ms budget; and a ledger of
-  ETA misses so the band's coverage is re-checked on live use, not only on the
-  2026-11-12..20 held-out week.
-- [ ] 🔵 **Facts the task line could print instead of a band** (2026-11-20
-  re-test, docs/research/2026-11-19-cc-eta-and-bottlenecks.md § 2026-11-20
-  follow-up: no signal narrowed the band; these two are exact, not estimates):
-  a Workflow's agents done / started from its run journal (every test run had
-  one; needs the journal path from the launch result), and a countdown for a
-  bare `sleep N` job (exact on 73 of 1,106 test jobs).
+- [x] 🔵 **Progress on the status line — owner decided against, 2026-11-23**
+  ("不要过于追求时间"; the line keeps "只保留有必要保留的信息"). Closed with it: the
+  native task list as a step N/M display (`CLAUDE_CODE_ENABLE_TODO_TOOLS=1`),
+  live Workflow progress from the run's phases or journal (agents done /
+  started), a countdown for a bare `sleep N` job, and a ledger of ETA misses
+  (the line prints no band to re-check). A hard time limit is stated as a budget
+  in the conversation instead.
+- [ ] 🔵 **A per-transcript offset cache for the tail reader.** One transcript
+  of 40 took 182 ms against a 150 ms budget (the status line's deadline is 1 s,
+  so it still renders); cache the latest episode's start offset per transcript.
+- [ ] 🔵 **Delete the survival model from `task-eta.py`, or stop the status line
+  loading it.** Since 2026-11-23 the line prints no band (owner: only what is
+  needed), so the fit, its daily detached refit (6.3 s on 450 transcripts, once
+  per config dir), the `O_EXCL` lock and the lookup serve `--json` alone. Each
+  status-line call still loads the model, and a corrupt one blanks the segment.
+  Kept in the trim PR because `tests/test-statusline-eta.sh` suites 2, 4 and 5
+  and three of its mutations drive the refit through the status line; deleting
+  it means moving or dropping those, and the research note's `--json` band.
 - [x] 🔵 **Kimi and Codex footers drop the `git:(branch)` label** — 2026-11-23,
   owner: the trim "应该适用于cx kimi". `kimi_usage.py`, `codex_usage.py` and the
   Codex fork's formatter print the branch in red with no label, as the Claude
@@ -4179,10 +4166,9 @@ base rate), so the estimate goes on the statusline as a range.
   give a custom command no pane width, and neither shows task time.
 - [ ] 🔵 **#259 review residue** (independent review, round 2: 0 blocking; these
   are its non-blocking findings, each reproduced by the reviewer):
-  - `task-eta.py` is 1,470 of 1,500 lines after #259 and the 2026-11-20 line
-    forms (which went in without the split, to keep that PR one behaviour).
+  - `task-eta.py` is 1,452 of 1,500 lines after the 2026-11-23 line trim.
     Split the fit and the tail reader into a `configs/scripts/lib/` module
-    before the next change to it.
+    before the next change to it, unless the survival model goes (below).
   - One model per config dir: profiles that share one `settings.json` each
     refit the same roots (up to five identical refits a day, 6.3 s each on
     450 transcripts). Share one model file across profiles.

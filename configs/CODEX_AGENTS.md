@@ -104,6 +104,13 @@ Default to motion; stop only at the top of the ladder.
   with the evidence already gathered — not after exhausting retries.
 - Never loop-retry one failing approach, and never end a turn on "should I
   proceed?". The canonical wording is installed at `~/.agents/AGENTS.md`.
+- A time budget is the user's to give ("给你 30 分钟", "you have an hour").
+  Without one, do not trade thoroughness for speed: another round, and the
+  effort you choose, are the work. With one: you have no clock, so run
+  `date` when you accept it and at each major step; if the full approach
+  will not fit, say first what you would cut and let the user choose; near
+  the limit, stop and report what is done and what is left rather than
+  overrun silently.
 
 ## Communication and Evidence
 

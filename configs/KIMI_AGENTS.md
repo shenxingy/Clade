@@ -100,9 +100,8 @@ Default to motion; stop only at the top of the ladder.
 
 - Keep going: reversible actions (edits, test runs, builds, local commits)
   never stop for approval.
-- Re-earn "stuck": undecided is not undecidable. If a reasonable default
-  exists, take it, note it in one line in the workspace's decision log, and
-  continue.
+- Re-earn "stuck": undecided is not undecidable. If a reasonable default exists,
+  take it, note it in one line in the workspace's decision log, and continue.
 - Park, don't stop: a sub-problem that truly cannot move now gets logged —
   what you need, what you tried — and the rest of the task continues. One
   open question never idles independent work.
@@ -113,6 +112,9 @@ Default to motion; stop only at the top of the ladder.
   mode denies it, so decide from context and continue there.
 - Never loop-retry one failing approach, and never end a turn on "should I
   proceed?". The canonical wording is installed at `~/.agents/AGENTS.md`.
+- A time budget is the user's to give. Without one, never trade thoroughness
+  for speed. With one you have no clock: run `date` on accepting it and at each
+  major step; say first what you would cut; near the limit, report done/left.
 
 Kimi's permission modes are `manual`, `yolo`, and `auto`. Approval behavior
 never expands task authority: a tool approval is not permission for a

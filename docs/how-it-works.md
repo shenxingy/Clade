@@ -179,26 +179,27 @@ domain latched into strict mode permanently after its first correction.
 
 ## Status Line
 
-The status line shows `dir branch wait 20m · workflow 20m ● (4d)`: the project
-directory, its branch (red, no `git:(…)` label), the [task time](#task-time)
-(dim), the quota pace indicator, then any drop-in segments.
+The status line shows `dir branch 20m workflow ● (4d)`: the project directory,
+its branch (red, no `git:(…)` label), the [task time](#task-time) (dim), the
+quota pace indicator, then any drop-in segments. It carries no labels or state
+words: a time means the session is busy, no time means it waits on you.
 
 **It fits the pane.** Claude Code indents the line two columns, keeps two free and
 cuts the rest with `…`, and it sets `COLUMNS` to the pane's width; on a 29-column
 tmux split the old line showed `faceswap-platform-100 gi…` and never the task.
 Where the line is too wide, the least useful piece goes first: drop-in segments,
-the quota's reset time, the branch cut to 12 characters, the task's shorter
-form, the directory cut to 14, the branch, the quota, and last the task's
-shortest form; a piece dropped early comes back if a later step made room. The
-test suite's fixture (tests/test-statusline-eta.sh) at the widths of one tmux layout:
+the quota's reset time, the branch cut to 12 characters, the job the task waits
+on, the directory cut to 14, the branch, and the quota. The task's time is never
+dropped. The test suite's fixture (tests/test-statusline-eta.sh) at the widths
+of one tmux layout:
 
 | `COLUMNS` | Line |
 |---|---|
-| 94 | `faceswap-platform-100 feat/statusline-compact wait 20m · workflow 20m +53% (5d) amsg ✓104` |
-| 80 | `faceswap-platform-100 feat/statusline-compact wait 20m · workflow 20m +53%` |
-| 46 | `faceswap-plat… wait 20m · workflow +53%` |
-| 35 | `faceswap-plat… wait 20m +53%` |
-| 29 | `faceswap-plat… wait 20m` |
+| 94 | `faceswap-platform-100 feat/statusline-compact 20m workflow +53% (5d) amsg ✓104` |
+| 70 | `faceswap-platform-100 feat/statusline-compact 20m workflow +53%` |
+| 46 | `faceswap-plat… feat/status… 20m +53%` |
+| 29 | `faceswap-plat… 20m +53%` |
+| 24 | `faceswap-plat… 20m` |
 
 Widths are counted in characters, so this needs a UTF-8 locale; in another the
 count runs high and a piece drops early, never late.
@@ -301,31 +302,36 @@ Theme is saved to `~/.claude/.statusline-theme` and persists across sessions.
 
 ### Task Time
 
-`configs/scripts/task-eta.py` says what the session is doing and for how long.
-The examples are its self-test's, from a synthetic history:
+`configs/scripts/task-eta.py` says how long the task has run and what it waits
+on. The examples are its self-test's, from a synthetic history:
 
 | Line | When |
 |------|------|
-| `run 25m` | A turn is running; the task started 25 min ago |
-| `wait 10m · workflow 9m +1` | No turn is running; a Workflow launched 9 min ago is in flight, and one other job |
-| `wait 12m · monitor 12m ≤8m left` | A Monitor's declared timeout bounds what is left |
-| `wait 20m · workflow 20m 10-20m left` | A band narrow enough to act on (here, a history whose jobs all took 10-20 min) |
-| `idle 4m · took 1m` | Nothing running: idle for 4 min, and the task took 1 min |
+| `25m` | The task started 25 min ago and is busy |
+| `10m workflow` | No turn is running; it waits on a Workflow (named before other jobs) |
+| `12m monitor ≤8m left` | A Monitor's declared timeout bounds what is left |
+| (nothing) | Idle: nothing running, so the session waits on you |
+
+There is no `run`/`wait`/`idle` word, no job age and no remaining-time band
+(owner, 2026-11-23: only what is needed). The job's kind shows only while no turn
+runs; during a turn, the time alone says it is working.
 
 **A task** runs from the latest human prompt (typed or queued) to now, and the
 turns a background job's completion notice starts belong to it. **In flight**
 means a Workflow, Agent, background Bash or Monitor launched during the last
 three tasks, not seen to finish and under a day old; a Workflow launched before
-your latest prompt still shows, and `+N` counts the others. A job finishes
+your latest prompt still shows. A job finishes
 at its completion notice, at a `TaskStop` (or `KillShell`) that names it, which
 no notice follows, or at a Monitor's timeout; a launch whose call failed or was
 refused never ran, so it is never in flight.
 
-**The range is seldom printed, on purpose.** The lookup behind it is the p25-p75
-band of the time that was left for past tasks (or jobs) that had run at least as
-long, and `task-eta.py --stdin --json` always carries it. The line prints it only
-when the top of the band is at most 4x its bottom, because a wider one does not
-tell anyone whether to wait. On the author's history it almost never is: on a
+**No remaining-time range is printed.** The lookup behind it is the p25-p75 band
+of the time that was left for past tasks (or jobs) that had run at least as
+long, and `task-eta.py --stdin --json` still carries it. From 2026-11-20 the line
+printed it only when the top of the band was at most 4x its bottom, and from
+2026-11-23 not at all: the owner settled on not chasing time remaining (state a
+budget in the conversation when a task has a hard limit). On the author's
+history the band was almost never that narrow: on a
 held-out week (2026-11-12..20, 221 tasks, 1,106 background jobs) tasks were 28x
 wide at 1 min and 8x at 15 min, and single jobs 5-9x. Nothing narrowed it: not
 the job's identity (its normalised command, subagent type or Workflow name), its
