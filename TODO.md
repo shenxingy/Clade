@@ -4156,22 +4156,16 @@ base rate), so the estimate goes on the statusline as a range.
   in 181 recorded starts** (main thread, 30 d). A timed-out SessionStart hook
   delivers nothing and delays the first turn. Profile it on the largest repo
   and cache or bound its git walk.
-- [ ] 🔵 **Task list as a progress display.** `CLAUDE_CODE_ENABLE_TODO_TOOLS=1`
-  turns on the native step N/M list, which is gated off for Opus 5.5 in 2.1.283.
-  It is a display, not a predictor: even an oracle done/total fraction for
-  Workflows reached only 46-49% within 2x (461 runs). Measure its context cost
-  before enabling it.
-- [ ] 🔵 **ETA follow-ups after the statusline lands:** read live Workflow
-  progress from the run's phases; a per-transcript offset cache for the one
-  transcript (of 40) that took 182 ms against a 150 ms budget; and a ledger of
-  ETA misses so the band's coverage is re-checked on live use, not only on the
-  2026-11-12..20 held-out week.
-- [ ] 🔵 **Facts the task line could print instead of a band** (2026-11-20
-  re-test, docs/research/2026-11-19-cc-eta-and-bottlenecks.md § 2026-11-20
-  follow-up: no signal narrowed the band; these two are exact, not estimates):
-  a Workflow's agents done / started from its run journal (every test run had
-  one; needs the journal path from the launch result), and a countdown for a
-  bare `sleep N` job (exact on 73 of 1,106 test jobs).
+- [x] 🔵 **Progress on the status line — owner decided against, 2026-11-23**
+  ("不要过于追求时间"; the line keeps "只保留有必要保留的信息"). Closed with it: the
+  native task list as a step N/M display (`CLAUDE_CODE_ENABLE_TODO_TOOLS=1`),
+  live Workflow progress from the run's phases or journal (agents done /
+  started), a countdown for a bare `sleep N` job, and a ledger of ETA misses
+  (the line prints no band to re-check). A hard time limit is stated as a budget
+  in the conversation instead.
+- [ ] 🔵 **A per-transcript offset cache for the tail reader.** One transcript
+  of 40 took 182 ms against a 150 ms budget (the status line's deadline is 1 s,
+  so it still renders); cache the latest episode's start offset per transcript.
 - [ ] 🔵 **Delete the survival model from `task-eta.py`, or stop the status line
   loading it.** Since 2026-11-23 the line prints no band (owner: only what is
   needed), so the fit, its daily detached refit (6.3 s on 450 transcripts, once
