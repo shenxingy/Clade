@@ -138,8 +138,9 @@ history belong at the foot of the page.
    words answer the owner is the first-screen review in `review.md`.)*
 3. **Deck.** ≤ 120 words under the lead: the subject, the conclusion's key
    evidence (with population for measurements) and its reach. A reader who
-   stops here must leave with the right belief. A bottom line of 35 words or
-   more can be the deck too. *(lint: `deck`.)*
+   stops here must leave with the right belief. The lead's own paragraphs are
+   not the deck, however long. *(lint: `deck` — the paragraphs inside the
+   lead block, or opening with `Bottom line:` / `Needs you:`, are skipped.)*
 4. **Key evidence.** For quantitative questions, a compact number strip, each
    with its **denominator and window** on the same line: *"0 / 24 held-out frauds flagged at τ"*,
    *"33.4% recall of 12,152 forgeries at 1% real-clean FPR (n = 1,921)"*. A
