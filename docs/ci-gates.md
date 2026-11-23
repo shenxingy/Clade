@@ -170,11 +170,11 @@ python3 configs/scripts/keep-sessions.py --self-test
 python3 configs/scripts/harness-usage.py --self-test
 
 # 2h. And of the status line's task-time estimate (pytest job). task-eta.py
-#     prints what the session is doing and since when (run / wait / idle), a
-#     p25-p75 band for what is left only when it is at most 4x wide, and a
-#     Monitor's timeout as a bound. A lookup that fell back to the global
+#     prints how long the task has run, the job it waits on while no turn runs,
+#     a Monitor's timeout as a bound, and nothing when idle; its p25-p75 band
+#     for what is left reaches only --json. A lookup that fell back to the global
 #     median, a task boundary moved to the turn, background work no longer seen
-#     in flight (or a stopped job still seen), a band printed however wide, or
+#     in flight (or a stopped job still seen), an idle pane printing a time, or
 #     an estimate past 4 h would all still print a plausible line. The self-test fits a seeded synthetic
 #     history, never the host's transcripts, and checks the lookup against the
 #     median on held-out draws; its mutations, with a no-op control that must
@@ -377,8 +377,8 @@ bash tests/test-context-policy-install.sh
 # 13c. Same job: the status line's task-time segment end to end, against a
 #      throwaway $HOME and synthetic transcripts — install.sh adds
 #      statusLine.refreshInterval or keeps the user's, the segment reads
-#      "wait … · workflow", the whole line fits COLUMNS (the pane's width) with
-#      the task state last to go, a missing model prints elapsed time and
+#      "20m workflow", the whole line fits COLUMNS (the pane's width) with
+#      the task time last to go, a missing model prints elapsed time and
 #      starts one detached refit behind a lock, every fail-soft case exits 0
 #      with the other segments. Its last suite removes each guard from a copy
 #      of statusline-command.sh, install.sh or task-eta.py and requires red.

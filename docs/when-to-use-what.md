@@ -204,7 +204,7 @@ For most day-to-day work — bug fixes, small features, refactoring, codebase qu
 **When:** Controlling the statusline display.
 - `slt` cycles through modes: symbol → percent → number → bar → off
 - `slt theme` lists themes; `slt theme <name>` sets one
-- `slt eta off` hides the task-time segment (`wait 20m · workflow 20m`); `slt eta on` shows it
+- `slt eta off` hides the task-time segment (`20m workflow`); `slt eta on` shows it
 
 ## Content families
 

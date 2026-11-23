@@ -4172,6 +4172,14 @@ base rate), so the estimate goes on the statusline as a range.
   a Workflow's agents done / started from its run journal (every test run had
   one; needs the journal path from the launch result), and a countdown for a
   bare `sleep N` job (exact on 73 of 1,106 test jobs).
+- [ ] 🔵 **Delete the survival model from `task-eta.py`, or stop the status line
+  loading it.** Since 2026-11-23 the line prints no band (owner: only what is
+  needed), so the fit, its daily detached refit (6.3 s on 450 transcripts, once
+  per config dir), the `O_EXCL` lock and the lookup serve `--json` alone. Each
+  status-line call still loads the model, and a corrupt one blanks the segment.
+  Kept in the trim PR because `tests/test-statusline-eta.sh` suites 2, 4 and 5
+  and three of its mutations drive the refit through the status line; deleting
+  it means moving or dropping those, and the research note's `--json` band.
 - [ ] 🔵 **Kimi and Codex footers still print `git:(branch)`**
   (`configs/skills/kimi-usage/scripts/kimi_usage.py`,
   `configs/skills/codex-usage/scripts/codex_usage.py`). The Claude Code line
@@ -4179,10 +4187,9 @@ base rate), so the estimate goes on the statusline as a range.
   footers follow (both have their own tests pinning the label).
 - [ ] 🔵 **#259 review residue** (independent review, round 2: 0 blocking; these
   are its non-blocking findings, each reproduced by the reviewer):
-  - `task-eta.py` is 1,470 of 1,500 lines after #259 and the 2026-11-20 line
-    forms (which went in without the split, to keep that PR one behaviour).
+  - `task-eta.py` is 1,452 of 1,500 lines after the 2026-11-23 line trim.
     Split the fit and the tail reader into a `configs/scripts/lib/` module
-    before the next change to it.
+    before the next change to it, unless the survival model goes (below).
   - One model per config dir: profiles that share one `settings.json` each
     refit the same roots (up to five identical refits a day, 6.3 s each on
     450 transcripts). Share one model file across profiles.

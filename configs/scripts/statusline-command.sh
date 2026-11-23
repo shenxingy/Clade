@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Claude Code status line — styled after robbyrussell oh-my-zsh theme, and fitted
-# to the pane: project, branch, task state, usage pace, then drop-in segments.
+# to the pane: project, branch, task time, usage pace, then drop-in segments.
 
 input=$(cat)
 
@@ -30,22 +30,22 @@ if command -v python3 >/dev/null 2>&1 && [ -f "$_usage_script" ]; then
     | python3 "$_usage_script" --statusline-input 2>/dev/null)
 fi
 
-# ─── Task time: run / wait / idle, and how long ───
+# ─── Task time: how long the task has run, and what it waits on ───
 # Inline, not a drop-in: drop-in segments get no stdin, and this one needs the
 # transcript_path in $input. task-eta.py fails soft (prints nothing, exits 0);
 # no python3, a missing script or `slt eta off` drop the segment, nothing else.
-# --forms prints the segment three times, longest first, for the fit below.
-eta_full="" eta_short="" eta_min=""
+# --forms prints the segment twice, longest first, for the fit below: "20m workflow"
+# then "20m". An idle task prints nothing, so a pane with no time waits on you.
+eta_full="" eta_short=""
 _eta_script="$HOME/.claude/scripts/task-eta.py"
 if [ "$(cat "$HOME/.claude/.statusline-eta" 2>/dev/null)" != "off" ] \
    && command -v python3 >/dev/null 2>&1 && [ -f "$_eta_script" ]; then
   _eta=$(printf '%s' "$input" | python3 "$_eta_script" --stdin --forms 2>/dev/null)
   _eta=${_eta//\\/}                     # printf %b below must not read an escape in it
-  { IFS= read -r eta_full; IFS= read -r eta_short; IFS= read -r eta_min; } <<EOF
+  { IFS= read -r eta_full; IFS= read -r eta_short; } <<EOF
 $_eta
 EOF
   [ -n "$eta_short" ] || eta_short=$eta_full
-  [ -n "$eta_min" ] || eta_min=$eta_short
 fi
 
 # ─── Extra segments (drop-in scripts) ───
@@ -90,7 +90,7 @@ budget=""
 case "${COLUMNS:-}" in ''|*[!0-9]*) ;; *) budget=$((COLUMNS - 4)) ;; esac
 
 if [ -n "$budget" ]; then
-  for step in extra usage_time branch_cut eta_short dir_cut branch usage eta_min; do
+  for step in extra usage_time branch_cut eta_short dir_cut branch usage; do
     [ "$(width)" -le "$budget" ] && break
     case $step in
       extra)      extra="" extra_plain="" ;;
@@ -100,18 +100,8 @@ if [ -n "$budget" ]; then
       dir_cut)    dir=$(cut_to "$dir" 14) ;;
       branch)     branch="" ;;
       usage)      usage="" usage_plain="" ;;
-      eta_min)    eta=$eta_min ;;
     esac
   done
-  # A later step can free the room an earlier drop needed: put back what now fits.
-  if [ -z "$usage" ] && [ -n "$usage_segment" ]; then
-    usage=${usage_segment% (*} usage_plain=$(plain "$usage_segment") usage_plain=${usage_plain% (*}
-    [ "$(width)" -le "$budget" ] || usage="" usage_plain=""
-  fi
-  if [ -z "$branch" ] && [ -n "$git_branch" ]; then
-    branch=$(cut_to "$git_branch" 12)
-    [ "$(width)" -le "$budget" ] || branch=""
-  fi
 fi
 
 # ─── Build output ───
@@ -119,7 +109,7 @@ fi
 output=""
 output+="\033[36m${dir}\033[0m"                                   # directory (cyan)
 [ -n "$branch" ] && output+=" \033[0;31m${branch}\033[0m"          # branch (red), no "git:(…)" label
-[ -n "$eta" ] && output+=" \033[2m${eta}\033[0m"                   # task state (dim): run 3m · 6-20m left
+[ -n "$eta" ] && output+=" \033[2m${eta}\033[0m"                   # task time (dim): 3m, or 20m workflow
 [ -n "$usage" ] && output+=" ${usage}"                             # usage pace: -10% (1.9d)
 [ -n "$extra" ] && output+=" ${extra}"                             # drop-in segments
 

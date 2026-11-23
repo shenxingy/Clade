@@ -24,5 +24,5 @@ Cycles the display mode of the quota pace indicator in the Claude Code status li
 /slt eta [on|off]       # Show, hide or report the task-time segment
 ```
 
-The task-time segment (`run 3m`, `wait 20m · workflow 20m`, `idle 4m · took 12m`) is
+The task-time segment (`3m` busy, `20m workflow` waiting on a Workflow, nothing when idle) is
 separate from the pace indicator's mode; see docs/how-it-works.md#task-time.
