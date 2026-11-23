@@ -183,6 +183,27 @@ _VOID = frozenset({"area", "base", "br", "col", "embed", "hr", "img", "input", "
 _LEAD_BLOCKS = frozenset({"p", "li", "dt", "dd", "div", "section", "td", "th", "blockquote", "header",
                           "article", "strong", "b"})
 _HEADINGS = frozenset({"h1", "h2", "h3", "h4", "h5", "h6"})
+# End tags HTML lets an author omit. A start tag in "closed by" ends the nearest
+# open element of that kind first, as a browser does, unless a "scope" element
+# was opened after it — so an unclosed <p class="toc"> or <li aria-hidden="true">
+# hides itself, not every block after it. (kind, closed by, scope)
+# The p row's "closed by" is the HTML standard's list of start tags that close
+# a <p>; the scopes are the nesting a page actually has (a button in a
+# paragraph, a list in a list item, a table in a cell). The second
+# implementation of the lead check ends omitted tags with this same table.
+_IMPLIED_END = (
+    (frozenset({"p"}),
+     frozenset({"address", "article", "aside", "blockquote", "details", "dialog", "div", "dl",
+                "dd", "dt", "fieldset", "figcaption", "figure", "footer", "form", "h1", "h2",
+                "h3", "h4", "h5", "h6", "header", "hgroup", "hr", "li", "main", "menu", "nav",
+                "ol", "p", "pre", "section", "table", "ul"}),
+     frozenset({"button"})),
+    (frozenset({"li"}), frozenset({"li"}), frozenset({"ol", "ul"})),
+    (frozenset({"dt", "dd"}), frozenset({"dt", "dd"}), frozenset({"dl"})),
+    (frozenset({"td", "th"}), frozenset({"td", "th"}), frozenset({"table"})),
+    (frozenset({"tr"}), frozenset({"tr"}), frozenset({"table"})),
+)
+_NO_OPEN = (-1,) * len(_IMPLIED_END)   # no element of any kind open
 
 
 def units(s: str) -> float:
@@ -242,13 +263,18 @@ class _Page(HTMLParser):
         self.role_hints: list[str] = []      # id/class of headings and sections
         self.nav_text: list[str] = []        # text of in-page anchor links
         self._in_nav_a = False
-        # the lead: visible text only, measured in units() from the top
-        self._lstack: list[tuple[str, bool]] = []   # (tag, hidden), void tags never pushed
+        # the lead: visible text only, measured in units() from the top. Each open
+        # element carries its ancestors' state — (tag, hidden, inside a heading,
+        # the nearest open element of each _IMPLIED_END kind) — so nothing walks
+        # the stack: a page that omits every </p> stays linear. Void tags never push.
+        self._lstack: list[tuple[str, bool, bool, tuple[int, ...]]] = []
+        self._lopen: collections.Counter[str] = collections.Counter()   # open elements per tag name
         self.lead_units = 0.0
         self.h1_end: float | None = None             # units at the end of the first visible <h1>
         self.h1_text = ""
         self._in_h1 = False
-        self._lhead: list[str | float] | None = None  # the open heading: [tag, text, start]
+        self._lhead: tuple[str, float, int] | None = None  # the open heading: (tag, start, stack index)
+        self._lhead_text = ""                        # and its text so far
         self._fresh = False                          # a block opened and no text yet
         self.lead_heads: list[tuple[str, str, float]] = []     # visible h2-h4: (tag, text, start)
         self.lead_anchors: list[tuple[float, str, str]] = []   # (start, kind, what)
@@ -258,14 +284,29 @@ class _Page(HTMLParser):
     def _lead_hidden(self) -> bool:
         return bool(self._lstack) and self._lstack[-1][1]
 
+    def _in_heading(self) -> bool:
+        return bool(self._lstack) and self._lstack[-1][2]
+
+    def _lead_implied_end(self, tag: str) -> None:
+        """Close what this start tag closes without an end tag (_IMPLIED_END)."""
+        near = self._lstack[-1][3] if self._lstack else _NO_OPEN
+        cut = min((i for i, (_, closers, _) in zip(near, _IMPLIED_END) if i >= 0 and tag in closers), default=-1)
+        if cut >= 0:
+            self._lead_pop_to(cut)
+
     def _lead_start(self, tag: str, a: dict[str, str]) -> None:
+        self._lead_implied_end(tag)  # before the void check: <hr> ends a <p>
         if tag in _VOID:
             return  # no end tag will ever pop it
         toks = {t.lower().replace("_", "-") for t in (a.get("id", "") + " " + a.get("class", "") + " " + a.get("data-role", "")).split()}
         hidden = (self._lead_hidden() or tag in _LEAD_HIDDEN_TAGS or a.get("role", "").lower() == "navigation"
                   or "hidden" in a or a.get("aria-hidden", "").lower() == "true"
                   or bool(_LEAD_NAVLIKE.search(" ".join(sorted(toks)))))
-        self._lstack.append((tag, hidden))
+        here = len(self._lstack)
+        near = tuple(here if tag in kind else (-1 if tag in scope else n)
+                     for n, (kind, _, scope) in zip(self._lstack[-1][3] if self._lstack else _NO_OPEN, _IMPLIED_END))
+        self._lstack.append((tag, hidden, self._in_heading() or tag in _HEADINGS, near))
+        self._lopen[tag] += 1
         if hidden:
             return  # hidden elements carry no anchors
         if toks & LEAD_IDS:
@@ -273,7 +314,7 @@ class _Page(HTMLParser):
         if tag in ("h1", "h2", "h3", "h4"):
             if tag == "h1" and self.h1_end is None:
                 self._in_h1 = True
-            self._lhead = [tag, "", self.lead_units]
+            self._lhead, self._lhead_text = (tag, self.lead_units, here), ""
         elif tag in _LEAD_BLOCKS:
             self._fresh = True
 
@@ -283,36 +324,40 @@ class _Page(HTMLParser):
             self.h1_end = self.lead_units
         if self._lhead is None:
             return
-        tag, text, start = self._lhead
+        tag, start, _ = self._lhead
+        text = _norm(self._lhead_text)
         self._lhead = None
         if tag != "h1":
-            text, start = _norm(str(text)), float(start)
-            self.lead_heads.append((str(tag), text, start))
+            self.lead_heads.append((tag, text, start))
             if _LEAD_HEAD.search(text):
                 self.lead_anchors.append((start, "head", text))
 
     def _lead_end(self, tag: str) -> None:
-        if tag in _VOID:
+        # void, stray or already closed: changes nothing, and costs nothing —
+        # otherwise each stray end tag would search the whole stack in vain
+        if not self._lopen[tag]:
             return
         # pop back to the nearest open element of this name, so an unclosed
-        # <p> or <li> inside it closes with it; a stray end tag changes nothing
-        for i in range(len(self._lstack) - 1, -1, -1):
-            if self._lstack[i][0] == tag:
-                popped = {t for t, _ in self._lstack[i:]}
-                del self._lstack[i:]
-                if self._lhead is not None and self._lhead[0] in popped:
-                    self._lead_close_heading()
-                return
+        # <p> or <li> inside it closes with it
+        i = len(self._lstack) - 1
+        while self._lstack[i][0] != tag:
+            i -= 1
+        self._lead_pop_to(i)
 
-    def _in_heading(self) -> bool:
-        return any(t in _HEADINGS for t, _ in self._lstack)
+    def _lead_pop_to(self, i: int) -> None:
+        """Close the element at stack index i and everything opened inside it."""
+        for entry in self._lstack[i:]:   # paid for once, by the push
+            self._lopen[entry[0]] -= 1
+        del self._lstack[i:]
+        if self._lhead is not None and self._lhead[2] >= i:
+            self._lead_close_heading()   # the open heading was among them
 
     def _lead_data(self, data: str) -> None:
         if self._lead_hidden():
             return  # hidden text is not counted
         # a heading's text keeps the spaces between its inline elements
         if self._lhead is not None:
-            self._lhead[1] = str(self._lhead[1]) + data
+            self._lhead_text += data
         if self._in_h1:
             self.h1_text += data
         if not data.strip():
@@ -1046,6 +1091,40 @@ def _self_test() -> int:
         expect(window_case(k, shape) == [], f"an ask that ends at the window's last unit, {label}, counts")
         expect(window_case(k + 1, shape) == ["lead-ask"],
                f"an ask one unit past the window, {label}, does not count, got {window_case(k + 1, shape)}")
+
+    # an end tag HTML lets an author omit is implied where a browser implies it:
+    # an unclosed hidden <p>, item, term, cell or row hides itself, not the lead after it
+    filler = " ".join(["word"] * 150)
+    toc = "Contents: " + " ".join(["section"] * 150)
+    lead_li = "<strong>Bottom line:</strong> fixed. <strong>Needs you:</strong> approve it."
+    for what, between, lead in (
+            ("a <p class=toc>", f'<p class="toc">{toc}', _LEAD_OK),
+            ("a <p hidden>", f"<p hidden>{toc}", _LEAD_OK),
+            ("an <li>", f'<ul><li aria-hidden="true">{toc}<li id="bottom-line">{lead_li}</ul>', ""),
+            ("a <dt>", f'<dl><dt hidden>{toc}<dd id="bottom-line">{lead_li}</dl>', ""),
+            ("a <td>", f'<table><tr><td aria-hidden="true">{toc}<td id="bottom-line">{lead_li}</table>', ""),
+            ("a <tr>", f'<table><tr aria-hidden="true"><td>{toc}<tr><td id="bottom-line">{lead_li}</table>', "")):
+        got = lead_of(_lead_page(between, lead))
+        expect(got == [], f"{what} left open ends at the next one, as a browser ends it, got {got}")
+    hr = lead_of(_lead_page(f'<p aria-hidden="true">Contents<hr>{" ".join(["byline"] * 150)}'))
+    expect([f for f, _ in hr] == ["lead"] and "150 units" in hr[0][1],
+           f"an <hr> ends an open <p>, so the text after it counts, got {hr}")
+    # ... and only within its scope: a list in an item, a term list in a term, a table in a cell, a button in a <p>
+    for what, between in (("a list inside a hidden item", f'<ul><li aria-hidden="true">Contents<ul><li>{filler}</ul></ul>'),
+                          ("a term list inside a hidden term", f'<dl><dd aria-hidden="true">Terms<dl><dt>{filler}</dl></dl>'),
+                          ("a table inside a hidden cell",
+                           f'<table><tr><td aria-hidden="true">Key<table><tr><td>{filler}</table></table>'),
+                          ("a button inside a hidden <p>", f'<p aria-hidden="true">Menu <button>open<p>{filler}</button></p>')):
+        got = lead_of(_lead_page(between))
+        expect(got == [], f"{what} stays hidden: its own <li>/<dt>/<td>/<p> does not end the outer one, got {got}")
+    deep = _Page()
+    deep.feed("<body><h1>x</h1>" + "<p>As of today." * 2000)
+    expect(len(deep._lstack) <= 3, f"2,000 unclosed <p> keep the lead stack shallow, got depth {len(deep._lstack)}")
+    h5_strong = lead_of(_lead_page(asof + "<div><h5><strong>Next step:</strong> ship it</h5></div>" + prose(150), ""))
+    expect([f for f, _ in h5_strong] == ["lead"] and "none" in h5_strong[0][1],
+           f"a block opened inside a heading is inside the heading, so its label is no anchor, got {h5_strong}")
+    stray = _lead_page(asof + "</span></div></li>")
+    expect(lead_of(stray) == [], f"a stray end tag changes nothing, got {lead_of(stray)}")
 
     # a stack held in a custom property is a stack
     tok = _GOOD.replace("body{font-family:Menlo,monospace;", "body{font-family:var(--mono);").replace(":root{--ink:#0a0a0a;", ":root{--mono:Menlo,monospace;--ink:#0a0a0a;")
