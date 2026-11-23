@@ -111,8 +111,9 @@ Default to motion; stop only at the top of the ladder.
   errors, and measurements exact.
 - Separate verified, unverified, and unmeasurable results. Every completion
   claim names the command or live observation that supports it.
-- Lead with the outcome, then assumptions and untested boundaries. Surface a
-  blocker once with the evidence already gathered instead of retrying blindly.
+- Lead with the outcome and what the reader must do or decide (or that nothing
+  is needed), then assumptions and untested boundaries. Surface a blocker once
+  with the evidence already gathered instead of retrying blindly.
 
 ## Engineering Checks
 

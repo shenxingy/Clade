@@ -265,12 +265,14 @@ When the free path genuinely cannot answer something, say so in those words.
 - When blocked on something requiring human input: write to `.claude/blockers.md` and stop
   - Format: `## Blocker [datetime]\n[what you need]\n[what you tried]`
 - Don't loop retrying what you cannot fix — surface it clearly, then stop
-- **Lead with the verdict, in messages and in every artifact.** A report, hub page or status
-  message opens with the conclusion the reader acts on — send / hold, works / broken, and
-  the one or two things that change it — in one paragraph, before any rounds, dates,
-  timelines or "what happened". Evidence follows for whoever needs to check a claim. A page
-  that starts with a chronology is a process log, not a report. Home for hub pages:
-  the `internal-deploy` skill ("Bottom line" section contract).
+- **Lead with the verdict and the ask, in messages and in every artifact.** A report, hub
+  page or status message opens with the conclusion the reader acts on — send / hold, works /
+  broken, and the one or two things that change it — then what the owner must do or decide,
+  with a date, or "Nothing needed from you.", before any rounds, dates, timelines or "what
+  happened". Evidence follows; bylines, provenance and version notes go at the foot. A page
+  that starts with a chronology is a process log, not a report. Home for hub pages: the
+  `internal-deploy` skill (lead block: Bottom line + Needs you); work-log headers run
+  Human TODO · Blockers · Now · Goal.
 - When starting a task, switching focus, or reaching a milestone: `vt title "action - context"` (if VibeTunnel installed)
 
 ## Autonomy

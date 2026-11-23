@@ -32,13 +32,19 @@ publish an Artifact and hand back the link.
 
 Front matter, so the reader may stop after it:
 
-0. **Header stamp** — title, date, the exact commit or version described, and an
-   "as of" per claim class. An undated system report is a lie within a week.
-1. **Reader's map** — name each reader, the one question each arrives with, and
+0. **Title and as-of line** — the title, then one short line with the date the
+   report describes. An undated system report is a lie within a week. The
+   exact commit or version described and an "as of" per claim class are
+   provenance: they go in §16 at the foot, not above the answer.
+1. **Answer first — the lead** (`id="bottom-line"`, directly under the title):
+   the bottom line in one or two sentences, then what the owner must do or
+   decide, with a date, or "Nothing needed from you."; then the whole system
+   in 120 words or fewer, plus one number. If it cannot be written, the system
+   is not yet understood.
+2. **Reader's map** — name each reader, the one question each arrives with, and
    which section answers it. This is what lets one document serve three
-   audiences instead of becoming three documents.
-2. **Answer first** — the whole system in 120 words or fewer, plus one number.
-   If it cannot be written, the system is not yet understood.
+   audiences instead of becoming three documents. It is navigation, so it
+   sits below the lead, never between the title and it.
 
 Body:
 
@@ -85,9 +91,10 @@ Back matter:
 
 15. **Glossary** — PhD, PM and SWE do not share a referent for "agent",
     "worker", "task" or "attempt".
-16. **Evidence, provenance and what was done** (`id="method"`) — for every
-    number: source, method, date; and the research log — what was read, run
-    and compared, in order — so a successor can repeat it.
+16. **Evidence, provenance and what was done** (`id="method"`) — the exact
+    commit or version the report describes, and an as-of per claim class; for
+    every number: source, method, date; and the research log — what was read,
+    run and compared, in order — so a successor can repeat it.
 17. **What this report does not cover** — the declared scope boundary.
 
 **Deliberately excluded as ceremony**, so nobody adds them back: code-level

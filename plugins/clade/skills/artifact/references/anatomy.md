@@ -23,13 +23,16 @@ parts; those are listed as devices in `spines.md`.
 Grouped by where the element sits. "When" is the rule for whether it earns
 its place; sizes are what the observed pages actually spend.
 
-**Front**
+**Front** — in this order. Only an eyebrow, the headline and one short as-of
+line sit above the lead block; every other front element goes below it, and
+the author/version stamp goes to the foot with the provenance (**Close**, below).
 
 | Element | Observed as | When | Size |
 |---|---|---|---|
 | Headline claim | a16z "This is the year the world came onchain"; Increment "Everything is broken, and it's okay" | Always — a topic title forfeits the most-read line | 6–12 words |
-| Dek / standfirst | One sentence under the title giving the mechanism | When the headline needs a why | 15–30 words |
-| Author · date · version stamp, plus **next release date** | ONS prints "Release date" and "Next release" — a falsifiable commitment | Always | 1–3 lines |
+| As-of line (as of …) — the one line allowed between the headline and the lead | ONS prints "Release date" at the top of a bulletin | Always | 1 line |
+| **Lead block** (`id="bottom-line"`): **Bottom line** — the verdict in one or two sentences; **Needs you** — each action or decision the owner must take, with a date, or the literal "Nothing needed from you." / 「不需要你做什么。」; an optional blocker line | AR 25-50's BLUF puts the bottom line first; the status/QBR summary below ends in "decisions owed". The lead joins the two, so the owner learns what they must do without scrolling | Always on an argued page and a work-log, first under the headline. On 54 recent pages of one internal hub (2026-11-22) a byline, deck, tiles or contents bar usually sat in its place | 2–4 lines, within ~100 words of the headline |
+| Dek / standfirst | One sentence under the lead giving the mechanism | When the headline needs a why | 15–30 words |
 | Reading time | BCG "12 MIN read" | > 1,500 words | 1 line |
 | Key-findings box | BCG "Key Takeaways" (3); AI Index "Top Takeaways" (12, one figure each) | > 800 words | 3–12 bullets |
 | Executive summary / "In brief" page | MGI ships it as its own PDF | > 10 pages | 1–8 pages |
@@ -77,6 +80,7 @@ its place; sizes are what the observed pages actually spend.
 | Changelog / "what changed since last time" | AI Index ships a separate "Report Revisions" document; GOV.UK change notes | Living documents | 1 line per change |
 | FAQ, external and internal split | Amazon PR/FAQ: customer questions vs internal ones (TAM, unit economics, top reasons for failure) | Decision docs | 5–15 questions |
 | Endnotes vs sources; citation block; reuse licence; data download; contributors and reviewers; contact; related links | OWID separates "Endnotes" from per-chart sources and gives MLA + BibTeX, CC-BY and the GitHub data repo; ONS names a team with email and phone; Distill names its reviewers with issue links | Anything meant to be cited, forwarded or challenged | 1 block each |
+| Author · version stamp, plus **next release date** | ONS prints "Next release" — a falsifiable commitment | Always, at the foot with the provenance | 1–3 lines |
 
 ## Section orders that recur
 
@@ -86,6 +90,11 @@ its place; sizes are what the observed pages actually spend.
 4. **Incident / postmortem** (Cloudflare, GitHub, Google SRE): apology + one-sentence what-and-when → impact table → architecture primer → causal chain → timeline table → other impact → remediation and follow-up → action items with owner and type.
 5. **Standards / technical report** (NIST SP): cover → authority → abstract → keywords → acknowledgments → audience → TOC + list of figures and tables → numbered sections → references → appendices.
 6. **Proposal / decision** (Shape Up, Google design docs, Amazon PR/FAQ): problem → appetite → solution with a diagram → rabbit holes → no-gos / goals and non-goals → alternatives considered → cross-cutting concerns (security, privacy, observability) → FAQ.
+
+Borrowing one of these orders for a report page keeps its sequence but not its
+masthead: the lead block goes directly under the headline, before the order's
+first element; a badge follows the lead, and an author or release stamp moves
+to the foot.
 
 ## What the best do that the average does not
 
@@ -138,7 +147,7 @@ Slidedocs; Reynolds; Kawasaki; Tufte's critique and Amazon's ban.
 | Evidence slides | One claim + one exhibit, repeated; MECE within a section | The bulk |
 | The money slide | The one exhibit the deck exists for | One per deck; it may take 90 seconds |
 | Limitations / risks | The boundary of the claim | Research talks, launch pages, decision decks |
-| Asks / next steps / decisions | What the audience must do | Any review deck; decisions stated ("Approve $80K…") |
+| Asks / next steps / decisions | What the audience must do | Any review deck; decisions stated ("Approve $80K…") — and on the executive-summary slide too, the deck's lead |
 | Appendix / backup | Anticipated questions | Consulting, QBR, pitch |
 | Sources slide | Consolidated provenance | Academic and data-heavy decks; 12–14 pt, not bold |
 

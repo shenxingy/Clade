@@ -20,7 +20,11 @@ it — do not guess hostnames or paths.
    won). Head normalization, the standing audit standard: first lines
    must be `<!doctype html>`, `<meta charset>`, `<meta viewport>`;
    no external CDN refs that break on an intranet without internet
-   (inline or same-origin assets instead).
+   (inline or same-origin assets instead). The lead is in place: the first
+   block under the headline is the bottom line plus what the owner must do
+   (see "Report shape" below), and
+   `python3 ~/.claude/scripts/artifact-lint.py <page>` shows no `lead`
+   FAIL; a `lead-ask` WARN is fixed, not explained away.
 2. **Slug**: kebab-case from the title unless the house style says dated
    slugs (`name-YYYY-MM-DD`) — follow existing siblings in the hub root.
 3. **Write**: `mkdir <hub-root>/<slug>/` (if permission denied, stop and
@@ -34,7 +38,9 @@ it — do not guess hostnames or paths.
    through the HTTPS vhost (not the file on disk). If a root index map
    exists and rebuilds on a timer, note when the next rebuild picks the
    new slug up and re-check then or trigger the documented rebuild command.
-5. **Report**: URL, slug, version, what was published, verification output.
+5. **Report**: Bottom line · Needs you (or "Nothing needed from you.") · a
+   blocker, only when there is one · URL, slug, version, what was published,
+   verification output.
 
 ## Mode B — deploy an app behind process manager + reverse proxy
 
@@ -56,8 +62,9 @@ it — do not guess hostnames or paths.
 
 ## Report (either mode)
 
-URL(s) · what changed (commits / artifact version) · smoke evidence
-(command + status for each check) · anything parked · rollback path.
+Bottom line · Needs you (or "Nothing needed from you.") · a blocker, only
+when there is one · URL(s) · what changed (commits / artifact version) · smoke
+evidence (command + status for each check) · anything parked · rollback path.
 
 ## Failure modes to avoid
 
@@ -69,4 +76,10 @@ URL(s) · what changed (commits / artifact version) · smoke evidence
 
 ## Report shape (both modes)
 
-The published page and the chat report both open with a **Bottom line**: the conclusion the reader acts on, in one paragraph, before any rounds, dates or timeline. Then the evidence. Never lead with a chronology.
+The published page and the chat report both open with the **lead**, before any rounds, dates or timeline:
+
+1. **Bottom line** — the conclusion the reader acts on, in one or two sentences.
+2. **Needs you** — each action or decision the owner must take, with a date when there is one; or the literal line "Nothing needed from you." / 「不需要你做什么。」
+3. A blocker or risk the owner must know now — only when there is one.
+
+On the page this is `<section id="bottom-line">` (`<strong>Bottom line:</strong>` … `<strong>Needs you:</strong>` …; Chinese `结论：` … `需要你：` …) directly under the headline. Only a one-line eyebrow, the headline and one short as-of line sit above it. Bylines and provenance ("drafted by …", "prepared for …"), version notes, contents bars, terms, goals, methods and number tiles go below it; provenance and version history go to the foot. A work-log's header runs Human TODO · Blockers · Now · Goal. Then the evidence: in the chat report, the fields after the lead in "Report (either mode)" above, in that order. Never lead with a chronology or a byline.
