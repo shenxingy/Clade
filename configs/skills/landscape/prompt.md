@@ -91,9 +91,10 @@ Back matter:
 
 15. **Glossary** — PhD, PM and SWE do not share a referent for "agent",
     "worker", "task" or "attempt".
-16. **Evidence, provenance and what was done** (`id="method"`) — for every
-    number: source, method, date; and the research log — what was read, run
-    and compared, in order — so a successor can repeat it.
+16. **Evidence, provenance and what was done** (`id="method"`) — the exact
+    commit or version the report describes, and an as-of per claim class; for
+    every number: source, method, date; and the research log — what was read,
+    run and compared, in order — so a successor can repeat it.
 17. **What this report does not cover** — the declared scope boundary.
 
 **Deliberately excluded as ceremony**, so nobody adds them back: code-level

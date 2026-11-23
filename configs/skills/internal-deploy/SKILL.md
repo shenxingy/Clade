@@ -25,7 +25,8 @@ Key contracts:
 - Mode B (app deploy): clean-tree preflight, build, zero-downtime reload,
   smoke the health endpoint plus key pages through the proxy URL, check
   process error logs, and state the rollback path before declaring done.
-- Report: URL + what changed (commits) + smoke evidence + parked items.
+- Report: Bottom line + Needs you (or "Nothing needed from you.") + URL + what
+  changed (commits) + smoke evidence + parked items.
 - Lead first: every published report opens, directly under its headline and one as-of
   line, with the lead block `<section id="bottom-line">` — **Bottom line**: the verdict
   the reader acts on, in one or two sentences; **Needs you**: each action or decision the
