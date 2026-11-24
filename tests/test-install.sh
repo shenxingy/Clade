@@ -1302,7 +1302,7 @@ _sl_line="${_sl_out%rc=*}"
   && pass "launcher prints exactly one line (Kimi takes only the first)" \
   || fail "launcher prints exactly one line" "$_sl_line"
 _sl_plain=$(printf '%s' "$_sl_line" | sed 's/\x1b\[[0-9;]*m//g')
-printf '%s' "$_sl_plain" | grep -qE '^proj git:\(feat/x\)  ' \
+printf '%s' "$_sl_plain" | grep -qE '^proj feat/x  ' \
   && pass "line opens with directory and branch (the Clade convention), no mode/model by default" \
   || fail "line opens with directory and branch (the Clade convention), no mode/model by default" "$_sl_plain"
 printf '%s' "$_sl_plain" | grep -qE '◉ \+12% \(1[45]d\) · 5h 40% \(3h\)' \
