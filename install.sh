@@ -68,29 +68,46 @@ echo "  Installed: $(ls "$SCRIPT_DIR/configs/codex-agents/"*.toml | xargs -I{} b
 CODEX_AGENTS="$CODEX_DIR/AGENTS.md"
 CODEX_BEGIN='<!-- BEGIN CLADE ADAPTIVE DELEGATION -->'
 CODEX_END='<!-- END CLADE ADAPTIVE DELEGATION -->'
-CODEX_TMP="$(mktemp)"
-if [[ -f "$CODEX_AGENTS" ]]; then
-  _codex_begin_count=$(grep -Fxc "$CODEX_BEGIN" "$CODEX_AGENTS" || true)
-  _codex_end_count=$(grep -Fxc "$CODEX_END" "$CODEX_AGENTS" || true)
-  if [[ "$_codex_begin_count" -eq 1 && "$_codex_end_count" -eq 1 ]]; then
-    awk -v begin="$CODEX_BEGIN" -v end="$CODEX_END" '
-      $0 == begin { skip=1; next }
-      $0 == end { skip=0; next }
-      !skip { print }
-    ' "$CODEX_AGENTS" > "$CODEX_TMP"
-  else
-    # Malformed/user-authored marker text must never cause content loss.
-    cat "$CODEX_AGENTS" > "$CODEX_TMP"
+_merge_codex_block() {
+  local target="$1" tmp
+  tmp="$(mktemp)"
+  if [[ -f "$target" ]]; then
+    local b_count e_count
+    b_count=$(grep -Fxc "$CODEX_BEGIN" "$target" || true)
+    e_count=$(grep -Fxc "$CODEX_END" "$target" || true)
+    if [[ "$b_count" -eq 1 && "$e_count" -eq 1 ]]; then
+      awk -v begin="$CODEX_BEGIN" -v end="$CODEX_END" '
+        $0 == begin { skip=1; next }
+        $0 == end { skip=0; next }
+        !skip { print }
+      ' "$target" > "$tmp"
+    else
+      # Malformed/user-authored marker text must never cause content loss.
+      cat "$target" > "$tmp"
+    fi
   fi
-fi
-{
-  cat "$CODEX_TMP"
-  [[ ! -s "$CODEX_TMP" ]] || printf '\n'
-  printf '%s\n' "$CODEX_BEGIN"
-  cat "$SCRIPT_DIR/configs/CODEX_AGENTS.md"
-  printf '%s\n' "$CODEX_END"
-} > "$CODEX_AGENTS"
-rm -f "$CODEX_TMP"
+  {
+    cat "$tmp"
+    [[ ! -s "$tmp" ]] || printf '\n'
+    printf '%s\n' "$CODEX_BEGIN"
+    cat "$SCRIPT_DIR/configs/CODEX_AGENTS.md"
+    printf '%s\n' "$CODEX_END"
+  } > "$target"
+  rm -f "$tmp"
+}
+_merge_codex_block "$CODEX_AGENTS"
+
+# A Codex profile (CODEX_HOME=~/.codex-profiles/<name>, the per-account switch
+# in the owner's shell) reads its OWN AGENTS.md. One linked to ~/.codex/AGENTS.md
+# got the block above; one holding its own file never did, and kept the block
+# from whenever it was copied (measured 2026-11-23: a profile in daily use still
+# had the 2026-11-04 block). Refresh the block in each such file. A profile with
+# no AGENTS.md is left alone: creating instruction files in it is the user's call.
+for _codex_profile_agents in "$HOME/.codex-profiles/"*/AGENTS.md; do
+  [[ -f "$_codex_profile_agents" && ! -L "$_codex_profile_agents" ]] || continue
+  _merge_codex_block "$_codex_profile_agents"
+  echo "  Refreshed the Clade block in $_codex_profile_agents"
+done
 
 # Codex resolves agent instructions first-filename-wins with NO merge:
 # AGENTS.override.md is probed BEFORE AGENTS.md at home scope
