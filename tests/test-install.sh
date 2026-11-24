@@ -1332,7 +1332,7 @@ _sl_line="${_sl_out%rc=*}"
   && pass "launcher prints exactly one line (Kimi takes only the first)" \
   || fail "launcher prints exactly one line" "$_sl_line"
 _sl_plain=$(printf '%s' "$_sl_line" | sed 's/\x1b\[[0-9;]*m//g')
-printf '%s' "$_sl_plain" | grep -qE '^proj git:\(feat/x\)  ' \
+printf '%s' "$_sl_plain" | grep -qE '^proj feat/x  ' \
   && pass "line opens with directory and branch (the Clade convention), no mode/model by default" \
   || fail "line opens with directory and branch (the Clade convention), no mode/model by default" "$_sl_plain"
 printf '%s' "$_sl_plain" | grep -qE '◉ \+12% \(1[45]d\) · 5h 40% \(3h\)' \
@@ -1355,7 +1355,7 @@ path = Path(sys.argv[1])
 path.write_text(re.sub(r"(?m)^\[status_line\]\n", '[status_line]\nitems = ["mode","model","cwd","git","tips"]\n', path.read_text(), count=1))
 PY
 _sl_items=$(printf '%s' "$_sl_payload" | "$HOME/.kimi-code/hooks/statusline.sh" 2>/dev/null | sed 's/\x1b\[[0-9;]*m//g')
-printf '%s' "$_sl_items" | grep -qF '[Never Ask]  K2.8 Preview  proj git:(feat/x)  ' \
+printf '%s' "$_sl_items" | grep -qF '[Never Ask]  K2.8 Preview  proj feat/x  ' \
   && pass "[status_line] items brings the mode badge and model back in Kimi's order" \
   || fail "[status_line] items brings the mode badge and model back in Kimi's order" "$_sl_items"
 cp "$_sl_tui_bak" "$KIMI_TUI"

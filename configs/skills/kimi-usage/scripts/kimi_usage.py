@@ -805,8 +805,9 @@ def _git_branch(cwd: str) -> str | None:
 def _slot_pieces(payload: dict[str, Any], items: tuple[str, ...] | list[str]) -> list[str]:
     """Render the requested footer slots from the snapshot, in the given order.
 
-    `cwd` and `git` fuse into one `dir git:(branch)` piece when adjacent, the
-    way the Claude Code status line draws them."""
+    `cwd` and `git` fuse into one `dir branch` piece when adjacent, the way
+    the Claude Code status line draws them: the branch in red, no `git:(…)`
+    label."""
     pieces: list[str] = []
     cwd = payload.get("cwd")
     cwd = cwd if isinstance(cwd, str) and cwd else None
@@ -832,7 +833,7 @@ def _slot_pieces(payload: dict[str, Any], items: tuple[str, ...] | list[str]) ->
         elif item == "cwd" and cwd:
             pieces.append(f"\033[36m{os.path.basename(cwd.rstrip('/')) or cwd}{RESET}")
         elif item == "git" and branch:
-            badge = f"\033[1;34mgit:(\033[0;31m{branch}\033[1;34m){RESET}"
+            badge = f"\033[0;31m{branch}{RESET}"
             if previous == "cwd" and pieces:
                 pieces[-1] += " " + badge
             else:
@@ -993,7 +994,8 @@ def setup_status_line(home: Path | None = None, enable: bool = True) -> bool:
     import tempfile
 
     home = home or kimi_home()
-    path = home / "tui.toml"
+    # Write through a symlink, so a linked tui.toml stays linked to its target.
+    path = (home / "tui.toml").resolve()
     try:
         original = path.read_text(encoding="utf-8")
         mode = path.stat().st_mode & 0o777
@@ -1032,11 +1034,11 @@ def set_theme(name: str | None, home: Path) -> int:
 
 def set_style(name: str | None, home: Path) -> int:
     examples = {
-        "minimal": "Clade git:(main)  +3% (12d) · 5h 40%",
-        "icon": "Clade git:(main)  ● +3% (12d) · 5h 40% (3h)",
-        "number": "Clade git:(main)  +3% (12d) · 5h 40% (3h)",
-        "detail": "Clade git:(main)  ● month +3% (12d) · 5h 40% (3h)",
-        "off": "Clade git:(main)             (built-in Kimi footer, no quota)",
+        "minimal": "Clade main  +3% (12d) · 5h 40%",
+        "icon": "Clade main  ● +3% (12d) · 5h 40% (3h)",
+        "number": "Clade main  +3% (12d) · 5h 40% (3h)",
+        "detail": "Clade main  ● month +3% (12d) · 5h 40% (3h)",
+        "off": "Clade main                  (built-in Kimi footer, no quota)",
     }
     if not name or name == "list":
         current = _style_name(home)

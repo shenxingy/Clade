@@ -4159,11 +4159,12 @@ base rate), so the estimate goes on the statusline as a range.
   Kept in the trim PR because `tests/test-statusline-eta.sh` suites 2, 4 and 5
   and three of its mutations drive the refit through the status line; deleting
   it means moving or dropping those, and the research note's `--json` band.
-- [ ] 🔵 **Kimi and Codex footers still print `git:(branch)`**
-  (`configs/skills/kimi-usage/scripts/kimi_usage.py`,
-  `configs/skills/codex-usage/scripts/codex_usage.py`). The Claude Code line
-  dropped the label and fits `COLUMNS` since 2026-11-20; decide whether those
-  footers follow (both have their own tests pinning the label).
+- [x] 🔵 **Kimi and Codex footers drop the `git:(branch)` label** — 2026-11-23,
+  owner: the trim "应该适用于cx kimi". `kimi_usage.py`, `codex_usage.py` and the
+  Codex fork's formatter print the branch in red with no label, as the Claude
+  Code line has since 2026-11-20. Stock Codex runs no custom footer command; its
+  native items read `Clade · main · weekly 71% left`. Neither footer fits
+  `COLUMNS` (Kimi gives its command no pane width) or shows task time.
 - [ ] 🔵 **#259 review residue** (independent review, round 2: 0 blocking; these
   are its non-blocking findings, each reproduced by the reviewer):
   - `task-eta.py` is 1,452 of 1,500 lines after the 2026-11-23 line trim.

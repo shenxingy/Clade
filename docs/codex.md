@@ -268,7 +268,7 @@ $clade:codex-usage --json
 The default `minimal` view is deliberately terse:
 
 ```text
-xingyushen git:(main)-9% (6d)
+xingyushen main -9% (6d)
 ```
 
 It contains project, branch, pace versus a 95% utilization target, and reset
