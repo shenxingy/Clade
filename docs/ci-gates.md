@@ -8,7 +8,8 @@ What each CI workflow runs, why each gate exists and what it caught, and how to
 run one gate by hand. Moved verbatim from `CLAUDE.md` on 2026-11-16, so that
 every Clade session no longer loads it. `check-ci-checklist.py` reads the
 section below. It fails when CI runs a gate this file does not name, when a
-command documented here cannot run, or when a job count stated here is wrong.
+command documented here cannot run, when a script, suite or eval that CI or
+this file names is not in the tree, or when a job count stated here is wrong.
 
 ## Table of Contents
 

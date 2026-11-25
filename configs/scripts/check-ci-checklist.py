@@ -20,7 +20,8 @@ than command strings, because a checklist entry legitimately differs from its
 CI counterpart in flags, working directory, and shell quoting. What must not
 differ is *which gates exist*.
 
-Exit 0 when every CI-enforced artefact appears in the checklist, 1 otherwise.
+Exit 0 when every CI-enforced artefact appears in the checklist and every
+script, suite and eval either side names is in the tree, 1 otherwise.
 """
 
 from __future__ import annotations
@@ -174,6 +175,34 @@ def unrunnable_commands() -> list[str]:
     return problems
 
 
+# A named file must also exist. Coverage compares which artefacts are NAMED, so
+# a suite that CI runs and the checklist lists, but that is not in the tree,
+# kept this script green while CI's own `bash tests/test-x.sh` step would fail
+# (noted in the #208 review). Paths are relative to the directory they run
+# from: the repository root, except evals/, which every caller reaches through
+# `cd orchestrator`.
+ARTEFACT_HOMES = {"evals": "orchestrator"}
+
+
+def missing_files(enforced: dict[str, set[str]], documented: set[str]) -> list[str]:
+    """Script, suite and eval paths that CI or the checklist names, absent from the tree."""
+    named: dict[str, list[str]] = {}
+    for where, artefacts in sorted(enforced.items()):
+        for artefact in artefacts:
+            named.setdefault(artefact, []).append(f"run by {where}")
+    for artefact in documented:
+        named.setdefault(artefact, []).append(f"listed in {CHECKLIST_REL}")
+
+    problems: list[str] = []
+    for artefact, by in sorted(named.items()):
+        if "/" not in artefact:  # a named command (pytest, ruff), not a file
+            continue
+        home = REPO_ROOT / ARTEFACT_HOMES.get(artefact.split("/", 1)[0], "")
+        if not (home / artefact).is_file():
+            problems.append(f"  {artefact} — {', '.join(by)}, but no such file")
+    return problems
+
+
 def prose_counts() -> list[str]:
     """The two counts docs/ci-gates.md states in prose about ci.yml's own jobs.
 
@@ -250,6 +279,17 @@ def main() -> int:
 
     enforced = ci_artefacts()
     documented = checklist_artefacts()
+
+    absent = missing_files(enforced, documented)
+    if absent:
+        print(
+            f"check-ci-checklist: CI or the {CHECKLIST_REL} checklist names files that "
+            "are not in the tree, so the step that runs them fails:",
+            file=sys.stderr,
+        )
+        for line in absent:
+            print(line, file=sys.stderr)
+        return 1
 
     missing: list[tuple[str, str]] = []
     for where, artefacts in sorted(enforced.items()):
