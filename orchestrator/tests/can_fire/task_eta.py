@@ -153,10 +153,13 @@ MUTATIONS: dict[str, list[tuple[str, str, str]]] = {S: [
      "                release_lock(lock_path(cfg), token)",
      "            except Exception:  # noqa: BLE001 — no refit this time; do not leave the lock behind\n"
      "                pass"),
-    ("a missing or read-only config dir — the lock error blanks the segment",
+    ("a missing or read-only config dir — the lock error blanks --json",
      "        except OSError:                  # a missing or read-only config dir",
      "        except FileExistsError:          # a missing or read-only config dir"),
     # The status-line entry point.
+    ("the line loads no model — a line call refits, and a corrupt model blanks it",
+     "model_for_json(config_dir(), time.time()) if '--json' in argv else None",
+     "model_for_json(config_dir(), time.time())"),
     ("fail soft — an exception inside the estimate escapes",
      "    except BaseException:  # noqa: BLE001 — fail soft",
      "    except _Deadline:  # noqa: BLE001 — fail soft"),

@@ -343,10 +343,12 @@ outlive. Details: [the research note](research/2026-11-19-cc-eta-and-bottlenecks
 
 **The model** is fitted from this machine's own main-thread transcripts of the
 last 30 days (`~/.claude/projects` and every `~/.claude-profiles/*/projects`) into
-`task-eta-model.json` in the config dir. When it is missing or a day old, a
-status-line call starts one detached low-priority refit behind an `O_EXCL` lock
-(`task-eta-model.lock`, broken after an hour, by one caller however many see it
-stale) and keeps going; each refit appends
+`task-eta-model.json` in the config dir. Only `--json` reads it: the status line
+prints no band, so a status-line call never opens the model and never refits it,
+and the line is the same with the model present, missing or corrupt. When it is
+missing or a day old, a `--json` call starts one detached low-priority refit
+behind an `O_EXCL` lock (`task-eta-model.lock`, broken after an hour, by one
+caller however many see it stale) and keeps going; each refit appends
 a line to `task-eta-fit.log`. `python3 ~/.claude/scripts/task-eta.py --fit`
 refits now. Nothing leaves the machine.
 
@@ -356,8 +358,8 @@ therefore sets `statusLine.refreshInterval` to 10 seconds, and keeps a value you
 set yourself. Each refresh is one `python3` call that reads the end of the
 transcript, not all of it.
 
-**It fails soft.** No python3, no transcript, a malformed line, a corrupt model or
-a call over one second prints nothing for this segment and leaves the rest of
+**It fails soft.** No python3, no transcript, a malformed line or a call over
+one second prints nothing for this segment and leaves the rest of
 the line alone. `slt eta off` hides it (saved in `~/.claude/.statusline-eta`);
 `slt eta on` brings it back.
 

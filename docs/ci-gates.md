@@ -378,9 +378,10 @@ bash tests/test-context-policy-install.sh
 #      throwaway $HOME and synthetic transcripts — install.sh adds
 #      statusLine.refreshInterval or keeps the user's, the segment reads
 #      "20m workflow", the whole line fits COLUMNS (the pane's width) with
-#      the task time last to go, a missing model prints elapsed time and
-#      starts one detached refit behind a lock, every fail-soft case exits 0
-#      with the other segments. Its last suite removes each guard from a copy
+#      the task time last to go, the line never reads the model (no refit,
+#      the same line with it missing or corrupt) while --json on a missing
+#      model starts one detached refit behind a lock, every fail-soft case
+#      exits 0 with the other segments. Its last suite removes each guard from a copy
 #      of statusline-command.sh, install.sh or task-eta.py and requires red.
 bash tests/test-statusline-eta.sh
 
