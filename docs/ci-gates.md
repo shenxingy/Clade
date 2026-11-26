@@ -36,8 +36,32 @@ minutes at 9% CPU. Each job gets what a runner gives it: an empty
 `$GITHUB_OUTPUT`, `$GITHUB_STEP_SUMMARY` and `$GITHUB_STATE` files, so a step
 run inside a hosted job never writes the outer job's; `$GITHUB_ENV` and
 `$GITHUB_PATH` writes reach the job's later steps, and outputs are written but
-not read (`${{ steps.<id>.outputs.* }}` stays unproven). Runner labels compare
-case-insensitively, so `[self-hosted, macOS]` or an `ARM64` label is a
+not read (`${{ steps.<id>.outputs.* }}` stays unproven). Each job also gets an
+empty npm global prefix of its own (`NPM_CONFIG_PREFIX`, overriding the
+caller's in any spelling, with its bins first on `PATH`), so
+`validate-plugin.yml`'s `npm install -g` no longer rewrites this machine's own
+`claude` and two gates at once no longer race in one prefix (npm `ENOTEMPTY`,
+2026-11-17); npm's cache stays shared, since cacache is built for concurrent
+writers. Four things still change this machine's npm state: a prefix the
+workflow names itself, which wins as on a runner; `sudo npm install -g`, since
+sudo resets the environment (a `sudo` step runs only under
+`--allow-host-mutation`); `npm config set prefix`, which writes
+`~/.npmrc` (the job's prefix still outranks it); and a step that uses nvm.
+nvm refuses `NPM_CONFIG_PREFIX` and deactivates itself, so the step would exit
+11, or, in a script without `-e`, pass on another node. A step whose text shows
+nvm (it sources `nvm.sh` or runs `nvm`) runs without the prefix from the start.
+One whose output shows nvm's refusal of the job's prefix (a script it runs
+loads nvm, or an `eval`) runs once more without it, and that attempt is its
+result; it gets fresh runner files, so the first attempt's `$GITHUB_ENV` and
+`$GITHUB_PATH` writes are dropped. This is not a flake rerun, so `--no-rerun`
+leaves it on, but a step that timed out is not run again. Either way its
+output names it, and `--json` lists it under `no_npm_prefix`. Two shapes still
+go wrong. A step that hides nvm's stderr and has no `-e` is not caught; it
+runs on whatever node is left. A step that loads nvm where its text does not
+show it (`run: ./ci/build.sh`, which sources `nvm.sh`) and is not safe to run
+twice fails here and passes on a runner: what its first attempt did before
+nvm refused (`mkdir out`) is still there, so the second run fails on it, and
+so does the flake rerun. Runner labels compare case-insensitively, so `[self-hosted, macOS]` or an `ARM64` label is a
 platform skip on another machine, and a workflow whose push trigger filters on
 `tags:` alone is a tag tier, skipped with its reason on a head that carries no
 tag (`--all` runs it). `/green` drives it to green without weakening a gate.

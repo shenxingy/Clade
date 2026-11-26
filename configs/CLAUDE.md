@@ -94,9 +94,15 @@ checkout, cache, artifact upload/download or a `setup-*` action, so a job whose
 only gates are a lint action or a local composite is unproven, not setup-only.
 A step whose *inherited* env holds a non-secret `${{ }}` value (a
 workflow-level `REPO: ${{ github.repository }}`) runs with that variable unset,
-and its pass is unproven too. (Each job gets its own `$RUNNER_TEMP` and
-command files, and a `$GITHUB_ENV`/`$GITHUB_PATH` write reaches its later steps;
-a `${{ steps.<id>.outputs.* }}` it does not read.) The sixth is a step written
+and its pass is unproven too. (Each job gets its own `$RUNNER_TEMP`, command
+files and npm global prefix, and a `$GITHUB_ENV`/`$GITHUB_PATH` write reaches
+its later steps; a `${{ steps.<id>.outputs.* }}` it does not read.
+`npm install -g` lands in that prefix, not this machine's, except under a
+prefix the workflow names, under `sudo` (run only with `--allow-host-mutation`,
+below), and in a step whose text or output shows nvm, which refuses the
+prefix: that step runs without it and says so (`docs/ci-gates.md` names the
+two nvm shapes this misses). `npm config set prefix` still writes
+`~/.npmrc`.) The sixth is a step written
 for a throwaway runner that would change this host: `sudo` in any form,
 `docker system/image/builder/volume prune`, a `docker rmi` of every image,
 `rm` of a path outside the checkout and `$RUNNER_TEMP`, `apt-get

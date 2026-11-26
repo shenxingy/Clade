@@ -1,9 +1,9 @@
 """
 ci_local_runner.py — what a GitHub runner gives a job that the workflow text
-does not spell out. Imported by ci-local.py, which sits at this repository's
+does not spell out. Imported by ci-local.py, which sits near this repository's
 1500-line cap; installed and bundled beside it.
 
-Four things. The first three were found by running ci-local.py against real
+Six things. The first three were found by running ci-local.py against real
 repositories that moved their CI to owned hardware (scamai, 2026-11-21):
 
 1. **Which machine a `runs-on:` can land on.** GitHub matches runner labels
@@ -30,16 +30,28 @@ repositories that moved their CI to owned hardware (scamai, 2026-11-21):
    persistent host with passwordless sudo, and the prune deleted 316 GB of
    that host's Docker images. Such a step is not run unless
    --allow-host-mutation says the machine is throwaway.
+5. **A global prefix nobody else uses.** A runner is a fresh machine per job,
+   so a step's `npm install -g` writes into a prefix of its own. Here it wrote
+   into the developer's (2026-11-17, the first gate of #251): two gates at
+   once raced there and one failed with npm `ENOTEMPTY`, and a gate replaced
+   the user's own installed CLI. A step that uses nvm is the exception (5).
+6. **The shell a step runs in.** `bash -eo pipefail -c`, with no stdin and a
+   timeout whose default scales with the host's load, all its output kept:
+   the tail is what a report shows, and nvm's refusal of the prefix (5) can
+   sit anywhere in it, which runs the step again without the prefix. Moved
+   here from ci-local.py, at its line cap, on 2026-11-25 and 2026-11-26.
 
 Stdlib only, like ci-local.py.
 """
 
 from __future__ import annotations
 
+import os
 import re
 import shlex
 import subprocess
 import tempfile
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -286,6 +298,9 @@ class JobFiles:
         self.temp.mkdir()
         self._commands = root / "commands"
         self._commands.mkdir()
+        # npm's global prefix for this job's steps (isolate_npm_global).
+        self.npm_prefix = root / "npm-prefix"
+        self.npm_prefix.mkdir()
         # Written by earlier steps: env (NAME -> value) and PATH entries, the
         # newest first, as the runner prepends them.
         self.env: dict[str, str] = {}
@@ -577,3 +592,182 @@ def host_mutation(script: str) -> HostMutation | None:
         return None
     shown = "; ".join(found)
     return HostMutation(shown if len(shown) <= 160 else shown[:157] + "...", setup_only)
+
+
+# ─── 5. npm's global prefix ──────────────────────────────────────────────────
+# validate-plugin.yml installs Claude Code with `npm install -g`. On a runner
+# that lands in a machine nobody else uses; here it landed in the developer's
+# own node install (nvm, Homebrew, /usr/local): the gate replaced their `claude`,
+# forcing the Linux jobs on a Mac put a second one under /opt/homebrew, and two
+# gates at once on one host raced in that directory. So every step of a job
+# gets the job's own empty prefix, removed with the job's directory, and its
+# bins go first on PATH, so what one step installs is what a later step runs.
+#
+# npm's cache is NOT moved. cacache is content-addressed and written for
+# concurrent writers, and a per-job cache would download the package again on
+# every gate. Moving the prefix also moves the global npmrc npm reads
+# (<prefix>/etc/npmrc, which a runner does not have either); ~/.npmrc is read
+# as before, and its own `prefix=` is outranked by the environment.
+#
+# What still changes this host's npm state: a prefix the workflow names
+# itself (as on a runner, it wins); `sudo npm install -g`, since sudo resets
+# the environment (section 4 runs it only under --allow-host-mutation); `npm config set prefix`, which writes ~/.npmrc; and a step
+# that uses nvm. nvm refuses NPM_CONFIG_PREFIX in any spelling outside
+# $NVM_DIR (nvm_die_on_prefix) and deactivates itself: `nvm use` returns 11,
+# so sourcing nvm.sh with a default alias fails a step under `bash -e`, and a
+# script without -e goes on with another node and passes, where main and a
+# runner use nvm's (both found in review, 2026-11-25). Such a step gets no
+# prefix variable, and its output and the JSON say so. It is found two ways.
+# First from its own text, comments dropped: `nvm.sh` by any path, or `nvm`
+# where a command starts, so `$HOME/.nvm/bin`, `NVM_DIR` or a variable named
+# nvm_x leave a step isolated; a false match costs that one step its
+# isolation. Then from nvm's own refusal in its output, which names the job's
+# prefix: nvm was loaded where the text does not show it (a script the step
+# runs, an eval), so that attempt is discarded, failed or passed, and the step
+# runs again without the variable, on fresh runner files: the discarded
+# attempt's $GITHUB_ENV and $GITHUB_PATH writes are dropped. Two shapes still
+# go wrong. Not found: a step that hides nvm's stderr (`2>/dev/null`) and has
+# no -e. It runs on whatever node is left, and passes or fails on it. Found,
+# and still failed: a step that loads nvm out of sight (`run: ./ci/build.sh`,
+# which sources nvm.sh) and is not safe to run twice. Nothing but its runner
+# files is undone, so what its first attempt did before nvm refused (a
+# `mkdir out`) fails the second run, and the flake rerun after it. A runner
+# runs the step once, and passes it.
+_SH_COMMENT = re.compile(r"(^|\s)#.*$", re.M)
+_NVM_USE = re.compile(
+    r"nvm\.sh|(?:^|[;&|(`{!]|\b(?:then|do|else|elif|if|while|until|time|command)\s)\s*nvm(?![\w./=-])",
+    re.M)
+NVM_NOTE = ("runs without the job's npm prefix: it uses nvm, which refuses NPM_CONFIG_PREFIX, "
+            "so its global installs go wherever nvm puts them, on this host")
+NVM_REFUSED = ("ran again without the job's npm prefix: nvm refused NPM_CONFIG_PREFIX in its "
+               "output (exit {}), so its global installs go wherever nvm puts them, on this host")
+
+
+def uses_nvm(script: str) -> bool:
+    """Whether a step's run text sources nvm.sh or runs `nvm`, comments aside."""
+    return bool(_NVM_USE.search(_SH_COMMENT.sub(r"\1", script)))
+
+
+def nvm_refused(output: str, prefix: Path) -> bool:
+    """Whether a step's `output` holds nvm's refusal of the job's `prefix`.
+    nvm_die_on_prefix names the variable it found and its value, and the
+    job's is NPM_CONFIG_PREFIX, the one spelling isolate_npm_global leaves.
+    Only the job's own value counts: a prefix the workflow names, or one the
+    step's own script exports, is refused on a runner too."""
+    said = ('nvm is not compatible with the "NPM_CONFIG_PREFIX" environment variable: '
+            f'currently set to "{prefix}"')
+    return said in output
+
+
+def isolate_npm_global(env: dict[str, str], prefix: Path, workflow_keys: list[str],
+                       script: str) -> str:
+    """Point npm's global prefix in a step's `env` at `prefix`, and put its
+    bins first on PATH. `env` already holds the workflow's env, and
+    `workflow_keys` names what the workflow set there itself (its env: and
+    $GITHUB_ENV, with a value): a prefix it names wins, as on a runner. Any
+    other is replaced: the caller's, in any spelling, or a `${{ }}` one that
+    only the hosted run can set (unset, npm would fall back to this host's).
+    A step whose `script` uses nvm gets no prefix variable, only the PATH
+    entries; the return value is then why (NVM_NOTE), and "" otherwise."""
+    named = {k for k in workflow_keys if k.lower() == "npm_config_prefix"}
+    # npm reads npm_config_* in any case, and the LAST in the environment
+    # wins, so a caller's stray lower-case npm_config_prefix (nvm warns about
+    # one) would decide by environment order. No other spelling survives.
+    for key in [k for k in env if k.lower() == "npm_config_prefix" and k not in named]:
+        del env[key]
+    why = ""
+    if not named:
+        if uses_nvm(script):
+            why = NVM_NOTE
+        else:
+            env["NPM_CONFIG_PREFIX"] = str(prefix)
+    # npm links global bins into <prefix>/bin, except on Windows, where they
+    # sit in the prefix itself. Both go first. With no PATH at all (`env -i`),
+    # the rest is exec's default, os.defpath: the prefix alone has no bash.
+    env["PATH"] = os.pathsep.join([str(prefix / "bin"), str(prefix), env.get("PATH") or os.defpath])
+    return why
+
+
+# ─── 6. The shell a step runs in ─────────────────────────────────────────────
+def attempt(script: str, cwd: Path, env: dict[str, str],
+            timeout: int) -> tuple[int, float, str, bool]:
+    """Run one step once: (exit code, seconds, all its output, timed out). A
+    timeout reports exit 124, like coreutils `timeout`; only the flag tells
+    it apart from a step that exits 124 itself."""
+    t0 = time.time()
+    try:
+        proc = subprocess.run(
+            ["bash", "-eo", "pipefail", "-c", script],
+            cwd=cwd, env=env, capture_output=True, text=True,
+            # A hosted runner gives a step no interactive stdin. Inheriting
+            # the terminal's instead means one `read` anywhere in a suite
+            # hangs the whole run with no output and no clue why — measured
+            # at 13 minutes and 9% CPU before this was added.
+            stdin=subprocess.DEVNULL,
+            timeout=timeout,
+        )
+    except subprocess.TimeoutExpired as exc:
+        # text=True is not applied to the partial output a timeout carries.
+        parts = [p.decode("utf-8", "replace") if isinstance(p, bytes) else (p or "")
+                 for p in (exc.stdout, exc.stderr)]
+        return 124, time.time() - t0, "".join(parts), True
+    return proc.returncode, time.time() - t0, (proc.stdout or "") + (proc.stderr or ""), False
+
+
+def step_tail(note: str, output: str, lines: int) -> str:
+    """A step's last `lines` lines of output, under its npm note if it has one."""
+    return "\n".join(filter(None, [note, "\n".join(output.splitlines()[-lines:])]))
+
+
+def attempt_in_prefix(script: str, cwd: Path, env: dict[str, str], files: JobFiles,
+                      timeout: int, echo: bool) -> tuple[int, float, str, bool, str]:
+    """Run one step on the job's runner files: (exit code, seconds, output,
+    timed out, why), why being NVM_REFUSED's text when it ran again and ""
+    otherwise. nvm, loaded where the step's text does not show it (a script,
+    an eval), can refuse the job's prefix and deactivate itself: the attempt
+    failed, or passed on another node. Its result is then discarded and the
+    step runs once more without the prefix, on fresh runner files, so the
+    discarded attempt's $GITHUB_ENV and $GITHUB_PATH writes are dropped;
+    nothing else it did is undone. The prefix leaves `env` itself, so a flake
+    rerun after it runs without it too. Not after a timeout, like the flake
+    rerun, and not a rerun: --no-rerun leaves it alone."""
+    rc, elapsed, out, timed_out = attempt(script, cwd, {**env, **files.begin_step()}, timeout)
+    if timed_out or not nvm_refused(out, files.npm_prefix):
+        return rc, elapsed, out, timed_out, ""
+    env.pop("NPM_CONFIG_PREFIX", None)
+    why = NVM_REFUSED.format(rc)
+    if echo:
+        print(f"nvm refused the job's npm prefix (exit {rc}), running it again "
+              "without it … ", end="", flush=True)
+    rc, redo, out, timed_out = attempt(script, cwd, {**env, **files.begin_step()}, timeout)
+    return rc, elapsed + redo, out, timed_out, why
+
+
+# A fixed per-step timeout reads a loaded host as a hang. On a 32-core box at
+# load ~80, this repository's pytest step took 1,914 s against 528 s on a quiet
+# one, so the 900 s that suits a quiet machine killed a step that was only
+# waiting for CPU, and a timed-out step is never rerun. The default therefore
+# scales with how oversubscribed the host is when the run starts: 900 s at or
+# below one runnable task per CPU, up to 4x (3,600 s) so a real hang still ends.
+# Sampled once, at the start; --timeout sets it outright.
+STEP_TIMEOUT_BASE = 900
+STEP_TIMEOUT_MAX_FACTOR = 4.0
+
+
+def default_step_timeout(load1: float | None, cpus: int | None) -> tuple[int, str]:
+    """(seconds, why) for the default step timeout, from the 1-minute load
+    average and the CPU count. Either unknown (no os.getloadavg on Windows)
+    falls back to the base."""
+    if not load1 or not cpus or cpus < 1:
+        return STEP_TIMEOUT_BASE, f"{STEP_TIMEOUT_BASE} s, load unknown"
+    factor = min(max(load1 / cpus, 1.0), STEP_TIMEOUT_MAX_FACTOR)
+    return (int(STEP_TIMEOUT_BASE * factor),
+            f"{STEP_TIMEOUT_BASE} s x {factor:.1f}, load {load1:.0f} on {cpus} CPUs")
+
+
+def host_load() -> tuple[float | None, int | None]:
+    try:
+        load1 = os.getloadavg()[0]
+    except (AttributeError, OSError):
+        load1 = None
+    return load1, os.cpu_count()
