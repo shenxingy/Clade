@@ -433,7 +433,7 @@ added to that script in the same commit too.**
 
 On push/PR to `main`, four workflow files fire:
 
-- `ci.yml` — `syntax-check` (28 gates), `pytest` (suite + 2 offline evals),
+- `ci.yml` — `syntax-check` (29 gates), `pytest` (suite + 2 offline evals),
   `shell-tests` (37 suites), `install-test`. `run_hack_eval.py` scores
   `judge_diversity.test_integrity` against the labelled reward-hack corpus in
   `evals/hack_cases/` — read its README before changing either, because that

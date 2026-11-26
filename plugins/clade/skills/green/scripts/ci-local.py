@@ -1471,8 +1471,8 @@ def main() -> int:
                                       for r, s in flaky))
     for ln in lanes:
         print(f"  unproven {ln.label}: {ln.reason}")
-    for r, s in ((r, s) for r in ran for s in r.steps if s.unsafe and not s.unproven):
-        print(f"  {r.job.display} › {s.name}: {s.reason}")
+    for job_r, s in ((r, s) for r in ran for s in r.steps if s.unsafe and not s.unproven):
+        print(f"  {job_r.job.display} › {s.name}: {s.reason}")
     for r in skipped:
         if not r.unproven:
             print(f"  skipped {r.job.display}: {r.reason}")
