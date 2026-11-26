@@ -43,7 +43,7 @@
 | `stop-check.sh` | Stop | Blocks stop on uncommitted changes this session produced, or on `## Blocker` headings this session added to blockers.md (against the snapshot `session-baseline.sh` takes) |
 | `verify-task-completed.sh` | TaskCompleted | Runs quality gate after task completion |
 | `notify-telegram.sh` | Notification | Forwards Claude notifications to Telegram |
-| `session-end-cleanup.sh` | SessionEnd | Removes <runtime>/claude-edit-shadows/session-<session_id>.jsonl when session terminates |
+| `session-end-cleanup.sh` | SessionEnd | Removes <runtime>/claude-edit-shadows/session-<session_id>.jsonl when session terminates, and under Kimi that session's `--once-per-session` sentinels (<runtime>/kimi-session-context/<session_id>.<hook>.once) |
 
 Most hooks are shell scripts — zero API cost, sub-second execution. Two are `type: "prompt"` LLM hooks and cost a model call each time they fire: `stop-completeness-check` (asks whether the assistant stopped partway through work it could finish on its own; waiting on the user is a correct stop) and the pre-compact state saver. Budget for those two; the shell hooks make no model call.
 

@@ -11,7 +11,7 @@ integrated_items:
   - "All major lifecycle hooks implemented (SessionStart, PreToolUse, PostToolUse, Stop, PreCompact, SessionEnd, TaskCompleted, Notification, UserPromptSubmit) — settings.json 全部有配置"
   - "Command 与 prompt 两种 hook type 在用；agent type 目前未使用（树中无任何 agent hook）"
   - "Auto-format/lint on edit, block dangerous commands, verify completion patterns — 全部实现"
-  - "SessionEnd hook used for shadow cleanup — removes <runtime>/claude-edit-shadows/session-<session_id>.jsonl when session terminates"
+  - "SessionEnd hook used for shadow cleanup — removes <runtime>/claude-edit-shadows/session-<session_id>.jsonl when session terminates, and under Kimi that session's --once-per-session sentinels (<runtime>/kimi-session-context/<session_id>.<hook>.once)"
 needs_work_items: []
 reference_items:
   - "SubagentStart/SubagentStop hooks — not implemented. 早期理由「Clade 只用 subprocess worker，场景不匹配」已过期：configs/agents/ 现有 40 个 agent 定义，多个 skill 会 fan-out 到 Task subagent，而且 Claude Code 2.1.221 把默认 spawn 深度从 1 提到 3。真正的现状是尚未评估，不是不适用"

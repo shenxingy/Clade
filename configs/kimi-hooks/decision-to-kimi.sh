@@ -18,7 +18,9 @@
 #
 # --once-per-session is for SessionStart context hooks wired instead to the
 # first UserPromptSubmit. An atomic runtime-dir sentinel delivers once per Kimi
-# session_id. All adapter failures fail open: no output, exit 0.
+# session_id; session-end-cleanup.sh releases it on that session's SessionEnd,
+# so a session resumed under the same id gets the context once more. All
+# adapter failures fail open: no output, exit 0.
 
 set -uo pipefail
 

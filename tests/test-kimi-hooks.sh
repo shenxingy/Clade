@@ -727,6 +727,47 @@ run_payload UserPromptSubmit session-context.sh \
   "$(prompt_payload session_context_once_02 "Please continue")" \
   "a different Kimi session gets its own context" MESSAGE
 
+section "SessionEnd releases only the ending session's first-prompt sentinel"
+ONCE_DIR="$RUNTIME/kimi-session-context"
+OTHER_SENTINEL="$ONCE_DIR/session_context_once_02.session-context.sh.once"
+PREFIX_SENTINEL="$ONCE_DIR/${CONTEXT_SID}x.session-context.sh.once"
+mkdir -p "$PREFIX_SENTINEL"
+assert_file "$OTHER_SENTINEL" "a parallel session holds its own sentinel"
+# Each id below must release nothing: a dotted id the shadow sanitizer would
+# fold onto session_context_once_02, a traversal that resolves to its sentinel,
+# and a glob character.
+for HOSTILE in 'session.context_once_02' '../kimi-session-context/session_context_once_02' \
+  'session_context_once_0*'; do
+  run_payload SessionEnd session-end-cleanup.sh \
+    "$(tool_payload SessionEnd "$HOSTILE" Bash '{"command":""}')" \
+    "SessionEnd for id '$HOSTILE' has no protocol output" ALLOW
+  assert_file "$OTHER_SENTINEL" "id '$HOSTILE' cannot release another session's sentinel"
+  assert_file "$SENTINEL" "id '$HOSTILE' leaves the first session's sentinel"
+done
+run_payload SessionEnd session-end-cleanup.sh \
+  "$(tool_payload SessionEnd "$CONTEXT_SID" Bash '{"command":""}')" \
+  "SessionEnd with a sentinel to release has no protocol output" ALLOW
+assert_no_file "$SENTINEL" "SessionEnd releases the ending session's sentinel"
+assert_file "$OTHER_SENTINEL" "a parallel session's sentinel survives that SessionEnd"
+assert_file "$PREFIX_SENTINEL" "an id that only extends the ending id keeps its sentinel"
+run_payload UserPromptSubmit session-context.sh "$PAYLOAD" \
+  "a resumed session (same id after SessionEnd) gets the context once more" MESSAGE
+assert_file "$SENTINEL" "the resumed session claims a fresh sentinel"
+ln -s "$RUNTIME" "$TMP_ROOT/runtime-link"
+RUN_OUT=$(tool_payload SessionEnd session_context_once_02 Bash '{"command":""}' | \
+  HOME="$RUN_HOME" CLADE_RUNTIME_DIR="$TMP_ROOT/runtime-link" CP_SHADOW_DIR="$SHADOW" \
+  bash -c "$(hook_command "$RUN_HOME" SessionEnd session-end-cleanup.sh)")
+RUN_RC=$?
+assert_eq "$RUN_RC|$RUN_OUT" "0|" "a symlinked runtime root fails open with no output"
+assert_file "$OTHER_SENTINEL" "a symlinked runtime root is never followed to a sentinel"
+RUN_OUT=$(tool_payload SessionEnd session_context_once_02 Bash '{"command":""}' | \
+  HOME="$RUN_HOME" CLADE_RUNTIME_DIR="$RUNTIME" CP_SHADOW_DIR="$TMP_ROOT/no-shadow-dir" \
+  bash -c "$(hook_command "$RUN_HOME" SessionEnd session-end-cleanup.sh)")
+RUN_RC=$?
+assert_eq "$RUN_RC|$RUN_OUT" "0|" "SessionEnd with no shadow dir exits 0 silently"
+assert_no_file "$OTHER_SENTINEL" "the sentinel is released even when the session left no shadow dir"
+rmdir "$PREFIX_SENTINEL" 2>/dev/null
+
 section "memory sync on both PostToolUse matchers"
 : > "$RUN_HOME/.claude/.sync-config"
 cat > "$RUN_HOME/.claude/scripts/sync-push.sh" <<'EOF'
