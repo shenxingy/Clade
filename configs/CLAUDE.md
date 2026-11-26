@@ -98,8 +98,9 @@ and its pass is unproven too. (Each job gets its own `$RUNNER_TEMP`, command
 files and npm global prefix, and a `$GITHUB_ENV`/`$GITHUB_PATH` write reaches
 its later steps; a `${{ steps.<id>.outputs.* }}` it does not read.
 `npm install -g` lands in that prefix, not this machine's, except under a
-prefix the workflow names, under `sudo`, and in a step that uses nvm, which
-refuses the prefix: that step runs without it, and its output says so.
+prefix the workflow names, under `sudo`, and in a step whose text or output
+shows nvm, which refuses the prefix: that step runs without it and says so
+(`docs/ci-gates.md` names the two nvm shapes this misses).
 `npm config set prefix` still writes `~/.npmrc`.) Those are **unproven**: the
 summary line reads `PARTIAL`, names each one, and the JSON lists them under
 `unproven`. A run in which no job ran at all reads `NOTHING RAN` (JSON
