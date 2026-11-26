@@ -30,9 +30,10 @@ REPO = Path(__file__).resolve().parents[2]
 # written. The copy sits beside a copy of the lib/ directory next to the hook,
 # and a guard that lives in one of those libs is mutated there: "libs" names
 # the files a table's anchors may be in besides the hook. Until the guardian's
-# rm and force-push rules moved into its lib/, the copy ran alone. A mutation
-# can take several (old, new) edits: a gate that two checks implement together
-# is removed by removing both.
+# rm and force-push rules moved into its lib/, the copy ran alone. An
+# unmutated copy, built the same way, must pass, or a mutation's red could be
+# the copy's. A mutation can take several (old, new) edits: a gate that two
+# checks implement together is removed by removing both.
 #
 # pre-tool-guardian's subagent-wait rule, run as GUARDIAN_WAITS_ONLY=1. Its
 # fork-free pre-checks are not listed alone, on purpose: the `"agent_id"`
@@ -985,8 +986,14 @@ def test_removing_a_hook_guard_turns_its_suite_red(hook):
             return name, _run_suite(spec, copy(f"m{i}", mutated), fail_fast=True)
 
         with ThreadPoolExecutor(max_workers=8) as pool:
+            control = pool.submit(lambda: _run_suite(spec, copy("control", sources), fail_fast=True))
             results = list(pool.map(one, enumerate(spec["mutations"])))
 
+    # The copy, unmutated, must pass: a copy that is not the hook as installed
+    # (a lib left behind) fails every mutation for that reason instead.
+    assert control.result().returncode == 0, (
+        f"an unmutated copy of {hook} fails {spec['suite']}, so no mutation "
+        f"below can be read:\n{control.result().stdout[-2000:]}")
     stayed_green = [name for name, res in results if res.returncode == 0]
     assert not stayed_green, (
         f"{spec['suite']} still PASSES with these removed from {hook}: {stayed_green}.\n"
