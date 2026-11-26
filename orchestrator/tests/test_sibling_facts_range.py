@@ -110,12 +110,24 @@ def _ci_step_script() -> str:
     return "\n".join(body) + "\n"
 
 
-def test_a_local_run_executes_the_ci_step():
-    out = subprocess.run([sys.executable, str(REPO / "configs" / "scripts" / "ci-local.py"),
-                          "--repo", str(REPO), "--list"], capture_output=True, text=True, check=False)
-    assert out.returncode == 0, out.stdout + out.stderr
-    assert "[run ] Syntax Check" in out.stdout, out.stdout
-    assert "UNPROVEN step Sibling facts" not in out.stdout, out.stdout
+def test_a_local_run_executes_the_ci_step(monkeypatch, capsys):
+    # Syntax Check is `runs-on: ubuntu-latest`, and ci-local skips a Linux job
+    # on any other host: on a Mac the whole job read `[skip]`, this test failed
+    # there every time, and the UNPROVEN check below would have passed without
+    # looking at a step. So plan it as the Linux host it targets — this asserts
+    # how the step is classified, not which OS the test happens to run on.
+    monkeypatch.setattr(sys, "path", list(sys.path))   # ci-local.py prepends its dir
+    spec = importlib.util.spec_from_file_location(
+        "ci_local_cli", REPO / "configs" / "scripts" / "ci-local.py")
+    ci_local = importlib.util.module_from_spec(spec)
+    monkeypatch.setitem(sys.modules, "ci_local_cli", ci_local)   # its dataclasses resolve through it
+    spec.loader.exec_module(ci_local)
+    monkeypatch.setattr(ci_local, "local_platform", lambda: "Linux")
+    monkeypatch.setattr(sys, "argv", ["ci-local.py", "--repo", str(REPO), "--list"])
+    assert ci_local.main() == 0
+    out = capsys.readouterr().out
+    assert "[run ] Syntax Check" in out, out
+    assert "UNPROVEN step Sibling facts" not in out, out
     assert "${{" not in _ci_step_script()
 
 
