@@ -459,6 +459,14 @@ OUT=$(todo_ctx)
 assert_line "$OUT" "Next TODO: Old style title" \
   "control: an unmarked bold title keeps its old rendering"
 
+cat > "$TODO_PROJ/TODO.md" <<'EOF'
+- [ ] ** Spaced bold title ** spaced-body
+EOF
+OUT=$(todo_ctx)
+# Control: passes on origin/main too, where a sed trimmed; it pins the awk trim of both ends.
+assert_line "$OUT" "Next TODO: Spaced bold title" \
+  "control: the printed title is trimmed at both ends"
+
 # ─── Next TODO: fenced blocks are code, not structure (#204 residue) ──
 # A column-0 `#` inside a fence was read as a heading, so a shell comment in a
 # code sample ended an owner section and its items became eligible. Each spec is
@@ -576,20 +584,45 @@ assert_line "$OUT" "Next TODO: 🔴 Add an owner field to the manifest" \
 cat > "$TODO_PROJ/TODO.md" <<'EOF'
 - [ ] 🔴 **Add an owner field to each step**
   - [ ] Write the manifest
-    ```yaml
+    ~~~yaml
     owner: alice
-    ```
+    ~~~
 - [ ] 🟠 Orange item
 EOF
 OUT=$(todo_ctx)
 # Control: passes on HEAD too; it pins that inside a list item (here a nested one)
-# a fence indented four columns is still a fence, not an indented code line.
+# a fence indented four columns is still a fence, not an indented code line, and
+# that a fence inside an item opens at all. A tilde fence on purpose: read as item
+# text, a ``` fence pairs up like code spans and the span removal would hide it.
 assert_line "$OUT" "Next TODO: 🔴 Add an owner field to each step" \
   "a nested item's fence indented four columns is code, not an owner marker"
 
-# A fence opened inside a list item ends when the item does, at the next column-0
-# line (CommonMark; markdown-it agrees on every fixture below). Kept open, one
-# unclosed sample hid every later item and heading until EOF.
+# An inline code span is code too, so a field name in backticks is not an owner
+# phrase. Text outside the span is still read, and so is everything after a lone
+# backtick, which opens no span.
+cat > "$TODO_PROJ/TODO.md" <<'EOF'
+- [ ] 🔴 Red item that adds a field
+  named `metadata.owner: str` to the schema
+- [ ] 🟠 Orange item
+EOF
+OUT=$(todo_ctx)
+assert_line "$OUT" "Next TODO: - [ ] 🔴 Red item that adds a field" \
+  "an owner phrase inside an inline code span does not skip the item"
+
+cat > "$TODO_PROJ/TODO.md" <<'EOF'
+- [ ] 🔴 Rename the `owner` column; one lone ` backtick, and
+  Owner: decide the new name
+- [ ] 🟠 Orange item
+EOF
+OUT=$(todo_ctx)
+# Control: passes on HEAD too; it pins that only a closed span is removed.
+assert_line "$OUT" "Next TODO: - [ ] 🟠 Orange item" \
+  "control: an owner phrase after a lone backtick still skips the item"
+
+# A fence opened inside a list item ends when the item does: at the next column-0
+# line, or at a fence line indented less than the item's content (the section
+# after these). CommonMark; markdown-it agrees on every fixture below. Kept open,
+# one unclosed sample hid every later item and heading until EOF.
 cat > "$TODO_PROJ/TODO.md" <<'EOF'
 - [ ] 🟡 **Fix the parser** for lines that open with
   ``` three backticks and never close them
@@ -610,7 +643,7 @@ OUT=$(todo_ctx)
 assert_line "$OUT" "Next TODO: - [ ] 🟠 Agent orange item is eligible" \
   "an unclosed fence inside a skipped owner item ends with it, so the next heading is read"
 
-for opener in '- [x] Done item' '1. Numbered step' '* Plain bullet'; do
+for opener in '- [x] Done item' '1. Numbered step' '* Plain bullet' '+ Plus bullet' '1) Paren step'; do
   printf '%s\n' "$opener with an unclosed sample" '   ```bash' '- [ ] 🔴 Red item after it' \
     > "$TODO_PROJ/TODO.md"
   OUT=$(todo_ctx)
@@ -655,6 +688,89 @@ EOF
 OUT=$(todo_ctx)
 assert_line "$OUT" "Next TODO: - [ ] 🟠 Agent orange item is eligible" \
   "an indented fence outside a list item is top-level: a column-0 line does not end it"
+
+# ─── Next TODO: a fence left of an item's content is not the item's ──
+# An item's content starts after its marker and the whitespace that follows
+# (column 2 under "- ", 3 under "1. "; a tab reaches the next multiple of 4). A
+# fence run indented less than that is not in the item, because CommonMark never
+# continues an item lazily with a fence: the item ends there and the run opens a
+# top-level fence, which a column-0 line does not end. Read as the item's fence,
+# the column-0 `#` below ended it and was read as a heading, so the owner section
+# ended early (or, with the closer then opening a new fence, nothing printed).
+cat > "$TODO_PROJ/TODO.md" <<'EOF'
+## Needs the owner
+1. Run the migration:
+  ```bash
+# column-0 comment inside the fence
+  ```
+2. Then check it:
+  ```bash
+  make check
+  ```
+- [ ] 🔴 Owner red item is skipped
+## Agent work
+- [ ] 🟠 Agent orange item is eligible
+EOF
+OUT=$(todo_ctx)
+assert_line "$OUT" "Next TODO: - [ ] 🟠 Agent orange item is eligible" \
+  "a fence two columns in under a '1.' step is top-level, so its column-0 # keeps the owner section"
+
+cat > "$TODO_PROJ/TODO.md" <<'EOF'
+## Needs the owner
+- [ ] 🔴 Owner red item
+ ```bash
+# column-0 comment inside the fence
+ ```
+## Agent work
+- [ ] 🟠 Agent orange item is eligible
+EOF
+OUT=$(todo_ctx)
+assert_line "$OUT" "Next TODO: - [ ] 🟠 Agent orange item is eligible" \
+  "a fence one column in under a '- [ ]' item is top-level, so its own closer closes it"
+
+cat > "$TODO_PROJ/TODO.md" <<'EOF'
+1. Run this
+  ```bash
+# comment
+  ```
+- [ ] 🔴 Red item after a numbered step
+EOF
+OUT=$(todo_ctx)
+assert_line "$OUT" "Next TODO: - [ ] 🔴 Red item after a numbered step" \
+  "a fence left of a numbered step's content closes at its own closer"
+
+cat > "$TODO_PROJ/TODO.md" <<'EOF'
+- [ ] 🟡 Yellow item
+  ```
+  code
+ ```
+- [ ] 🔴 Red item inside the fence the under-indented run opens
+EOF
+OUT=$(todo_ctx)
+# Inside the item's own fence too: the run left of the content ends the item and
+# its fence, then opens a top-level fence (markdown-it parses it the same way).
+assert_line "$OUT" "Next TODO: - [ ] 🟡 Yellow item" \
+  "a fence run left of the content inside the item's fence ends the item and opens a new fence"
+
+printf '%s\n' $'-\tStep with a tab after its marker' '  ```bash' '# comment' '  ```' \
+  '- [ ] 🔴 Red item after it' > "$TODO_PROJ/TODO.md"
+OUT=$(todo_ctx)
+assert_line "$OUT" "Next TODO: - [ ] 🔴 Red item after it" \
+  "a tab after the marker puts the content at column 4, so a fence two columns in is top-level"
+
+printf '%s\n' '- [ ] 🟡 Yellow item' $'\t```' '- [ ] 🔴 Red item after it' > "$TODO_PROJ/TODO.md"
+OUT=$(todo_ctx)
+# Control: passes on HEAD too; it pins that a leading tab reaches column 4, past the content.
+assert_line "$OUT" "Next TODO: - [ ] 🔴 Red item after it" \
+  "a tab-indented fence inside an item is the item's and ends with it"
+
+printf '%s\n' '100. Step with a three-digit number' '    ```bash' '- [ ] 🔴 Red item after it' \
+  > "$TODO_PROJ/TODO.md"
+OUT=$(todo_ctx)
+# Control: passes on HEAD too; it pins that a run left of the content and four
+# columns in ends the item and, in no item, opens nothing.
+assert_line "$OUT" "Next TODO: - [ ] 🔴 Red item after it" \
+  "a run four columns in, left of a '100.' step's content, opens no fence"
 
 cat > "$TODO_PROJ/TODO.md" <<'EOF'
 - [ ] 🔴 Agent red item is eligible
@@ -721,6 +837,29 @@ fi
 for marker in 🔴 🟠 🟡 🔵; do
   assert_eq "$(grep -c -- "$marker" "$SESSION_CONTEXT")" "1" \
     "the $marker marker is written on one line of the hook"
+done
+
+# The owner phrases are one definition too. Add a phrase to TODO_OWNER_PHRASES in
+# a copy of the hook: an item carrying it must then be skipped, which it is not
+# by the shipped list (the control below), so the match reads the definition.
+printf '%s\n' '- [ ] 🔴 Red item waiting on legal' '- [ ] 🟠 Orange item' > "$TODO_PROJ/TODO.md"
+OUT=$(todo_ctx)
+assert_line "$OUT" "Next TODO: - [ ] 🔴 Red item waiting on legal" \
+  "control: the shipped owner phrases do not match 'waiting on legal'"
+sed "s/^TODO_OWNER_PHRASES='/TODO_OWNER_PHRASES='waiting on legal|/" \
+  "$SESSION_CONTEXT" > "$DRIFT_HOOKS/session-context.sh"
+if cmp -s "$SESSION_CONTEXT" "$DRIFT_HOOKS/session-context.sh"; then
+  fail "fixture: the owner phrases are one TODO_OWNER_PHRASES line" \
+    "no line starts with TODO_OWNER_PHRASES=' — the anchor is gone"
+else
+  OUT=$(echo '{}' | env HOME="$TODO_HOME" CLAUDE_PROJECT_DIR="$TODO_PROJ" \
+    bash "$DRIFT_HOOKS/session-context.sh" | jq -r '.hookSpecificOutput.additionalContext // empty')
+  assert_line "$OUT" "Next TODO: - [ ] 🟠 Orange item" \
+    "an owner phrase added to the one definition skips the item that carries it"
+fi
+for phrase in 'needs the owner' 'owner decision' 'owner:'; do
+  assert_eq "$(grep -c -- "$phrase" "$SESSION_CONTEXT")" "1" \
+    "the owner phrase '$phrase' is written on one line of the hook"
 done
 
 # ─── What the model reads: line breaks and the auto-pull notice ──────
