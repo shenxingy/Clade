@@ -124,7 +124,7 @@ run_hook() {
   local now="$1" input="$2"
   rm -f "$H/hook.rc" "$H/hook.done"
   {
-    printf '%s' "$input" | HOME="$H" \
+    printf '%s' "$input" | HOME="$H" BASH_ENV="${HOOK_BASH_ENV:-}" \
       CLADE_SYNC_PUSH_LOCK="$H/.claude/push.lock" \
       CLADE_SYNC_PUSH_BACKOFF_FILE="${HOOK_BACKOFF_FILE:-}" \
       CLADE_SYNC_PUSH_BACKOFF_NOW="$now" \
@@ -681,6 +681,17 @@ t_robustness() {
   assert_eq "$(backoff_line)" "8001 2 conflict-markers" \
     "a newline-less prior count is still incremented"
 
+  # The detached push can exit, and leave the job table, before the hook's
+  # `disown` runs. The DEBUG trap (BASH_ENV) forces that order by waiting for
+  # the push and letting `jobs` drop it just before `disown` executes.
+  new_store early-exit
+  install_stub
+  printf '%s\n' "trap 'if [[ \"\$BASH_COMMAND\" == disown* ]]; then wait; jobs >/dev/null; fi' DEBUG" \
+    > "$H/late-disown.env"
+  HOOK_BASH_ENV="$H/late-disown.env" fire_write 8200 "$H/.claude/skills/demo/SKILL.md"
+  assert_eq "$HOOK_RC" "0" "a push that exits before the hook's disown does not fail the hook"
+  assert_eq "$(spawn_count)" "1" "the push that exited early really ran"
+
   new_store missing-library
   install_stub
   mkdir -p "$H/hooks-without-lib"
@@ -813,6 +824,8 @@ exit 0'
   mutation red push "an unresolved upstream counting as ahead" delivery \
     "_ahead=\$(git rev-list --count '@{u}..HEAD' 2>/dev/null || echo 0)" \
     "_ahead=\$(git rev-list --count '@{u}..HEAD' 2>/dev/null || echo 1)"
+  mutation red hook "tolerating a push that exited before disown" robustness \
+    'disown %% 2>/dev/null || true' 'disown'
   mutation red hook "the half-open claim" claim \
     'if [[ "$_backoff_half_open" == true ]]; then' 'if false; then'
   mutation red hook "the unwritable-claim degradation" claim \
