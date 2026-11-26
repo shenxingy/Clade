@@ -113,7 +113,7 @@ apply_host() {
     git merge --ff-only origin/\$(git rev-parse --abbrev-ref HEAD) >/dev/null
     ./install.sh >/tmp/clade-install.log 2>&1 || { tail -5 /tmp/clade-install.log; exit 1; }
     src=\$(cat ~/.claude/.kit-source-dir 2>/dev/null)
-    . ~/.claude/hooks/lib/kit-checksum.sh 2>/dev/null || true
+    if [ -r ~/.claude/hooks/lib/kit-checksum.sh ]; then . ~/.claude/hooks/lib/kit-checksum.sh; fi
     if command -v kit_checksum >/dev/null 2>&1 && [ -n \"\$src\" ]; then
       a=\$(kit_checksum \"\$src/configs\"); b=\$(cat ~/.claude/.kit-checksum)
       [ \"\$a\" = \"\$b\" ] && echo VERIFIED || echo 'CHECKSUM MISMATCH after install'
@@ -181,8 +181,43 @@ STUB
     echo "SELF-TEST FAILED: 3 hosts in, $(printf '%s' "$out" | grep -c 'UNREACHABLE\|NO CHECKOUT') reported — a host was silently dropped"
     printf '%s\n' "$out"; rm -rf "$tmp"; return 1
   fi
+  # --apply's remote script runs under the host's login shell, which may be a
+  # POSIX sh or bash 3.2 (macOS /bin/bash). Both exit under set -e on
+  # `. <missing> || true`, so a host whose kit predates kit-checksum.sh (it has
+  # .kit-source-dir, from 2026-03, but not the library, from 2026-09) stopped
+  # silently after its install instead of saying it could not verify it. The
+  # stub runs the remote script locally under sh, in a sandbox HOME.
+  if command -v git >/dev/null 2>&1; then
+    git init -q --bare "$tmp/origin.git" &&
+      git clone -q "$tmp/origin.git" "$tmp/co" 2>/dev/null &&
+      printf '#!/bin/sh\nexit 0\n' > "$tmp/co/install.sh" && chmod +x "$tmp/co/install.sh" &&
+      git -C "$tmp/co" add install.sh &&
+      git -C "$tmp/co" -c user.email=t@t -c user.name=t -c core.hooksPath=/dev/null -c commit.gpgsign=false commit -qm base &&
+      git -C "$tmp/co" -c core.hooksPath=/dev/null push -q -u origin HEAD 2>/dev/null || {
+      echo "SELF-TEST FAILED: could not build the --apply fixture"; rm -rf "$tmp"; return 1
+    }
+    mkdir -p "$tmp/home/.claude"
+    printf '%s\n' "$tmp/co" > "$tmp/home/.claude/.kit-source-dir"
+    cat > "$tmp/ssh-run" <<'STUB'
+#!/usr/bin/env bash
+# The remote: run the last argument under sh, with HOME and the install log in the sandbox.
+for cmd in "$@"; do :; done
+cmd=$(printf '%s' "$cmd" | sed "s#/tmp/clade-install.log#$FLEET_TEST_TMP/install.log#g")
+HOME="$FLEET_TEST_TMP/home" exec sh -c "$cmd"
+STUB
+    chmod +x "$tmp/ssh-run"
+    printf 'stub-host %s\n' "$tmp/co" > "$tmp/apply.conf"
+    out=$(FLEET_TEST_TMP="$tmp" CLADE_FLEET_CONF="$tmp/apply.conf" CLADE_FLEET_SSH="$tmp/ssh-run" \
+      bash "$0" --apply 2>&1)
+    if ! printf '%s' "$out" | grep -q 'INSTALLED (no checksum verification'; then
+      echo "SELF-TEST FAILED: --apply on a host without kit-checksum.sh stopped before reporting the install"
+      printf '%s\n' "$out"; rm -rf "$tmp"; return 1
+    fi
+  else
+    echo "SELF-TEST NOTE: git not found, the --apply case was not run"
+  fi
   rm -rf "$tmp"
-  echo "SELF-TEST PASSED: missing fleet is a clean no-op, comments are not hosts, an unreachable host says so"
+  echo "SELF-TEST PASSED: missing fleet is a clean no-op, comments are not hosts, an unreachable host says so, --apply survives a missing kit-checksum.sh under sh"
   return 0
 }
 

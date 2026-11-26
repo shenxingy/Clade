@@ -14,6 +14,8 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SYNC_SETUP="${CLADE_TEST_SYNC_SETUP:-$REPO_ROOT/configs/scripts/sync-setup.sh}"
 SYNC_PUSH="${CLADE_TEST_SYNC_PUSH:-$REPO_ROOT/configs/scripts/sync-push.sh}"
 SYNC_HEAL="${CLADE_TEST_SYNC_HEAL:-$REPO_ROOT/configs/scripts/sync-store-heal.sh}"
+# shellcheck source=lib/source-shape.sh
+source "$REPO_ROOT/tests/lib/source-shape.sh"
 
 TESTS_RUN=0; TESTS_PASSED=0; TESTS_FAILED=0
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[0;33m'; NC='\033[0m'
@@ -636,6 +638,13 @@ for _failure in directory invalid; do
     "a $_failure helper source still permits the clean commit"
 done
 unset _failure
+# The cases above run under this host's bash. Under bash 3.2 (macOS) they also
+# need the sources' shape: there `if source …` and `source … || …` still exit
+# under set -e, before any fallback runs.
+assert_eq "$(guarded_source_lines "$SYNC_PUSH")" "" \
+  "sync-push recovers from no failed source with || or if (bash 3.2 exits there)"
+assert_eq "$(guarded_source_lines "$SYNC_SETUP")" "" \
+  "sync-setup recovers from no failed source with || or if (bash 3.2 exits there)"
 
 section "sync-setup — ignore write failure is explicit and makes no commit"
 SETUP_FAIL_ROOT="$TMP_ROOT/setup-write-failure"

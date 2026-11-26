@@ -14,6 +14,8 @@
 set -uo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=lib/source-shape.sh
+source "$REPO_ROOT/tests/lib/source-shape.sh"
 HOOK="${MSB_HOOK:-$REPO_ROOT/configs/hooks/memory-sync.sh}"
 PUSH="${MSB_PUSH:-$REPO_ROOT/configs/scripts/sync-push.sh}"
 BASE_PATH="$PATH"
@@ -720,6 +722,10 @@ t_robustness() {
   else
     pass "a missing backoff library stays silent"
   fi
+  # The case above runs under this host's bash. Under bash 3.2 (macOS) it also
+  # needs the source's shape: there `source … || true` still exits under set -e.
+  assert_eq "$(guarded_source_lines "$HOOK")" "" \
+    "memory-sync recovers from no failed source with || or if (bash 3.2 exits there)"
 }
 
 t_defaults() {
@@ -809,13 +815,14 @@ if [[ -z "$MSB_MUTANT" && -z "${MSB_SKIP_MUTATIONS:-}" ]]; then
 
   mutation() {
     local expect="$1" target="$2" name="$3" only="$4" dir="$MUT_DIR/m$NMUT" src
-    mkdir -p "$dir/scripts" "$dir/hooks/lib" "$dir/tests"
+    mkdir -p "$dir/scripts" "$dir/hooks/lib" "$dir/tests/lib"
     cp "$REPO_ROOT/configs/scripts/sync-push.sh" "$dir/scripts/sync-push.sh"
     cp "$REPO_ROOT/configs/scripts/sync-store-heal.sh" "$dir/scripts/sync-store-heal.sh"
     cp "$REPO_ROOT/configs/hooks/memory-sync.sh" "$dir/hooks/memory-sync.sh"
     cp "$REPO_ROOT/configs/hooks/lib/runtime-dir.sh" "$dir/hooks/lib/runtime-dir.sh"
     cp "$REPO_ROOT/configs/hooks/lib/sync-push-backoff.sh" "$dir/hooks/lib/sync-push-backoff.sh"
     cp "$REPO_ROOT/tests/test-memory-sync-breaker.sh" "$dir/tests/test-memory-sync-breaker.sh"
+    cp "$REPO_ROOT/tests/lib/source-shape.sh" "$dir/tests/lib/source-shape.sh"
     case "$target" in
       push) src="$dir/scripts/sync-push.sh" ;;
       hook) src="$dir/hooks/memory-sync.sh" ;;
@@ -913,8 +920,15 @@ exit 0'
   mutation red push "the consecutive-failure increment" failures \
     '"$((previous + 1))"' '"1"'
   mutation red hook "the missing backoff library source guard" robustness \
-    'source "$HOOK_LIBDIR/sync-push-backoff.sh" 2>/dev/null || true' \
-    'source "$HOOK_LIBDIR/sync-push-backoff.sh"'
+    'set +e
+# shellcheck source=/dev/null
+source "$HOOK_LIBDIR/sync-push-backoff.sh" 2>/dev/null
+set -e' 'source "$HOOK_LIBDIR/sync-push-backoff.sh" 2>/dev/null'
+  mutation red hook "the bash 3.2-safe source shape (back to || true)" robustness \
+    'set +e
+# shellcheck source=/dev/null
+source "$HOOK_LIBDIR/sync-push-backoff.sh" 2>/dev/null
+set -e' 'source "$HOOK_LIBDIR/sync-push-backoff.sh" 2>/dev/null || true'
   mutation red hook "the missing backoff library function guard" robustness \
     'if declare -F sync_push_backoff_active >/dev/null 2>&1 && sync_push_backoff_active; then' \
     'if sync_push_backoff_active; then'
