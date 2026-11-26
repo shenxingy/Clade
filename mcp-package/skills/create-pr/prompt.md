@@ -78,6 +78,21 @@ token/instructions, and forge conventions. The body records:
 - required agent/runtime disclosure;
 - the two review lines below.
 
+When the delivery record names an `issue`, the body's first line links it in
+the tracker's own words:
+
+```text
+Fixes ABC-123      this PR finishes the issue
+Part of ABC-123    one of several PRs for it (a stack layer, a first slice)
+```
+
+Linear moves the issue on merge from `Fixes` (also `Closes`, `Resolves`) in
+the PR title or body, and reads `Part of` as a link that does not move it.
+GitHub closes `#123` from the same words in the body, when the PR merges into
+the default branch. Magic words in a PR comment link nothing. Write the key exactly
+as the record has it, and only that one: a body naming another team's key
+links that issue too.
+
 Every PR body carries these two lines, spelled exactly so, because `/retro`
 parses them (`pr-verification-gaps.py`). A repository template governs the rest
 of the body, not these words:

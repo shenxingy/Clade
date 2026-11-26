@@ -64,6 +64,10 @@ MERGE_RECORDABLE_STATES = {"BUILD", "CHECKPOINT", "PUBLISHED", "READY", "BLOCKED
 # `ready` re-queries with backoff for this many seconds before failing.
 DEFAULT_MERGEABLE_TIMEOUT = 45.0
 SAFE_ID = re.compile(r"[^A-Za-z0-9._-]+")
+# A tracker issue the delivery works on: a team or project key and a number
+# (Linear and Jira, ABC-123) or a GitHub issue (#123). /create-pr writes it
+# after the tracker's own magic word, so the forge links and closes it.
+ISSUE_KEY = re.compile(r"(?:[A-Z][A-Z0-9_]{0,9}-|#)[1-9][0-9]{0,8}")
 AUTHORITY_VALUES = {"pending", "task-request", "repository-policy"}
 
 
@@ -91,6 +95,17 @@ def _common_dir(root: Path) -> Path:
 
 def _state_dir(root: Path) -> Path:
     return _common_dir(root) / "clade" / "deliveries"
+
+
+def _issue_key(value: str | None) -> str | None:
+    if value is None:
+        return None
+    key = value.strip().upper()
+    if not ISSUE_KEY.fullmatch(key):
+        raise DeliveryError(
+            f"--issue must be a tracker key like ABC-123 or #123, not {value!r}"
+        )
+    return key
 
 
 def _safe_id(value: str) -> str:
@@ -214,6 +229,7 @@ def _delivery_evidence_projection(state: dict[str, Any]) -> dict[str, Any]:
         "schema_version": "clade.delivery-evidence/v1",
         "attempt_id": state.get("attempt_id"),
         "task_ref": state.get("task_ref"),
+        "issue": state.get("issue"),
         "delivery_id": state["delivery_id"],
         "state": state["state"],
         "base": {"ref": state.get("base_ref"), "sha": state.get("base_sha")},
@@ -280,6 +296,7 @@ def cmd_start(args: argparse.Namespace) -> dict[str, Any]:
         if all(value is not None for value in task_ref_values)
         else None
     )
+    issue = _issue_key(args.issue)
     delivery_id = _safe_id(args.id or f"delivery-{uuid.uuid4().hex[:12]}")
     path = _state_path(root, delivery_id)
     requested_branch = args.branch or repository["current_branch"]
@@ -332,6 +349,7 @@ def cmd_start(args: argparse.Namespace) -> dict[str, Any]:
         "delivery_id": delivery_id,
         "attempt_id": _safe_id(args.attempt_id) if args.attempt_id else None,
         "task_ref": task_ref,
+        "issue": issue,
         "task_source": args.task_source,
         "owner": args.owner,
         "runtime": args.runtime,
@@ -370,7 +388,7 @@ def cmd_start(args: argparse.Namespace) -> dict[str, Any]:
             existing = _read_state(root, delivery_id)
             immutable = (
                 "branch", "base_sha", "owner", "repository_root", "attempt_id",
-                "task_ref",
+                "task_ref", "issue",
             )
             if all(existing.get(key) == state.get(key) for key in immutable):
                 return existing
@@ -1260,6 +1278,10 @@ def build_parser() -> argparse.ArgumentParser:
     start.add_argument("--project-id")
     start.add_argument("--task-id")
     start.add_argument("--session-id")
+    start.add_argument(
+        "--issue",
+        help="tracker issue this delivery works on: ABC-123 (Linear, Jira) or #123 (GitHub)",
+    )
     start.add_argument("--create-branch", action="store_true")
     start.add_argument("--allow-dirty", action="store_true")
     start.add_argument("--push-authority", default="pending")
