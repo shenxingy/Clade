@@ -62,7 +62,7 @@ At every session start, `commit-archeology.sh` scans the last 60 days of commits
 
 **Works in any Claude Code frontend** (TUI, desktop, IDE) — the hook is in `~/.claude/settings.json`, fires regardless of UI. Web (claude.ai/code) is the only exception (it can't read your local git).
 
-**Tunable via env vars:** `COMMIT_ARCH_WINDOW=60` (days), `COMMIT_ARCH_TOP_N=4` (lines injected), `COMMIT_ARCH_MIN=3` (min occurrences), `COMMIT_ARCH_CACHE_HOURS=24` (rescan throttle).
+**Tunable via env vars:** `COMMIT_ARCH_WINDOW=60` (days), `COMMIT_ARCH_TOP_N=4` (lines injected), `COMMIT_ARCH_MIN=3` (min occurrences), `COMMIT_ARCH_CACHE_HOURS=24` (rescan throttle), `COMMIT_ARCH_LOCK_GRACE=30` (seconds before an abandoned refresh lock, dead holder or no PID at all, is reclaimed), `COMMIT_ARCH_SCAN_TIMEOUT=600` (seconds before a background refresh scan is killed and its lock released).
 
 To verify on any project: `cd <repo> && bash ~/.claude/scripts/commit-archeology.sh --inject --force`.
 

@@ -78,7 +78,7 @@ awk '
     print "  sleep \"${COMMIT_ARCH_TEST_REFRESH_START_DELAY:-0}\""
     next
   }
-  /^    kill -0 \"\$pid\" 2>\/dev\/null && return 0$/ {
+  /^    lock_is_held \"\$lock\" \"\$pid\" && return 0$/ {
     print
     print "    printf '\''reclaim-ready\\n'\'' >> \"${COMMIT_ARCH_TEST_RECLAIM_LOG:-/dev/null}\""
     print "    sleep \"${COMMIT_ARCH_TEST_RECLAIM_DELAY:-0}\""
@@ -196,6 +196,11 @@ seed_cache() {
 age_cache() { touch -t 200001010000 "$(lessons_file)"; }
 # A dead holder is reclaimed only once its lock is past the grace period.
 age_lock() { touch -t 200001010000 "$(lock_dir)/pid"; }
+# clear_lock — drop a lock a case left behind, so a red case cannot wedge the next.
+clear_lock() {
+  rm -f "$(lock_dir)/pid"
+  rmdir "$(lock_dir)" 2>/dev/null
+}
 dead_pid() {
   local pid
   bash -c 'exit 0' &
@@ -582,8 +587,214 @@ mkdir "$(lock_dir)"
 EMPTY_LOCK_OUT=$(COMMIT_ARCH_TEST_SCAN_DELAY=1 run_arch --inject)
 assert_contains "$EMPTY_LOCK_OUT" 'wiring-gap' 'half-created lock still allows cached output'
 sleep 0.2
-assert_eq "$(scan_count)" '0' 'lock without a PID is left for its in-flight owner'
+assert_eq "$(scan_count)" '0' 'a young lock without a PID is left for its in-flight owner'
 rmdir "$(lock_dir)"
+
+printf '# pid-less lock: a claimer that died before its pid write is reclaimed after the grace\n'
+# A caller killed between take_lock's mkdir and its pid write leaves a directory
+# with no pid file; killed inside the O_EXCL redirect, an empty one. #215 left
+# both to an "in-flight owner" for good, so no later session refreshed the
+# repository until the runtime dir was cleared. A pid file holding no PID at all
+# is no better a claim. Each is judged by the directory's own mtime.
+for shape in missing empty malformed; do
+  seed_cache
+  age_cache
+  move_head
+  NEW_HEAD=$(git -C "$PROJ" rev-parse HEAD)
+  mkdir -p "$(lock_dir)"
+  case "$shape" in
+    empty) : > "$(lock_dir)/pid" ;;
+    malformed) printf 'not-a-pid\n' > "$(lock_dir)/pid" ;;
+  esac
+  touch -t 200001010000 "$(lock_dir)"
+  PIDLESS_OUT=$(COMMIT_ARCH_TEST_SCAN_DELAY=0 run_arch --inject)
+  assert_contains "$PIDLESS_OUT" 'wiring-gap' "an abandoned lock with a $shape pid file allows cached output"
+  wait_for_scan_count 1
+  if wait_for_head "$NEW_HEAD"; then pass "an abandoned lock with a $shape pid file is reclaimed and refreshes HEAD"
+  else fail "an abandoned lock with a $shape pid file is reclaimed and refreshes HEAD" 'HEAD sidecar was not updated'; fi
+  wait_for_lock_release
+  assert_eq "$(scan_count)" '1' "an abandoned lock with a $shape pid file launches one scan"
+  clear_lock
+done
+
+printf '# pid-less lock: a reclaimer judges its age again under the mutex\n'
+# The paused caller read an abandoned pid-less lock. Before it takes the mutex,
+# that lock is replaced by a new claimer's, still between its mkdir and its pid
+# write. The PID read (none) still matches, so only the age tells the two apart.
+seed_cache
+age_cache
+move_head
+mkdir -p "$(lock_dir)"
+touch -t 200001010000 "$(lock_dir)"
+RECLAIM_LOG="$SANDBOX/pidless-reclaim.log"
+: > "$RECLAIM_LOG"
+(COMMIT_ARCH_TEST_RECLAIM_LOG="$RECLAIM_LOG" COMMIT_ARCH_TEST_RECLAIM_DELAY=1 \
+  COMMIT_ARCH_TEST_SCAN_DELAY=0 run_arch --inject > "$SANDBOX/pidless-reclaim.out") &
+P1=$!
+if wait_for_nonempty "$RECLAIM_LOG"; then
+  pass 'paused caller has judged the pid-less lock abandoned'
+else
+  fail 'paused caller has judged the pid-less lock abandoned' 'caller never reached the reclaim pause'
+fi
+rmdir "$(lock_dir)"
+mkdir "$(lock_dir)"
+wait "$P1"
+RC1=$?
+assert_eq "$RC1" '0' 'a reclaimer around a fresh pid-less claim exits zero'
+sleep 0.5
+assert_eq "$(scan_count)" '0' 'a pid-less lock claimed while the reclaimer paused is not taken'
+assert_eq "$([[ -d "$(lock_dir)" && ! -e "$(lock_dir)/pid" ]] && echo kept || echo taken)" 'kept' \
+  'the fresh pid-less claim keeps its directory'
+clear_lock
+
+printf '# lock grace: COMMIT_ARCH_LOCK_GRACE sets it, and a malformed value keeps 30 s\n'
+seed_cache
+age_cache
+move_head
+NEW_HEAD=$(git -C "$PROJ" rev-parse HEAD)
+mkdir -p "$(lock_dir)"
+sleep 2
+# Taken as it stands, a negative grace would make every lock look abandoned.
+COMMIT_ARCH_LOCK_GRACE=-1 COMMIT_ARCH_TEST_SCAN_DELAY=0 run_arch --inject > /dev/null
+# A reclaim writes its PID before the caller returns, so this needs no wait.
+assert_eq "$([[ -d "$(lock_dir)" && ! -e "$(lock_dir)/pid" ]] && echo kept || echo taken)" 'kept' \
+  'a negative grace falls back to 30 s and leaves a 2 s old lock alone'
+COMMIT_ARCH_LOCK_GRACE=1 COMMIT_ARCH_TEST_SCAN_DELAY=0 run_arch --inject > /dev/null
+wait_for_scan_count 1
+if wait_for_head "$NEW_HEAD"; then pass 'a 1 s grace reclaims a 2 s old pid-less lock'
+else fail 'a 1 s grace reclaims a 2 s old pid-less lock' 'HEAD sidecar was not updated'; fi
+wait_for_lock_release
+assert_eq "$(scan_count)" '1' 'a reclaim under a 1 s grace launches one scan'
+clear_lock
+# Taken as it stands, a non-numeric grace is an unbound variable under set -u:
+# the caller dies at its first lock judgement and no lock is ever reclaimed.
+seed_cache
+age_cache
+move_head
+NEW_HEAD=$(git -C "$PROJ" rev-parse HEAD)
+mkdir -p "$(lock_dir)"
+touch -t 200001010000 "$(lock_dir)"
+COMMIT_ARCH_LOCK_GRACE=abc COMMIT_ARCH_TEST_SCAN_DELAY=0 run_arch --inject > /dev/null 2>&1
+RC=$?
+assert_eq "$RC" '0' 'a non-numeric grace does not fail the caller'
+if wait_for_head "$NEW_HEAD"; then pass 'a non-numeric grace falls back to 30 s and still reclaims an abandoned lock'
+else fail 'a non-numeric grace falls back to 30 s and still reclaims an abandoned lock' 'HEAD sidecar was not updated'; fi
+wait_for_lock_release
+clear_lock
+
+printf '# hung scan: the watchdog kills its git and releases the lock\n'
+# A git that never returns kept #210's refresher, and so the live PID in its
+# lock, alive for good: no later session refreshed the repository. The git shim
+# hangs every `git log`; the jq shim hangs the scan's own `jq -nc`, after its
+# temporary file exists. Each records the PID it hangs in.
+HANG_BIN="$SANDBOX/hang-bin"
+mkdir -p "$HANG_BIN/git" "$HANG_BIN/jq"
+cat > "$HANG_BIN/git/git" <<EOF
+#!/usr/bin/env bash
+if [[ "\${1:-}" == log ]]; then
+  printf '%s\\n' "\$\$" >> "\$COMMIT_ARCH_TEST_HANG_LOG"
+  exec sleep 300
+fi
+exec "$(command -v git)" "\$@"
+EOF
+cat > "$HANG_BIN/jq/jq" <<EOF
+#!/usr/bin/env bash
+if [[ "\${1:-}" == -nc ]]; then
+  printf '%s\\n' "\$\$" >> "\$COMMIT_ARCH_TEST_HANG_LOG"
+  exec sleep 300
+fi
+exec "$(command -v jq)" "\$@"
+EOF
+chmod +x "$HANG_BIN/git/git" "$HANG_BIN/jq/jq"
+# stop_hung <log> — end whatever a red run leaves behind, so later cases start clean.
+stop_hung() {
+  local p holder
+  holder=$(head -1 "$(lock_dir)/pid" 2>/dev/null)
+  if [[ "$holder" =~ ^[0-9]+$ ]]; then
+    kill -- "-$holder" 2>/dev/null
+    kill "$holder" 2>/dev/null
+  fi
+  while read -r p; do kill "$p" 2>/dev/null; done < "$1"
+  clear_lock
+}
+# hung_refresh_case <label> <git|jq> <bound> [PATH] — one refresh that hangs in
+# <git|jq>, under a <bound>-second scan timeout.
+hung_refresh_case() {
+  local label="$1" hang="$2" bound="$3" path="${4:-$PATH}" hang_log hung old_head new_head t0 t1 sentinel
+  seed_cache
+  age_cache
+  move_head
+  old_head=$(head -1 "$(head_file)")
+  new_head=$(git -C "$PROJ" rev-parse HEAD)
+  hang_log="$SANDBOX/hang-$hang-$RANDOM.log"
+  : > "$hang_log"
+  # A process in this suite's own process group: under nohup the refresher
+  # shares it, and the watchdog must leave it alone.
+  sleep 30 &
+  sentinel=$!
+  t0=$(date +%s)
+  PATH="$HANG_BIN/$hang:$path" COMMIT_ARCH_TEST_HANG_LOG="$hang_log" \
+    COMMIT_ARCH_SCAN_TIMEOUT="$bound" COMMIT_ARCH_TEST_SCAN_DELAY=0 run_arch --inject > /dev/null
+  if wait_for_nonempty "$hang_log"; then pass "$label: the refresh scan reached a hung $hang"
+  else fail "$label: the refresh scan reached a hung $hang" 'the shim never hung'; fi
+  hung=$(head -1 "$hang_log")
+  if wait_for_lock_release; then
+    t1=$(date +%s)
+    pass "$label: a scan hung in $hang releases the lock"
+    assert_le "$((t1 - t0))" "$((bound + 5))" "$label: the lock is released within the $bound s bound plus slack"
+  else
+    fail "$label: a scan hung in $hang releases the lock" "lock still held by $(head -1 "$(lock_dir)/pid" 2>/dev/null)"
+  fi
+  if wait_for_dead "$hung"; then pass "$label: the watchdog kills the hung $hang"
+  else fail "$label: the watchdog kills the hung $hang" "pid $hung is still running"; fi
+  if kill -0 "$sentinel" 2>/dev/null; then pass "$label: the watchdog leaves the caller's process group alone"
+  else fail "$label: the watchdog leaves the caller's process group alone" 'sentinel was killed'; fi
+  kill "$sentinel" 2>/dev/null
+  wait "$sentinel" 2>/dev/null
+  stop_hung "$hang_log"
+  assert_eq "$(head -1 "$(head_file)" 2>/dev/null)" "$old_head" "$label: a killed scan records no new HEAD"
+  assert_empty "$(ls "$CLAUDE_DIR/commit-lessons" | grep '[.]tmp[.]')" "$label: a killed scan leaves no temporary file"
+  reset_scan_log
+  PATH="$path" COMMIT_ARCH_TEST_SCAN_DELAY=0 run_arch --inject > /dev/null
+  wait_for_scan_count 1
+  if wait_for_head "$new_head"; then pass "$label: the next session refreshes the repository"
+  else fail "$label: the next session refreshes the repository" 'HEAD sidecar was not updated'; fi
+  wait_for_lock_release
+}
+hung_refresh_case 'hung git' git 1
+# The jq hang follows every detector, so its bound leaves them time to finish.
+hung_refresh_case 'hung write' jq 4
+
+printf '# finished scan: the watchdog does not outlive it\n'
+seed_cache
+age_cache
+move_head
+NEW_HEAD=$(git -C "$PROJ" rev-parse HEAD)
+COMMIT_ARCH_SCAN_TIMEOUT=4093 COMMIT_ARCH_TEST_SCAN_DELAY=0 run_arch --inject > /dev/null
+wait_for_scan_count 1
+wait_for_head "$NEW_HEAD"
+wait_for_lock_release
+WATCHDOGS=1
+for _ in 1 2 3 4 5 6 7 8 9 10; do
+  WATCHDOGS=$(ps -A -o args= 2>/dev/null | grep -c '^sleep 4093$')
+  [[ "$WATCHDOGS" -eq 0 ]] && break
+  sleep 0.2
+done
+assert_eq "$WATCHDOGS" '0' 'a scan that finishes in time takes its watchdog down with it'
+
+printf '# scan timeout: a malformed value keeps the default\n'
+# `sleep abc` fails at once and `sleep 0` returns at once, so either value taken
+# as it stands would kill every scan as it starts.
+for bad in abc 0; do
+  seed_cache
+  age_cache
+  move_head
+  NEW_HEAD=$(git -C "$PROJ" rev-parse HEAD)
+  COMMIT_ARCH_SCAN_TIMEOUT="$bad" COMMIT_ARCH_TEST_SCAN_DELAY=1 run_arch --inject > /dev/null
+  if wait_for_head "$NEW_HEAD"; then pass "a scan timeout of '$bad' keeps the default and the scan completes"
+  else fail "a scan timeout of '$bad' keeps the default and the scan completes" 'HEAD sidecar was not updated'; fi
+  wait_for_lock_release
+done
 
 printf '# internal refresh rejects an invalid lock\n'
 reset_scan_log
@@ -610,6 +821,9 @@ else
 fi
 wait_for_lock_release
 assert_eq "$(scan_count)" '1' 'nohup fallback scans exactly once'
+# Without setsid the refresher stays in its caller's process group, so the
+# watchdog's kill must reach only the scan's own group.
+hung_refresh_case 'nohup hung git' git 1 "$NO_SETSID_BIN"
 
 printf '# setsid preference and an unblocked launch\n'
 REAL_SETSID=$(command -v setsid 2>/dev/null || true)

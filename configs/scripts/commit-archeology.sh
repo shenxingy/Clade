@@ -14,6 +14,10 @@
 #   COMMIT_ARCH_CACHE_HOURS=24   refresh a moved HEAD only once cache is older
 #   COMMIT_ARCH_TOP_N=4          how many patterns to inject
 #   COMMIT_ARCH_MIN=3            minimum occurrences to register a pattern
+#   COMMIT_ARCH_LOCK_GRACE=30    seconds before a refresh lock whose holder is
+#                                dead, or which names none, may be reclaimed
+#   COMMIT_ARCH_SCAN_TIMEOUT=600 seconds a background refresh scan may run
+#                                before it is killed and its lock released
 #
 # Detectors:
 #   wiring-gap       fix commits with "wire / hook up / not registered / not called"
@@ -38,7 +42,15 @@ CACHE_HOURS="${COMMIT_ARCH_CACHE_HOURS:-24}"
 TOP_N="${COMMIT_ARCH_TOP_N:-4}"
 MIN_OCCURRENCES="${COMMIT_ARCH_MIN:-3}"
 # A refresh lock or reclaim mutex younger than this is never taken from its holder.
-LOCK_GRACE_SECONDS=30
+LOCK_GRACE_SECONDS="${COMMIT_ARCH_LOCK_GRACE:-30}"
+[[ "$LOCK_GRACE_SECONDS" =~ ^[0-9]+$ ]] || LOCK_GRACE_SECONDS=30
+# A background refresh scan still running after this long is killed. The slowest
+# full scan measured on 2026-11-25 took 109 s (a 7,675-commit repository with
+# 3,244 commits in the window, on a 32-core host at load average 80). A bound
+# over 5x that frees a wedged lock within ten minutes and leaves a slower host
+# room to finish; the lessons are advisory, so a late refresh costs little.
+SCAN_TIMEOUT_SECONDS="${COMMIT_ARCH_SCAN_TIMEOUT:-600}"
+[[ "$SCAN_TIMEOUT_SECONDS" =~ ^[1-9][0-9]*$ ]] || SCAN_TIMEOUT_SECONDS=600
 
 mkdir -p "$LESSONS_DIR" 2>/dev/null
 
@@ -260,6 +272,25 @@ lock_is_young() {
   [[ "$(( $(date +%s) - mtime ))" -lt "$LOCK_GRACE_SECONDS" ]]
 }
 
+# lock_is_held <dir> <pid> — true while the refresh lock <dir>, read as naming
+# <pid>, must be left to its holder.
+lock_is_held() {
+  if [[ "$2" =~ ^[0-9]+$ ]]; then
+    # Until the refresher has started and recorded its own PID, the lock names a
+    # process that has already exited: the caller that spawned it, which returns
+    # at once. A dead PID is therefore no evidence of an abandoned lock until the
+    # lock is older than any startup. #212 recorded $! instead, which names the
+    # refresher only if setsid does not fork (util-linux setsid forks when its
+    # caller leads a process group, as a job under job control does).
+    lock_is_young "$1/pid" || kill -0 "$2" 2>/dev/null
+  else
+    # No PID names no holder to ask: the claimer is between its mkdir and its pid
+    # write, or died there. Only age tells those apart, and the pid file may never
+    # have been created, so the directory's own mtime is the claim time.
+    lock_is_young "$1"
+  fi
+}
+
 # take_lock <dir> — create <dir> holding a pid file with our PID. Of any number
 # of concurrent callers exactly one succeeds, because the pid file is created
 # O_EXCL (bash noclobber). mkdir alone does not decide it: uutils mkdir before
@@ -288,15 +319,7 @@ start_refresh() {
 
   if ! take_lock "$lock"; then
     pid=$(head -1 "$lock/pid" 2>/dev/null)
-    [[ "$pid" =~ ^[0-9]+$ ]] || return 0
-    # Until the refresher has started and recorded its own PID, the lock names a
-    # process that has already exited: the caller that spawned it, which returns
-    # at once. A dead PID is therefore no evidence of an abandoned lock until the
-    # lock is older than any startup. #212 recorded $! instead, which names the
-    # refresher only if setsid does not fork (util-linux setsid forks when its
-    # caller leads a process group, as a job under job control does).
-    lock_is_young "$lock/pid" && return 0
-    kill -0 "$pid" 2>/dev/null && return 0
+    lock_is_held "$lock" "$pid" && return 0
 
     reclaim="$lock.reclaim"
     if ! take_lock "$reclaim"; then
@@ -304,8 +327,11 @@ start_refresh() {
       drop_lock "$reclaim" || return 0
       take_lock "$reclaim" || return 0
     fi
+    # Judge again under the mutex: the lock read above may have been reclaimed
+    # and released since, and a new claimer may now hold it, with or without
+    # its PID written yet.
     current_pid=$(head -1 "$lock/pid" 2>/dev/null)
-    if [[ "$current_pid" != "$pid" ]] || kill -0 "$current_pid" 2>/dev/null; then
+    if [[ "$current_pid" != "$pid" ]] || lock_is_held "$lock" "$current_pid"; then
       drop_lock "$reclaim"
       return 0
     fi
@@ -331,6 +357,7 @@ start_refresh() {
 }
 
 run_refresh() {
+  local scan_pid watchdog_pid
   REFRESH_LOCK_DIR="${1:-}"
   [[ -n "$REFRESH_LOCK_DIR" && -d "$REFRESH_LOCK_DIR" ]] || return 0
   trap 'rm -f "$REFRESH_LOCK_DIR/pid"; rmdir "$REFRESH_LOCK_DIR" 2>/dev/null' EXIT
@@ -338,7 +365,23 @@ run_refresh() {
   # A caller that judged the cache stale just before another refresh finished and
   # released the lock arrives here with nothing left to do.
   [[ "$(head -1 "$(lessons_path).head" 2>/dev/null)" == "$(git rev-parse HEAD 2>/dev/null)" ]] && return 0
-  scan
+  # A hung git would keep this process, and so its live PID in the lock, alive
+  # for good: no later session could refresh this repository. bash 3.2 has no
+  # `timeout`, so a watchdog ends the scan after SCAN_TIMEOUT_SECONDS. Job control
+  # puts the scan in a process group of its own, which one kill empties of every
+  # git it started, and never touches the group this refresher was launched into
+  # (under nohup that is the caller's). The lock is released on the way out, and
+  # with no new HEAD sidecar the next session retries.
+  set -m
+  scan &
+  scan_pid=$!
+  ( sleep "$SCAN_TIMEOUT_SECONDS"; kill -TERM -- "-$scan_pid" 2>/dev/null ) &
+  watchdog_pid=$!
+  set +m
+  wait "$scan_pid"
+  kill -TERM -- "-$watchdog_pid" 2>/dev/null
+  # A scan ended mid-write leaves its temporary files; its $$ is ours.
+  rm -f "$(lessons_path).tmp.$$" "$(lessons_path).head.tmp.$$"
 }
 
 # ─── Inject ───────────────────────────────────────────────────────────
