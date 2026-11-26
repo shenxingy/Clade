@@ -74,7 +74,7 @@ one such list in this toolkit was wrong twice, covering 4 of 7 gates and later
 
 **Reading its output honestly.** A skipped job is reported with its reason and
 never dropped — "nothing ran" and "everything passed" must not look alike. It
-skips five classes, and only four leave the result intact: a workflow
+skips six classes. Four leave the result intact: a workflow
 triggered by `pull_request_target` and by no push or pull_request (it acts on
 the GitHub API, not the tree), a workflow whose push trigger filters on
 `tags:` alone (a tag tier; it runs on a head that carries a tag), a job whose
@@ -96,8 +96,18 @@ A step whose *inherited* env holds a non-secret `${{ }}` value (a
 workflow-level `REPO: ${{ github.repository }}`) runs with that variable unset,
 and its pass is unproven too. (Each job gets its own `$RUNNER_TEMP` and
 command files, and a `$GITHUB_ENV`/`$GITHUB_PATH` write reaches its later steps;
-a `${{ steps.<id>.outputs.* }}` it does not read.) Those are **unproven**: the
-summary line reads `PARTIAL`, names each one, and the JSON lists them under
+a `${{ steps.<id>.outputs.* }}` it does not read.) The sixth is a step written
+for a throwaway runner that would change this host: `sudo` in any form,
+`docker system/image/builder/volume prune`, a `docker rmi` of every image,
+`rm` of a path outside the checkout and `$RUNNER_TEMP`, `apt-get
+remove/purge/autoremove`. It is **skipped-unsafe**, never run — measured
+2026-11-25: a "Free up disk space" step's `docker image prune -a -f`, run on a
+host with passwordless sudo, deleted 316 GB of its Docker images. A step that
+is only host setup or cleanup leaves the result intact (a gate that needed its
+install fails visibly); a gate step holding such a command is unproven. The
+summary and the JSON `skipped_unsafe` name each one; `--allow-host-mutation`
+runs them, on a throwaway VM only. The fifth class and the sixth's gate steps
+are **unproven**: the summary line reads `PARTIAL`, names each one, and the JSON lists them under
 `unproven`. A run in which no job ran at all reads `NOTHING RAN` (JSON
 `verdict: none`). **Neither is green** — prove those lanes hosted (or where
 their services exist) before reading a local run as a merge signal. `--strict`

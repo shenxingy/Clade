@@ -18,9 +18,9 @@
 # `unproven`, exit 2 under --strict) and never as passed. A step that passes
 # only on its rerun must come back FLAKY, never green (tests/lib/
 # ci-local-flaky.sh); runner labels, tag-only tiers and the runner files are in
-# tests/lib/ci-local-runner.sh. The last suite removes each guard from a copy
-# of ci-local.py and ci_local_runner.py and requires this suite to go red; an
-# anchor that no longer matches is a failure.
+# tests/lib/ci-local-runner.sh, host-mutating steps in ci-local-host-mutation.sh.
+# The last suite removes each guard from a copy of ci-local.py and
+# ci_local_runner.py and requires this suite to go red (a stale anchor fails).
 #
 # Usage:
 #   bash tests/test-ci-local.sh        # Run all tests
@@ -1160,6 +1160,9 @@ assert_eq "$RC" "2" "a run of only an action-gated job is not green under --stri
 # ─── 8h. Runner labels, tag-only tiers, the files every step gets ────
 # shellcheck source=lib/ci-local-runner.sh
 . "$REPO_ROOT/tests/lib/ci-local-runner.sh"
+# 8i. Steps that change the host (sudo, docker prune): skipped-unsafe.
+# shellcheck source=lib/ci-local-host-mutation.sh
+. "$REPO_ROOT/tests/lib/ci-local-host-mutation.sh"
 
 # ─── 8g. The JSON names the commit it judged ────────────────────────
 # land-pr.py merges a PR whose head a green record names, so a record must say
@@ -1432,6 +1435,7 @@ mutation red "uses: read as a YAML scalar" \
 ci_local_flaky_mutations
 # Runner labels, tag tiers and runner files: tests/lib/ci-local-runner.sh.
 ci_local_runner_mutations
+ci_local_host_mutation_mutations   # tests/lib/ci-local-host-mutation.sh
 
 # A shared host and a 4-core hosted runner both run this: at most 4 at once.
 CL_JOBS=$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 2)

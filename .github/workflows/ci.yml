@@ -71,10 +71,16 @@ jobs:
       # shared local/CI (checks.sh skips silently when shellcheck is missing,
       # so install it explicitly to keep this a hard gate here). The file list is
       # by hand; tests/test-checks.sh fails when a tracked shell file outside
-      # tests/, orchestrator/ and docs/ is missing from it.
+      # tests/, orchestrator/ and docs/ is missing from it. The install is its
+      # own step: it uses sudo, so ci-local.py skips it on a persistent host as
+      # host setup, and the gate below still runs there — failing, not
+      # skipping, where shellcheck is missing.
+      - name: Install shellcheck
+        run: command -v shellcheck >/dev/null || sudo apt-get install -y shellcheck
+
       - name: Shellcheck gate (shared checks.sh)
         run: |
-          command -v shellcheck >/dev/null || sudo apt-get install -y shellcheck
+          command -v shellcheck >/dev/null || { echo "shellcheck is not installed"; exit 1; }
           bash configs/scripts/checks.sh shellcheck configs/hooks/*.sh configs/hooks/lib/*.sh configs/codex-hooks/*.sh configs/kimi-hooks/*.sh configs/scripts/*.sh install.sh uninstall.sh .claude/pre-commit.sh
 
       - name: Install test (dry run)
