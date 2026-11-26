@@ -2550,16 +2550,33 @@ tiering are real but unmeasured. Each needs a paired A/B before rollout.
 Found while fixing committer's push target (it used to push a worktree branch
 to a differently named upstream such as `origin/main`). Not built in that fix:
 
-- [ ] 🟡 **`run-tasks.sh` does not export `CLADE_WORKER_TASK_ID`.** When
+- [x] 🟡 **`run-tasks.sh` does not export `CLADE_WORKER_TASK_ID`.** When
   `/batch-tasks` calls the serial runner directly (not through loop-runner), its
   workers commit on the user's current branch and committer treats them as
   interactive, so they push. Export the variable there as
   `run-tasks-parallel.sh` does, and add a case to the runner's tests.
-- [ ] 🟡 **`loop-runner.sh` `node_commit_changes` reads any non-zero committer
+  Done 2026-11-25 (#269): each serial worker runs as `batch-<ts>-<n>` or the
+  caller's id; a parallel group's second task and the serial re-run after a
+  merge failure got the same fix.
+- [x] 🟡 **`loop-runner.sh` `node_commit_changes` reads any non-zero committer
   exit as "changes remain uncommitted".** A push that git rejects exits non-zero
   after a successful commit, so the loop retries a commit that already exists.
   Pass `--no-push` there (the loop delivers separately) or distinguish the push
   exit code.
+  Done 2026-11-25 (#270): the sweep passes `--no-push` and the syntax fixer
+  commits as a loop worker, so the loop never pushes. Not changed: the
+  no-committer fallback (`git commit … | tee`) still reports failure if `tee`
+  alone fails after a commit.
+- [ ] 🟡 **A local gate is red whenever the gate host's installed kit differs
+  from the tree's loop and run-tasks scripts.** `tests/test-loop-env.sh` suite 13
+  compares 13 of those scripts with the host's installed `~/.claude/scripts` and
+  skips only when no kit is installed, as on a hosted runner. So a PR that
+  changes one fails as "deployed … DIFFERS from source" (#270's first gate on
+  castor, 2 of 232), and so does any head whose base is newer than the host's
+  kit (#278's merge head, 5 of 241, after main gained #269 and #270). #269,
+  #270 and #278 were re-gated with `--clean-home`. Make the parity check opt-in
+  (an install check, not a tree check), or skip it when the checkout is not the
+  installed source.
 - [ ] 🔵 **On `main` tracking `origin/main`, committer still pushes straight to
   the default branch.** That is the same-name rule working as designed, but it
   sits beside the global rule "ask before git push to shared/protected
@@ -3463,22 +3480,41 @@ Non-blocking findings from Claude's verification of the Kimi K3.1 Pro fleet
 (#204-#215). Every merged PR went in without them (#209 is still open for the
 owner); none is a regression on main.
 
-- [ ] 🟡 **A lock directory without a pid file is never reclaimed** (#210, #215).
+- [x] 🟡 **A lock directory without a pid file is never reclaimed** (#210, #215).
   `commit-archeology.sh` leaves a pid-less lock to its "in-flight owner", so a
   caller killed between `mkdir` and its pid write blocks refreshes for that
   repository until the runtime dir is cleared. Apply #215's 30 s grace period
   to a pid-less lock too.
-- [ ] 🟡 **The detached archaeology scan has no time bound** (#210). A hung `git`
+  Done 2026-11-25 (#271): reclaimed after the same 30 s grace, and judged
+  again under the reclaim mutex.
+- [x] 🟡 **The detached archaeology scan has no time bound** (#210). A hung `git`
   keeps the refresher alive, so the lock is never stale and no later session
   refreshes that repository.
-- [ ] 🟡 **A failed `merge -X ours` is left in progress** (#207). The tests also
+  Done 2026-11-25 (#271): a watchdog ends the scan's process group after
+  `COMMIT_ARCH_SCAN_TIMEOUT` (default 600 s) and releases the lock.
+- [x] 🟡 **A failed `merge -X ours` is left in progress** (#207). The tests also
   wait 0.3 s for background work; make them event-driven.
+  Done 2026-11-25 (#272): aborted when `MERGE_HEAD` exists
+  (`merge-abort-failed` if the abort fails); the breaker suite waits for the
+  detached push to exit instead of 0.3 s.
+- [ ] 🔵 **Under bash 3.2, `set -e` plus `source <missing> 2>/dev/null || true`
+  exits the shell** (found in #272). bash 5.2 survives it. `memory-sync.sh` and
+  `sync-health.sh` use that line under `set -e`, so on macOS a missing `lib/`
+  aborts them. The breaker case "a missing backoff library cannot abort
+  memory-sync" fails under bash 3.2.57 on main too (a Linux container, not a
+  Mac). `[ -r "$f" ] && source "$f"` survives there.
 - [ ] 🟡 **The privacy notice for a tracked `history.jsonl` is invisible** (#214).
   It goes only to `~/.claude/.sync-conflicts.log`, and `sync-health.sh` surfaces
   only REFUSED lines from that file, so no session start shows it.
-- [ ] 🔵 **Next-TODO selection edge cases** (#204): a column-0 `#` inside a fenced
+- [x] 🔵 **Next-TODO selection edge cases** (#204): a column-0 `#` inside a fenced
   block ends an owner section early; the inline owner check reads only an item's
   first line; the markers are listed in two places.
+  Done 2026-11-25 (#279): a fenced block is code, an item is its whole body
+  up to where CommonMark ends it, and each list is written once. The
+  differences from CommonMark it keeps are listed in the PR. On this
+  repository's TODO.md the old and new hooks pick the same item. The one
+  open item it newly skipped (the task-eta survival model, whose wrapped
+  "(owner: only what is needed)" is an attribution) is ticked here (#275).
 - [ ] 🔵 **The `.corrupt` self-heal backup lives on tmpfs** (#205): the runtime
   dir is cleared at reboot, and the backup goes with it.
 - [ ] 🔵 **Radar probe fallbacks are unpinned** (#206): no test pins `merge-tree`
@@ -3486,8 +3522,8 @@ owner); none is a regression on main.
   checked-out branch.
 - [ ] 🔵 **sync-health gaps** (#208): the per-probe budget clamp is unpinned; the
   "cut short" wording; the `CLADE_SYNC_*` knobs are not in
-  `docs/configuration.md`; `check-ci-checklist.py` stays green when a listed
-  suite file is missing.
+  `docs/configuration.md`. (A missing suite file now fails
+  `check-ci-checklist.py`: #276, 2026-11-25.)
 - [ ] 🔵 **Memory-staleness coverage** (#211): several `commit:` anchor spellings
   are undocumented and untested; an anchor under a chmod-000 directory reports as
   missing rather than unreadable; globs with literal brackets.
@@ -3495,13 +3531,17 @@ owner); none is a regression on main.
   computed with the hook's own formula (the epochs are fixed, so only rendering
   is mirrored); a timestamp with a leading zero parses as octal (predates #213,
   shared with memory-sync's parser).
-- [ ] 🟡 **`sync-link-projects.sh --dry-run` misses link conflicts its own
+- [x] 🟡 **`sync-link-projects.sh --dry-run` misses link conflicts its own
   migrations cause** (#209). On aries the dry run planned 15 migrations and 0
   conflicts; the real run made the same 15 and then reported 5 link conflicts,
   because one project's links pointed at a different legacy key than the one it
   migrated. The dry run never creates the new key, so its link pass cannot see that
   key claim the project. Have the dry run's link pass treat planned migrations as
   done, and add a dry/real parity case with two legacy keys for one project.
+  Done 2026-11-25 (#273): the dry run notes each skipped write that later
+  passes read, and a `dryrun` section runs dry and real on the same fixtures.
+  On aries, main and the branch print the same dry run (70 lines, 0
+  conflicts).
 
 ## 2026-11-09 ScientistTwo review follow-ups (#220, #221, loop attempt ledger)
 
@@ -3652,9 +3692,10 @@ was reconciled by hand the same day (12 of 32 files defective). Mostly condition
   `Edit|Write` also matches any tool whose name contains either word. That is
   harmless with today's built-ins. Anchor as `^(Edit|Write)$` after confirming
   matchHooks applies the pattern unchanged.
-- [ ] 🔵 **`--once-per-session` sentinels accumulate** in the runtime dir, one per
+- [x] 🔵 **`--once-per-session` sentinels accumulate** in the runtime dir, one per
   Kimi session, and nothing removes them. `session-end-cleanup.sh` is already wired on
   SessionEnd and could delete its own session's sentinel.
+  Done 2026-11-25 (#274).
 - [ ] 🔵 **`rule-injector.sh` and `post-edit-check.sh` are not ported.** Kimi's
   PostToolUse is fire-and-forget, and only UserPromptSubmit injects context. Their
   output could be queued and delivered on the next prompt. Unbuilt: measure whether
@@ -4088,7 +4129,7 @@ radar branch conflicts with `main` in TODO.md (see the first item).
 
 Found while porting and landing the four radar branches (#247-#256 and this PR).
 
-- [ ] 🟠 **`ci-local.py` runs a workflow's `npm install -g` against the host's
+- [x] 🟠 **`ci-local.py` runs a workflow's `npm install -g` against the host's
   global npm.** The "Validate Plugin Manifest" job's "Install Claude Code CLI"
   step installs `@anthropic-ai/claude-code` globally. Two gates running at once
   on one host raced in that directory: one failed with npm `ENOTEMPTY`
@@ -4098,6 +4139,23 @@ Found while porting and landing the four radar branches (#247-#256 and this PR).
   `PATH`. `ci-local.py` should do that itself for every step, so that a local
   gate never mutates host-global package state. Acceptance: two concurrent runs
   on one host both pass, and the global prefix's mtime is unchanged.
+  Done 2026-11-25 (#278): every job gets its own empty npm global prefix,
+  its bins first on PATH. Two concurrent runs of "Validate Plugin Manifest"
+  both passed and left the host prefix's mtime and size unchanged. Still
+  outside it: a prefix the workflow names, `sudo npm install -g`,
+  `npm config set prefix`, and a step that loads nvm (which refuses the
+  variable; it runs without it, listed under `no_npm_prefix`).
+- [ ] 🔵 **Two nvm shapes `ci-local.py`'s npm prefix still gets wrong** (#278).
+  A step that hides nvm's stderr and has no `-e` runs with the job's prefix
+  on another node and prints no note. A step that loads nvm where its text
+  does not show it (a script it calls) and is not safe to run twice fails
+  here and passes on a runner: the redo meets its first attempt's side
+  effects. No workflow under `~/projects` hits either (213 scanned,
+  2026-11-25). Candidate (round-5 review): put the job prefix under
+  `$NVM_DIR`, where nvm does not refuse it, at the cost of a job directory a
+  crash leaves in `~/.nvm`.
+  Also unverified: the Windows prefix-root PATH entry (alexxe unreachable),
+  and pnpm/yarn globals, which the prefix does not cover.
 - [ ] 🟡 **The catastrophic-rm guard over-blocks `rm` inside a hyphenated word.**
   `\brm\b` and `(^|[^A-Za-z0-9_])rm([^A-Za-z0-9_]|$)` both treat a hyphen as a
   word boundary. So a command that only names a branch like `fix/x-rm-first-word`,
@@ -4151,7 +4209,7 @@ base rate), so the estimate goes on the statusline as a range.
 - [ ] 🔵 **A per-transcript offset cache for the tail reader.** One transcript
   of 40 took 182 ms against a 150 ms budget (the status line's deadline is 1 s,
   so it still renders); cache the latest episode's start offset per transcript.
-- [ ] 🔵 **Delete the survival model from `task-eta.py`, or stop the status line
+- [x] 🔵 **Delete the survival model from `task-eta.py`, or stop the status line
   loading it.** Since 2026-11-23 the line prints no band (owner: only what is
   needed), so the fit, its daily detached refit (6.3 s on 450 transcripts, once
   per config dir), the `O_EXCL` lock and the lookup serve `--json` alone. Each
@@ -4159,6 +4217,8 @@ base rate), so the estimate goes on the statusline as a range.
   Kept in the trim PR because `tests/test-statusline-eta.sh` suites 2, 4 and 5
   and three of its mutations drive the refit through the status line; deleting
   it means moving or dropping those, and the research note's `--json` band.
+  Done 2026-11-25 (#275): stopped loading it. Only `--json` reads and refits
+  the model.
 - [x] 🔵 **Kimi and Codex footers drop the `git:(branch)` label** — 2026-11-23,
   owner: the trim "应该适用于cx kimi". `kimi_usage.py`, `codex_usage.py` and the
   Codex fork's formatter print the branch in red with no label, as the Claude
@@ -4167,9 +4227,9 @@ base rate), so the estimate goes on the statusline as a range.
   `COLUMNS` (Kimi gives its command no pane width) or shows task time.
 - [ ] 🔵 **#259 review residue** (independent review, round 2: 0 blocking; these
   are its non-blocking findings, each reproduced by the reviewer):
-  - `task-eta.py` is 1,452 of 1,500 lines after the 2026-11-23 line trim.
-    Split the fit and the tail reader into a `configs/scripts/lib/` module
-    before the next change to it, unless the survival model goes (below).
+  - `task-eta.py` is 1,470 of 1,500 lines after #275 (2026-11-25), which kept
+    the survival model for `--json`. Split the fit and the tail reader into a
+    `configs/scripts/lib/` module before the next change to it.
   - One model per config dir: profiles that share one `settings.json` each
     refit the same roots (up to five identical refits a day, 6.3 s each on
     450 transcripts). Share one model file across profiles.

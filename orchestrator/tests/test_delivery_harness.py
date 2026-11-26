@@ -80,6 +80,8 @@ def _start(
     project_id: str | None = None,
     task_id: str | None = None,
     session_id: str | None = None,
+    issue: str | None = None,
+    expected: int = 0,
 ) -> dict:
     _git(repo, "switch", "-q", "-c", "agent/fixture")
     args = [
@@ -103,6 +105,8 @@ def _start(
         args.extend(["--task-id", task_id])
     if session_id:
         args.extend(["--session-id", session_id])
+    if issue is not None:
+        args.extend(["--issue", issue])
     if authorities:
         args.extend(
             [
@@ -116,7 +120,7 @@ def _start(
                 "task-request",
             ]
         )
-    return _delivery(repo, *args)
+    return _delivery(repo, *args, expected=expected)
 
 
 def test_delivery_evidence_projection_links_attempt_and_omits_private_state(
@@ -150,6 +154,7 @@ def test_delivery_evidence_projection_links_attempt_and_omits_private_state(
         "schema_version": "clade.delivery-evidence/v1",
         "attempt_id": "attempt-17",
         "task_ref": None,
+        "issue": None,
         "delivery_id": "fixture",
         "state": "PUBLISHED",
         "base": {"ref": "main", "sha": started["base_sha"]},
@@ -294,6 +299,60 @@ def test_start_rejects_conflicting_task_ref_for_existing_delivery(
         "task-2",
         "--session-id",
         "session-1",
+        expected=2,
+    )
+
+    assert "different facts" in result["error"]
+
+
+@pytest.mark.parametrize(
+    ("given", "recorded"),
+    [("REA-12", "REA-12"), ("rea-12", "REA-12"), (" PROJ_2-7 ", "PROJ_2-7"), ("#45", "#45")],
+)
+def test_start_records_the_issue_key_in_state_and_evidence(
+    git_repo: Path, given: str, recorded: str
+) -> None:
+    started = _start(git_repo, issue=given)
+
+    shown = _delivery(git_repo, "show", "--id", "fixture")
+    evidence = _delivery(git_repo, "evidence", "--id", "fixture")
+
+    assert started["issue"] == shown["issue"] == evidence["issue"] == recorded
+
+
+def test_start_without_an_issue_records_none(git_repo: Path) -> None:
+    assert _start(git_repo)["issue"] is None
+
+
+@pytest.mark.parametrize(
+    "given",
+    ["", "REA 12", "REA-0", "REA-12; rm -rf /", "12", "-12", "1REA-2", "ABCDEFGHIJK-1", "#", "#0"],
+)
+def test_start_rejects_a_malformed_issue_key(git_repo: Path, given: str) -> None:
+    result = _start(git_repo, issue=given, expected=2)
+
+    assert "--issue must be a tracker key" in result["error"]
+    assert not (git_repo / ".git" / "clade" / "deliveries" / "fixture.json").exists()
+
+
+def test_start_rejects_a_changed_issue_for_existing_delivery(git_repo: Path) -> None:
+    _start(git_repo, issue="REA-1")
+
+    result = _delivery(
+        git_repo,
+        "start",
+        "--id",
+        "fixture",
+        "--owner",
+        "test:session",
+        "--runtime",
+        "codex",
+        "--branch",
+        "agent/fixture",
+        "--base",
+        "main",
+        "--issue",
+        "REA-2",
         expected=2,
     )
 
