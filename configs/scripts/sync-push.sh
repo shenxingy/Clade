@@ -19,9 +19,11 @@ sync_push_record_failure() {
   local reason="$1" previous=0 ts="" count="" old_reason="" extra=""
   if [[ -f "$SYNC_PUSH_BACKOFF" ]]; then
     IFS=' ' read -r ts count old_reason extra < "$SYNC_PUSH_BACKOFF" || true
+    # 10#: a leading zero is decimal. Octal read 010 as 8, and 09 failed
+    # mid-refusal, so the run skipped its `exit 1` and committed the markers.
     case "$count" in
       ''|*[!0-9]*) ;;
-      *) previous=$count ;;
+      *) previous=$((10#$count)) ;;
     esac
   fi
   printf '%s %s %s\n' "${CLADE_SYNC_PUSH_BACKOFF_NOW:-$(date +%s)}" \
