@@ -511,6 +511,43 @@ assert_not_contains "$tracked_now" "logs/loop-untracked" "loop log dir NOT commi
 still_dirty=$(git status --porcelain -- created-by-worker.txt)
 assert_eq "" "$still_dirty" "worker-created file fully committed (status clean)"
 
+# Push regression: the sweep runs the REAL committer, outside any worker, so
+# committer pushed it — and a rejected push exits 3 AFTER the commit, which the
+# sweep read as "changes remain uncommitted" and broke the run commit_failed.
+# The loop never publishes (worker commits are never pushed either), so the
+# sweep passes --no-push. The remote's pre-receive records any attempt.
+SWEEP_REPO=$(setup_test_repo)
+SWEEP_REMOTE="$TEST_DIR/sweep-remote-$$.git"
+SWEEP_PUSHES="$TEST_DIR/sweep-push-attempts-$$"
+git init -q --bare "$SWEEP_REMOTE"
+git -C "$SWEEP_REPO" checkout -q -b feat/sweep
+git -C "$SWEEP_REPO" remote add origin "$SWEEP_REMOTE"
+git -C "$SWEEP_REPO" push -q -u origin HEAD:refs/heads/feat/sweep 2>/dev/null
+printf '#!/usr/bin/env bash\necho attempted >> "%s"\nexit 1\n' "$SWEEP_PUSHES" > "$SWEEP_REMOTE/hooks/pre-receive"
+chmod +x "$SWEEP_REMOTE/hooks/pre-receive"
+mkdir -p "$TEST_DIR/real-committer-bin" "$SWEEP_REPO/.claude" "$SWEEP_REPO/logs/loop"
+printf '#!/usr/bin/env bash\nexec bash "%s/committer.sh" "$@"\n' "$SCRIPTS_DIR" > "$TEST_DIR/real-committer-bin/committer"
+chmod +x "$TEST_DIR/real-committer-bin/committer"
+: > "$TEST_DIR/empty-gitconfig"
+printf '# Goal: converge\n\n- [x] already done\n' > "$SWEEP_REPO/goal.md"
+sweep_status=0
+output=$(
+  exec 3>&- 4>&- 5>&- 6>&- 7>&- 8>&- 9>&- 2>/dev/null
+  cd "$SWEEP_REPO" || exit 1
+  PATH="$TEST_DIR/real-committer-bin:$PATH" MOCK_CLAUDE_TOUCH="$SWEEP_REPO/README.md" \
+    GIT_CONFIG_GLOBAL="$TEST_DIR/empty-gitconfig" GIT_CONFIG_NOSYSTEM=1 \
+    timeout --kill-after=5s 90s bash "$SCRIPTS_DIR/loop-runner.sh" "goal.md" --max-iter 3 --max-workers 1 --state .claude/loop-state --log-dir logs/loop 2>&1
+) || sweep_status=$?
+assert_contains "$(git -C "$SWEEP_REPO" log -1 --format=%s)" "chore: commit loop iteration" \
+  "real committer: the leftover sweep committed locally"
+sweep_attempts=0
+[[ -f "$SWEEP_PUSHES" ]] && sweep_attempts=$(wc -l < "$SWEEP_PUSHES" | tr -d ' ')
+assert_eq "0" "$sweep_attempts" "leftover sweep never pushes (committer --no-push)"
+assert_not_contains "$output" "committer failed" "a committed sweep is never reported as uncommitted"
+assert_file_contains "$SWEEP_REPO/logs/loop/last-progress" "Exit: converged" \
+  "a remote that rejects pushes does not end the run commit_failed"
+assert_eq "0" "$sweep_status" "loop with a push-rejecting remote exits 0"
+
 # Max-iter bypass regression: empty-task iterations used to `continue` past
 # _check_convergence, so an all-empty loop ran until the consecutive-empty
 # breaker (3) regardless of --max-iter — max_iter+1 iterations or more.

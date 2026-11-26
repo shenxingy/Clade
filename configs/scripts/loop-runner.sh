@@ -714,9 +714,14 @@ Swept by loop-runner node_commit_changes: changes left uncommitted by
 workers during iteration $ITERATION of goal $GOAL_FILE."
 
   if command -v committer &>/dev/null; then
+    # --no-push: the loop never publishes. Worker commits run under
+    # CLADE_WORKER_TASK_ID, which committer never pushes, and the fallback below
+    # only commits; this sweep runs outside any worker, so committer pushed it,
+    # and with it every worker commit of the run. A rejected push exits 3 AFTER
+    # the commit, which the || below read as "uncommitted" (commit_failed).
     # shellcheck disable=SC2086
     # tee to stderr — this function's stdout is captured (new_commits=$(...))
-    committer "$commit_msg" $files_to_commit 2>&1 | tee -a "$LOG_DIR/loop.log" >&2 || {
+    committer "$commit_msg" --no-push $files_to_commit 2>&1 | tee -a "$LOG_DIR/loop.log" >&2 || {
       log_warn "committer failed — changes remain uncommitted"
       return 1
     }

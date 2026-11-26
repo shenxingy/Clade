@@ -104,6 +104,8 @@ cat > "$MOCK_BIN/committer" <<'MOCKEOF'
 #!/usr/bin/env bash
 msg="${1:-batch commit}"
 shift
+# Like the real committer: --no-push may sit anywhere after the message.
+args=(); for a in "$@"; do [[ "$a" == "--no-push" ]] || args+=("$a"); done; set -- "${args[@]}"
 git restore --staged :/ 2>/dev/null || true
 git add "$@" 2>/dev/null
 git commit -m "$msg" --allow-empty --no-verify 2>/dev/null
