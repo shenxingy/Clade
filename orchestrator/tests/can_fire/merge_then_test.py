@@ -39,6 +39,12 @@ MUTATIONS: dict[str, list[tuple[str, str, str]]] = {
         ("FLAKY certifying nothing (it reads as red instead)",
          'if v == "flaky":',
          "if False:"),
+        ("the verdict outranking exit — ci-local's exit 2 on PARTIAL or FLAKY reads as red",
+         '    if "verdict" in data:',
+         '    if isinstance(data.get("exit"), int) and not isinstance(data.get("exit"), bool)'
+         ' and data["exit"] != 0:\n'
+         '        return Record(head, False, True, f"exit {data[\'exit\']}")\n'
+         '    if "verdict" in data:'),
         ("fetching the CURRENT default branch — a stale main hides a conflict",
          'f"+refs/heads/{default}:refs/remotes/{remote}/{default}")',
          '"HEAD")'),
@@ -74,6 +80,9 @@ MUTATIONS: dict[str, list[tuple[str, str, str]]] = {
         ("ci-local's exit 2 classed by its verdict — a partial main is bisected every tick",
          'not_green_only = code == 2 and verdict in ("partial", "flaky")',
          "not_green_only = False"),
+        ("exit 2 green only with a partial or flaky verdict — a make or pytest exit 2 is green",
+         'not_green_only = code == 2 and verdict in ("partial", "flaky")',
+         "not_green_only = code == 2"),
         ("the flaky rerun — red then green is bisected as red",
          'if rerun["status"] == "green":',
          "if False:"),

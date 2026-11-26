@@ -199,7 +199,7 @@ def land_accepts_ci_local_json(tmp: Path, script: Path) -> None:
 
 def land_partial_needs_the_flag(tmp: Path, script: Path) -> None:
     w, lander, head = _pr_world(tmp)
-    rec = {"verdict": "partial", "head": head, "dirty": False, "exit": 0,
+    rec = {"verdict": "partial", "head": head, "dirty": False, "exit": 2,  # ci-local exits 2 on PARTIAL
            "unproven": [{"job": "Lint", "step": "secret step"}]}
     _refused(_land(w, script, lander, rec), 16, w, "a PARTIAL verdict without --allow-partial")
     out = _land(w, script, lander, rec, "--allow-partial")
@@ -208,7 +208,8 @@ def land_partial_needs_the_flag(tmp: Path, script: Path) -> None:
 
 def land_refuses_flaky_and_dirty(tmp: Path, script: Path) -> None:
     w, lander, head = _pr_world(tmp)
-    _refused(_land(w, script, lander, {"verdict": "flaky", "head": head, "dirty": False}), 16, w, "a FLAKY verdict")
+    _refused(_land(w, script, lander, {"verdict": "flaky", "head": head, "dirty": False, "exit": 2}), 16, w,
+             "a FLAKY verdict")
     _refused(_land(w, script, lander, {**_green(head), "dirty": True}), 16, w, "a record from a dirty tree")
 
 
@@ -392,6 +393,12 @@ def mainline_ci_local_exit_2_follows_the_verdict(tmp: Path, script: Path) -> Non
     expect(out.returncode == 3, f"a ci-local 'flaky' verdict with exit 2 is flaky: {out.returncode} {out.stdout}")
     expect(_history(w)[-1].get("status") == "flaky", f"recorded flaky: {_history(w)[-1]}")
     expect(not (w.root / "state" / "red" / f"{head[:8]}.json").exists(), "a flake is never bisected")
+    # Exit 2 is green only WITH a partial or flaky verdict: make, pytest and a
+    # usage error exit 2 too, and print no ci-local JSON at all.
+    w.merge_pr(2, {"b.txt": "2\n"})
+    out = _tick(w, script, runner, "echo 'make: *** [test] Error 1'; exit 2")
+    expect(out.returncode == 1, f"exit 2 with no ci-local verdict is red: {out.returncode} {out.stdout}")
+    expect(_history(w)[-1].get("status") == "red", f"recorded red: {_history(w)[-1]}")
 
 
 def mainline_rewritten_history_is_unbisected(tmp: Path, script: Path) -> None:
