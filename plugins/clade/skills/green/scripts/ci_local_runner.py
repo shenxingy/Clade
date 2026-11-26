@@ -3,8 +3,8 @@ ci_local_runner.py — what a GitHub runner gives a job that the workflow text
 does not spell out. Imported by ci-local.py, which sits at this repository's
 1500-line cap; installed and bundled beside it.
 
-Three things, each found by running ci-local.py against real repositories that
-moved their CI to owned hardware (scamai, 2026-11-21):
+Four things. The first three were found by running ci-local.py against real
+repositories that moved their CI to owned hardware (scamai, 2026-11-21):
 
 1. **Which machine a `runs-on:` can land on.** GitHub matches runner labels
    case-insensitively, and a self-hosted runner carries OS labels spelled
@@ -23,6 +23,13 @@ moved their CI to owned hardware (scamai, 2026-11-21):
    with `bash: : No such file or directory`. Inside a hosted job (this
    repository's own CI runs ci-local's tests) a step inherited the OUTER
    job's files instead, and wrote into the outer job's environment.
+4. **What a throwaway runner may do and this host may not.** A hosted runner
+   is a VM deleted after the job, and workflows treat it so: a "Free up disk
+   space" step runs `sudo rm -rf /usr/share/dotnet /opt/ghc` and
+   `docker image prune -a -f`. On 2026-11-25 ci-local.py ran one on a
+   persistent host with passwordless sudo, and the prune deleted 316 GB of
+   that host's Docker images. Such a step is not run unless
+   --allow-host-mutation says the machine is throwaway.
 
 Stdlib only, like ci-local.py.
 """
@@ -30,8 +37,10 @@ Stdlib only, like ci-local.py.
 from __future__ import annotations
 
 import re
+import shlex
 import subprocess
 import tempfile
+from dataclasses import dataclass
 from pathlib import Path
 
 # ─── YAML fragments ──────────────────────────────────────────────────────────
@@ -315,3 +324,256 @@ class JobFiles:
 
     def close(self) -> None:
         self._dir.cleanup()
+
+
+# ─── 4. Commands that change the host ────────────────────────────────────────
+# A step holding any of these is written for a VM that is deleted after the
+# job, and is not run here unless --allow-host-mutation says this machine is
+# one:
+#   - sudo, in any form;
+#   - docker system/image/builder/buildx/volume/container/network prune, and a
+#     docker rmi or image rm of every image (-a, names from $(docker images),
+#     backticks or xargs, or no name at all); a named image is left alone;
+#   - rm of a path outside the checkout and $RUNNER_TEMP: an absolute path
+#     (/tmp included: other users' and sessions' files live there), ~ or $HOME.
+#     A workflow cannot name this machine's checkout by an absolute path, so
+#     it names it $GITHUB_WORKSPACE, $PWD or a relative path, none of which
+#     is flagged;
+#   - apt/apt-get/aptitude remove, purge, autoremove; dpkg --remove/--purge.
+# A step is SETUP when every command in it is host setup or cleanup (package
+# installs, removals, prunes) or only reports (echo, df, docker images): it
+# tests nothing, so skipping it leaves no lane unproven — if a later gate
+# needed what it installs, that gate fails here, visibly. Any other step with
+# such a command is a gate this run did not execute: unproven.
+#
+# The scan is a rough shell lexer, not a parser: it splits on ; & | ( ) and
+# newlines outside quotes, scans $( ) and backticks as scripts of their own,
+# and looks inside `bash -c '…'` and eval. It guards against workflows written
+# for hosted runners, not against a workflow hiding a command on purpose
+# ($SUDO, a script file that runs sudo). A heredoc body is read as commands,
+# which fails closed: a word there can skip a step, never run one.
+
+_HOME_ROOTS = ("~", "$HOME", "${HOME}")
+_PREFIX_WORDS = frozenset({"if", "then", "else", "elif", "do", "while", "until", "!", "{", "}",
+                           "time", "nohup", "exec", "builtin"})
+# The wrappers that run the command after them, and their flags that take the
+# next word as a value.
+_VALUE_FLAGS = {
+    "sudo": frozenset({"-u", "-g", "-h", "-p", "-C", "-D", "-U", "-r", "-t", "-T",
+                       "--user", "--group", "--host", "--prompt", "--chdir"}),
+    "env": frozenset({"-u", "--unset", "-C", "--chdir", "-S", "--split-string"}),
+    "xargs": frozenset({"-I", "-n", "-P", "-L", "-d", "-s", "-E", "-a", "--max-args",
+                        "--max-procs", "--delimiter", "--arg-file"}),
+}
+_ASSIGNMENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]*(\[[^]]*\])?\+?=.*", re.S)
+_REDIRECT = re.compile(r"\d*(>>?|<<?<?|&>>?|>&|<&|>\|)")
+_SHELLS = frozenset({"bash", "sh", "zsh", "dash"})
+_APT = frozenset({"apt", "apt-get", "aptitude"})
+_APT_REMOVE = frozenset({"remove", "purge", "autoremove", "autopurge"})
+_APT_SETUP = _APT_REMOVE | {"install", "update", "upgrade", "dist-upgrade", "full-upgrade",
+                            "clean", "autoclean"}
+_DOCKER_PRUNE = frozenset({"system", "image", "builder", "buildx", "volume", "container",
+                           "network"})
+_DOCKER_REPORT = (("images",), ("ps",), ("info",), ("version",), ("system", "df"),
+                  ("image", "ls"))
+# Host setup and cleanup besides apt and docker.
+_SETUP_TOOLS = frozenset({"add-apt-repository", "snap", "swapoff", "tee", "mkdir", "chmod",
+                          "chown", "ln", "dpkg", "rm", "rmdir"})
+# Commands that only report or steer the shell.
+_REPORTS = frozenset({"echo", "printf", "df", "du", "free", "true", "false", ":", "ls", "set",
+                      "sleep", "date", "cat", "sync", "uname", "whoami", "id", "nproc", "lsblk",
+                      "findmnt", "[", "[[", "test", "for", "case", "esac", "fi", "done", "exit",
+                      "return", "command", "type", "which", "hash", "export", "shopt", "cd",
+                      "pushd", "popd"})
+
+
+def _scan(text: str, i: int, closer: str, out: list[str]) -> int:
+    """Append the simple commands of `text` from `i` to `out`, up to `closer`
+    (")" or "`" for a substitution, "" for the whole script); return the index
+    after it. A substitution is scanned on its own and stands in its command
+    as `$(…)`."""
+    cur: list[str] = []
+    quote, depth = "", 0
+
+    def cut() -> None:
+        seg = "".join(cur).strip()
+        if seg:
+            out.append(seg)
+        cur.clear()
+
+    while i < len(text):
+        c = text[i]
+        if quote == "'":
+            quote = "" if c == "'" else quote
+            cur.append(c)
+            i += 1
+        elif c == "\\":
+            cur.append(text[i:i + 2])
+            i += 2
+        elif text.startswith("$(", i) or (c == "`" and closer != "`"):
+            i = _scan(text, i + (1 if c == "`" else 2), "`" if c == "`" else ")", out)
+            cur.append("$(…)")
+        elif c == closer and not quote and depth == 0:
+            cut()
+            return i + 1
+        elif c == '"':
+            quote = "" if quote else '"'
+            cur.append(c)
+            i += 1
+        elif quote:
+            cur.append(c)
+            i += 1
+        elif c == "'":
+            quote = "'"
+            cur.append(c)
+            i += 1
+        elif c == "#" and (not cur or cur[-1][-1:].isspace()):
+            while i < len(text) and text[i] != "\n":
+                i += 1
+        elif text.startswith("${", i):
+            end = text.find("}", i)
+            end = len(text) if end < 0 else end + 1
+            cur.append(text[i:end])
+            i = end
+        elif c == "&" and (text[i - 1:i] in (">", "<") or text[i + 1:i + 2] == ">"):
+            cur.append(c)            # 2>&1, &>file: a redirection, not a separator
+            i += 1
+        elif c in ";&|\n()":
+            depth += (c == "(") - (c == ")" and depth > 0)
+            cut()
+            i += 1
+        else:
+            cur.append(c)
+            i += 1
+    cut()
+    return i
+
+
+def _words(segment: str) -> list[str]:
+    """A simple command's words, quotes removed, redirections dropped."""
+    try:
+        raw = shlex.split(segment)
+    except ValueError:
+        raw = segment.split()
+    words: list[str] = []
+    skip_next = False
+    for w in raw:
+        if skip_next:
+            skip_next = False
+            continue
+        m = _REDIRECT.match(w)
+        if m:
+            skip_next = m.end() == len(w)      # `> file`: the target is the next word
+            continue
+        words.append(w)
+    return words
+
+
+def _drop_flags(words: list[str], tool: str) -> list[str]:
+    while words and words[0].startswith("-"):
+        if words[0] == "--":
+            return words[1:]
+        words = words[2:] if words[0] in _VALUE_FLAGS[tool] else words[1:]
+    return words
+
+
+def _commands(script: str, sudo: bool = False, depth: int = 0):
+    """(words, run by sudo, fed by xargs) for each simple command, with the
+    prefixes that only wrap a command (env, nohup, if, X=1 …) removed."""
+    segments: list[str] = []
+    _scan(script.replace("\\\n", " "), 0, "", segments)
+    for seg in segments:
+        words, by_sudo, by_xargs = _words(seg), sudo, False
+        while words:
+            w = words[0]
+            tool = w.rsplit("/", 1)[-1]
+            if w in _PREFIX_WORDS or _ASSIGNMENT.fullmatch(w):
+                words = words[1:]
+            elif w == "command" and len(words) > 1 and not words[1].startswith("-"):
+                words = words[1:]
+            elif tool in _VALUE_FLAGS:
+                by_sudo |= tool == "sudo"
+                by_xargs |= tool == "xargs"
+                words = _drop_flags(words[1:], tool)
+            else:
+                break
+        base = words[0].rsplit("/", 1)[-1] if words else ""
+        inner = None
+        if base in _SHELLS and "-c" in words[1:-1]:
+            inner = words[words.index("-c", 1) + 1]
+        elif base == "eval":
+            inner = " ".join(words[1:])
+        if inner is not None and depth < 5:
+            yield from _commands(inner, by_sudo, depth + 1)
+            continue
+        yield words, by_sudo, by_xargs
+
+
+def _outside_checkout(path: str) -> bool:
+    """An rm operand as written: $RUNNER_TEMP/x, $GITHUB_WORKSPACE/x, $PWD/x and
+    a relative path are inside; an absolute path, ~ and $HOME are not."""
+    return path.startswith(_HOME_ROOTS) or path.startswith("/")
+
+
+def _docker(args: list[str], by_xargs: bool) -> tuple[str, bool]:
+    """(what it mutates or "", whether it is setup, cleanup or a report)."""
+    words = [a for a in args if not a.startswith("-")]
+    if len(words) >= 2 and words[0] in _DOCKER_PRUNE and words[1] == "prune":
+        return "docker " + " ".join(args)[:60], True
+    if words[:1] == ["rmi"] or words[:2] in (["image", "rm"], ["image", "remove"]):
+        names = words[1:] if words[0] == "rmi" else words[2:]
+        if by_xargs or not names or {"-a", "--all"} & set(args) or any("$(" in n for n in names):
+            return "docker " + " ".join(args)[:60] + " (every image)", True
+        return "", True
+    return "", any(tuple(words[:len(r)]) == r for r in _DOCKER_REPORT)
+
+
+def _classify(words: list[str], by_sudo: bool, by_xargs: bool) -> tuple[str, bool]:
+    """(what this command mutates on the host or "", whether it is host setup,
+    cleanup or a report — the commands a setup step is made of)."""
+    if not words:
+        return ("sudo" if by_sudo else ""), True
+    base, args = words[0].rsplit("/", 1)[-1], words[1:]
+    hit, setup = "", base in _REPORTS or base in _SETUP_TOOLS
+    if base == "docker":
+        hit, setup = _docker(args, by_xargs)
+    elif base in ("rm", "rmdir"):
+        operands = args[args.index("--") + 1:] if "--" in args else \
+            [a for a in args if not a.startswith("-")]
+        hit = next((f"{base} {a}" for a in operands if _outside_checkout(a)), "")
+    elif base in _APT:
+        sub = next((a for a in args if not a.startswith("-")), "")
+        hit, setup = (f"{base} {sub}" if sub in _APT_REMOVE else ""), sub in _APT_SETUP
+    elif base == "dpkg" and {"-r", "--remove", "-P", "--purge"} & set(args):
+        hit = "dpkg " + " ".join(args)[:40]
+    if by_sudo:
+        hit = "sudo " + " ".join(words)[:60]
+    return hit, setup
+
+
+@dataclass(frozen=True)
+class HostMutation:
+    found: str          # the commands, as the report names them
+    setup_only: bool    # every command is host setup, cleanup or a report
+
+    @property
+    def reason(self) -> str:
+        kind = "host setup or cleanup" if self.setup_only else "a gate step that changes the host"
+        return (f"skipped-unsafe: {kind} written for a throwaway runner ({self.found}); "
+                "not run on this persistent host — --allow-host-mutation runs it on a VM")
+
+
+def host_mutation(script: str) -> HostMutation | None:
+    """What in this run: script would change the host beyond the checkout and
+    $RUNNER_TEMP, or None when nothing does."""
+    found: list[str] = []
+    setup_only = True
+    for words, by_sudo, by_xargs in _commands(script):
+        hit, setup = _classify(words, by_sudo, by_xargs)
+        if hit and hit not in found:
+            found.append(hit)
+        setup_only &= setup
+    if not found:
+        return None
+    shown = "; ".join(found)
+    return HostMutation(shown if len(shown) <= 160 else shown[:157] + "...", setup_only)

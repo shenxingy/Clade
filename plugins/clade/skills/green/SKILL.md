@@ -100,6 +100,17 @@ unproven too. Those are usually the backend, E2E and migration lanes, the ones
 that cover the surface a change most often breaks. Name them before you run
 anything; they will not become green here.
 
+A `skipped-unsafe` step is one written for a throwaway runner that would change
+this host — `sudo` in any form, `docker system/image/builder/volume prune`, a
+`docker rmi` of every image, `rm` of a path outside the checkout and
+`$RUNNER_TEMP`, `apt-get remove/purge/autoremove` — and is never run here (one
+such "Free up disk space" step's `docker image prune -a -f` deleted 316 GB of a
+persistent host's Docker images). A step that is only host setup or cleanup
+leaves the result intact; a gate step holding such a command is UNPROVEN. JSON
+`skipped_unsafe` lists them. Never pass `--allow-host-mutation` yourself: it is
+for a throwaway VM, and only the user can say the machine is one. If a gate
+needs a package such a step installs, say which, and let the user install it.
+
 ### 2. Run
 
 ```bash
