@@ -12,9 +12,10 @@
 #   local branch (see "Push" at the bottom for the four cases). A branch that
 #   tracks a differently named branch — `git worktree add -b X <path>
 #   origin/main` gives X the upstream origin/main — is committed and NOT
-#   pushed. Autonomous workers (CLADE_WORKER_TASK_ID set — parallel agent
-#   worktrees, loop and orchestrator workers) never push; their runner merges
-#   or pushes. Pass --no-push to skip pushing anywhere else.
+#   pushed. Autonomous workers (CLADE_WORKER_TASK_ID set — serial and parallel
+#   batch workers, loop and orchestrator workers) never push; their runner
+#   merges or pushes, or leaves the commit for the caller. Pass --no-push to
+#   skip pushing anywhere else.
 # Exit: 0 committed (pushed, or the push skipped with a message saying why);
 #   3 committed, but the push itself failed; 1 a refusal before the commit, or
 #   the FATAL attribution check on the new HEAD.
@@ -142,9 +143,10 @@ echo "Staged changes:"
 git --no-pager diff --cached --stat
 echo ""
 
-# Commit — autonomous workers (orchestrator / loop-runner export
-# CLADE_WORKER_TASK_ID) get traceability trailers so learning loops can
-# segment agent vs human commits; interactive sessions stay trailer-free.
+# Commit — autonomous workers (orchestrator, loop-runner, run-tasks.sh and
+# run-tasks-parallel.sh export CLADE_WORKER_TASK_ID) get traceability trailers
+# so learning loops can segment agent vs human commits; interactive sessions
+# stay trailer-free.
 # Agent-Signature records model provenance (Round-4 gap, Yegge pattern):
 # worker_fallback_model can silently swap a worker onto a different model
 # mid-run, so X-Clade-Task alone can't tell you which model wrote a given
@@ -185,10 +187,12 @@ echo "Committed: $MSG"
 #
 # Autonomous workers (CLADE_WORKER_TASK_ID set) never push. Their runner owns
 # delivery: run-tasks-parallel.sh merges each batch/task-* branch into the
-# main checkout locally and deletes it, and orchestrator/worker.py runs its
-# tests and oracle gate BEFORE its own auto_push and undoes the commit on
-# failure. A worker branch has no upstream, so the `-u` path below would
-# otherwise publish every unreviewed task branch and leave it on the remote.
+# main checkout locally and deletes it, run-tasks.sh leaves its commits on the
+# caller's current branch for the caller to review and push, and
+# orchestrator/worker.py runs its tests and oracle gate BEFORE its own auto_push
+# and undoes the commit on failure. A worker branch has no upstream, so the `-u`
+# path below would otherwise publish every unreviewed task branch and leave it
+# on the remote; a serial worker's would go straight to the current upstream.
 push_same_name_branch() {
   local ref branch merge upstream_branch remote shown
   if [[ -n "${CLADE_WORKER_TASK_ID:-}" ]]; then

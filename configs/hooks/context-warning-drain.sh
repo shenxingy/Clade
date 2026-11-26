@@ -16,9 +16,10 @@
 #     80%, /compact now" nudge, not a repeating steering message. worker.py's
 #     `if not warn_file.exists()` guard means only one file is ever written per
 #     worker anyway; consuming it here just closes the loop.
-#   - Non-worker sessions: CLADE_WORKER_TASK_ID is unset (worker.py exports it
-#     only into orchestrator worker env), so this hook is a no-op everywhere
-#     else.
+#   - Non-worker sessions: CLADE_WORKER_TASK_ID is unset, so this hook is a
+#     no-op. Dispatched workers carry it (worker.py, loop-runner.sh, run-tasks.sh,
+#     run-tasks-parallel.sh), but only worker.py writes the warning file, so a
+#     runner's worker finds none and exits.
 #
 # Output: hookSpecificOutput.additionalContext with the warning content.
 # Silent (no output, exit 0) when there is nothing to drain — failure paths

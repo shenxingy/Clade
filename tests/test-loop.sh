@@ -116,6 +116,48 @@ Update documentation
 EOF
 }
 
+# Two haiku tasks with no retries. A third argument line, e.g. `depends_on: 1`,
+# goes into the second task's metadata.
+create_task_file_pair() {
+  local path="$1" meta2="${2:-}"
+  {
+    printf '===TASK===\nmodel: haiku\nretries: 0\n---\nFirst worker task\n\n'
+    printf '===TASK===\nmodel: haiku\nretries: 0\n'
+    [[ -n "$meta2" ]] && printf '%s\n' "$meta2"
+    printf -- '---\nSecond worker task\n'
+  } > "$path"
+}
+
+# Worker-identity fixture. A `claude` that appends "<CLADE_WORKER_TASK_ID> <dir>"
+# to $WID_LOG, one line per worker. With WID_CONFLICT it writes its pid to that
+# relative path, so two parallel workers' merges conflict; with WID_COMMITTER it
+# commits a new file through that committer, as a worker does. wid_run runs a
+# runner with it first on PATH and the global and system git config switched
+# off, so a caller's own push.default cannot decide whether committer pushes.
+create_worker_id_mock() {
+  WID_ROOT="$1"
+  mkdir -p "$WID_ROOT/bin"
+  : > "$WID_ROOT/empty-gitconfig"
+  cat > "$WID_ROOT/bin/claude" <<'MOCKEOF'
+#!/usr/bin/env bash
+cat > /dev/null
+printf '%s %s\n' "${CLADE_WORKER_TASK_ID:-unset}" "$(pwd -P)" >> "$WID_LOG"
+if [[ -n "${WID_CONFLICT:-}" ]]; then echo "$$" > "$WID_CONFLICT"; fi
+if [[ -n "${WID_COMMITTER:-}" ]]; then
+  echo "worker $$" > "worker-$$.txt"
+  bash "$WID_COMMITTER" "feat: worker $$" "worker-$$.txt" || exit $?
+fi
+exit 0
+MOCKEOF
+  chmod +x "$WID_ROOT/bin/claude"
+}
+wid_run() {
+  ( exec 3>&- 4>&- 5>&- 6>&- 7>&- 8>&- 9>&- 2>/dev/null
+    PATH="$WID_ROOT/bin:$PATH" GIT_CONFIG_GLOBAL="$WID_ROOT/empty-gitconfig" GIT_CONFIG_NOSYSTEM=1 \
+      timeout --kill-after=5s 60s bash "$@" 2>&1 )
+}
+wid_ids() { cut -d' ' -f1 "$WID_LOG" 2>/dev/null | tr '\n' ' ' | sed 's/ $//'; }
+
 create_goal_file() {
   local path="$1"
   cat > "$path" <<'EOF'
@@ -747,6 +789,40 @@ cp "$TASK_FILE" "$tmpdir/tasks.txt"
 output=$(cd "$tmpdir" && bash "$SCRIPTS_DIR/run-tasks-parallel.sh" "$tmpdir/tasks.txt" 2>&1) || true
 assert_contains "$output" "git repo" "reports not-in-git-repo error"
 rm -rf "$tmpdir"
+
+# Worker ids are per task here too. Tasks in one group run one after another
+# in the same subshell, so an id exported for task 1 used to reach task 2; and
+# a task re-run after a merge conflict runs in the main checkout, outside every
+# group subshell, where no id had been exported at all.
+section "run-tasks-parallel.sh — worker identity"
+create_worker_id_mock "$TEST_DIR/worker-id-parallel"
+REPO_DIR=$(setup_test_repo)
+cd "$REPO_DIR" || exit 1
+create_task_file_pair "$REPO_DIR/tasks.txt" "depends_on: 1"
+export WID_LOG="$WID_ROOT/group.log"
+output=$(unset CLADE_WORKER_TASK_ID; MAX_WORKERS=2 wid_run "$SCRIPTS_DIR/run-tasks-parallel.sh" tasks.txt) || true
+id1=$(sed -n 1p "$WID_LOG" | cut -d' ' -f1)
+id2=$(sed -n 2p "$WID_LOG" | cut -d' ' -f1)
+TESTS_RUN=$((TESTS_RUN + 1))
+if [[ "$id1" =~ ^batch-[0-9]{8}-[0-9]{6}-1$ && "$id2" == "${id1%-1}-2" ]]; then
+  pass "parallel: the second task of a group gets its own CLADE_WORKER_TASK_ID"
+else
+  fail "parallel: the second task of a group gets its own CLADE_WORKER_TASK_ID" "got '$id1' then '$id2'"
+fi
+REPO_DIR=$(setup_test_repo)
+cd "$REPO_DIR" || exit 1
+create_task_file_pair "$REPO_DIR/tasks.txt"
+export WID_LOG="$WID_ROOT/conflict.log" WID_CONFLICT="conflict.txt"
+output=$(unset CLADE_WORKER_TASK_ID; MAX_WORKERS=2 wid_run "$SCRIPTS_DIR/run-tasks-parallel.sh" tasks.txt) || true
+assert_contains "$output" "Re-running 1 conflicting tasks serially" "parallel: the second task's merge conflicts and is re-run"
+rerun_id=$(awk -v d="$(pwd -P)" '$2 == d { print $1 }' "$WID_LOG")
+TESTS_RUN=$((TESTS_RUN + 1))
+if [[ "$rerun_id" =~ ^batch-[0-9]{8}-[0-9]{6}-2$ ]]; then
+  pass "parallel: the conflict re-run in the main checkout is a worker (batch-<ts>-2)"
+else
+  fail "parallel: the conflict re-run in the main checkout is a worker (batch-<ts>-2)" "got '$rerun_id'"
+fi
+unset WID_LOG WID_CONFLICT
 fi
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -787,6 +863,42 @@ output=$(
 ) || true
 # The task should succeed since mock claude exits 0
 assert_contains "$output" "Done" "serial run completes"
+
+# Each worker is an autonomous worker with its OWN CLADE_WORKER_TASK_ID, as
+# run-tasks-parallel.sh's are. /batch-tasks runs this runner in the user's
+# checkout, on a branch that tracks its same-name upstream; with no id the real
+# committer treated each worker commit as interactive and pushed it there.
+create_worker_id_mock "$TEST_DIR/worker-id-serial"
+REPO_DIR=$(setup_test_repo)
+cd "$REPO_DIR" || exit 1
+git config commit.gpgsign false
+git branch -M main
+git init -q --bare "$WID_ROOT/origin.git"
+git remote add origin "$WID_ROOT/origin.git"
+git push -q -u origin main 2>/dev/null
+ORIGIN_BEFORE=$(git -C "$WID_ROOT/origin.git" rev-parse refs/heads/main)
+HEAD_BEFORE=$(git rev-parse HEAD)
+create_task_file_pair "$REPO_DIR/tasks.txt"
+export WID_LOG="$WID_ROOT/serial.log" WID_COMMITTER="$SCRIPTS_DIR/committer.sh"
+output=$(unset CLADE_WORKER_TASK_ID; wid_run "$SCRIPTS_DIR/run-tasks.sh" tasks.txt --keep-logs) || true
+id1=$(sed -n 1p "$WID_LOG" | cut -d' ' -f1)
+id2=$(sed -n 2p "$WID_LOG" | cut -d' ' -f1)
+TESTS_RUN=$((TESTS_RUN + 1))
+if [[ "$id1" =~ ^batch-[0-9]{8}-[0-9]{6}-1$ && "$id2" == "${id1%-1}-2" ]]; then
+  pass "serial: each worker gets its own CLADE_WORKER_TASK_ID (batch-<ts>-1, then -2)"
+else
+  fail "serial: each worker gets its own CLADE_WORKER_TASK_ID (batch-<ts>-1, then -2)" "got '$id1' then '$id2'"
+fi
+assert_eq "2" "$(git rev-list --count "$HEAD_BEFORE"..HEAD 2>/dev/null)" "serial: both worker commits land on the current branch"
+assert_eq "$ORIGIN_BEFORE" "$(git -C "$WID_ROOT/origin.git" rev-parse refs/heads/main)" \
+  "serial: a worker commit through committer is not pushed to the same-name upstream"
+assert_contains "$(git log -1 --format=%B)" "X-Clade-Task: $id2" "serial: the last commit carries its own worker's X-Clade-Task trailer"
+# A caller's id (loop-runner.sh passes loop-iter<N>) is kept for every task.
+export WID_LOG="$WID_ROOT/serial-inherited.log"
+unset WID_COMMITTER
+output=$(CLADE_WORKER_TASK_ID=loop-iter7 wid_run "$SCRIPTS_DIR/run-tasks.sh" tasks.txt --keep-logs) || true
+assert_eq "loop-iter7 loop-iter7" "$(wid_ids)" "serial: an inherited CLADE_WORKER_TASK_ID is kept for every task"
+unset WID_LOG
 fi
 
 # ═══════════════════════════════════════════════════════════════════════
