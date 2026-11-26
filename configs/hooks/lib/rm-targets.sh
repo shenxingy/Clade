@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Which recursive-delete targets pre-tool-guardian.sh's catastrophic rule
-# exists for. Sourced by that hook; kept here because the hook sits at the
-# 1500-line cap.
+# exists for. Sourced by rm-guard.sh, which holds that rule; kept apart because
+# the hook sat at the 1500-line cap.
 #
 # The rule's text match is depth-blind: `/home\b`, `/var\b` and a home `~/`
 # match at ANY depth, so every recursive delete under a home directory or
@@ -31,9 +31,9 @@
 # tests/test-pre-tool-guardian.sh feeds both the same commands.
 #
 # The refusal's first sentence ("Catastrophic rm -rf blocked on system/home
-# directory.") is kept verbatim in the hook: friction-rank.py groups refusals
+# directory.") is kept verbatim in rm-guard.sh: friction-rank.py groups refusals
 # by first sentence, so rewording it would split this guard's history in two.
-# The hook fails closed without this file: no operand is exempt.
+# rm-guard.sh fails closed without this file: no operand is exempt.
 
 # Regexes live in variables: bash 3.2 and 4+ disagree on escapes written
 # inline after =~, and an unquoted ~ there could be tilde-expanded.
@@ -45,10 +45,10 @@ RM_PLAIN_PATH='^[~]?[A-Za-z0-9._/*+@%=,:-]*$'
 # every token after the FIRST word rm that is not an option or a redirection,
 # and every token after `--`. Reading from the first word judges a superset of
 # the real rm's operands, so a stray later "rm" can only add a token to
-# refuse. Without the hook's rm_after_first there are none: no exemption.
+# refuse. Without rm-guard.sh's rm_after_first there are none: no exemption.
 rm_operands() {
   local tok end_opts=false skip_next=false
-  # rm_after_first is the hook's: the same text its flags are read from. A
+  # rm_after_first is rm-guard.sh's: the same text its flags are read from. A
   # first token `rm` would not do: in `\rm -rf ~ rm /var/tmp/x` it is the
   # second rm, and only `/var/tmp/x` would be judged.
   declare -F rm_after_first >/dev/null || return 0
