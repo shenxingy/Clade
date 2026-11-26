@@ -62,6 +62,16 @@ echo "  Installed: $(ls "$SCRIPT_DIR/configs/agents/"*.md | xargs -I{} basename 
 echo "Installing Codex agents..."
 cp "$SCRIPT_DIR/configs/codex-agents/"*.toml "$CODEX_DIR/agents/"
 echo "  Installed: $(ls "$SCRIPT_DIR/configs/codex-agents/"*.toml | xargs -I{} basename {} | tr '\n' ' ')"
+# A Codex profile (CODEX_HOME=~/.codex-profiles/<name>) reads its own agents/.
+# One linked to ~/.codex/agents got the copy above; one that is a directory of
+# its own kept whatever it was copied with (measured 2026-11-26: a profile in
+# daily use held a 2026-09-20 clade_cheap_worker.toml). Copy Clade's agents by
+# name into each such directory, as above. A profile with no agents/ is left alone.
+for _codex_profile_agent_dir in "$HOME/.codex-profiles/"*/agents; do
+  [[ -d "$_codex_profile_agent_dir" && ! -L "$_codex_profile_agent_dir" ]] || continue
+  cp "$SCRIPT_DIR/configs/codex-agents/"*.toml "$_codex_profile_agent_dir/"
+  echo "  Refreshed Clade's Codex agents in $_codex_profile_agent_dir"
+done
 
 # Merge the Clade-managed adaptive-delegation block without replacing any
 # user-authored global Codex instructions.
@@ -145,11 +155,9 @@ echo "Installing Codex portable hooks..."
 mkdir -p "$CODEX_DIR/clade-hooks"
 cp "$SCRIPT_DIR/configs/codex-hooks/decision-to-codex.sh" "$CODEX_DIR/clade-hooks/"
 chmod +x "$CODEX_DIR/clade-hooks/decision-to-codex.sh"
-CODEX_HOOK_COUNT=""
-if [[ -z "$PYTHON" ]]; then
-  echo "  WARNING: Codex hooks unchanged (no working Python); hooks.json was not written"
-elif _codex_hook_output=$("$PYTHON" "$SCRIPT_DIR/configs/scripts/codex-hooks-merge.py" \
-    --target "$CODEX_DIR/hooks.json" \
+_codex_hooks_merge() {
+  "$PYTHON" "$SCRIPT_DIR/configs/scripts/codex-hooks-merge.py" \
+    --target "$1" \
     --adapter "$CODEX_DIR/clade-hooks/decision-to-codex.sh" \
     --claude-hooks "$CLAUDE_DIR/hooks" <<'EOF'
 PreToolUse	^(Edit|Write)$	linter-config-guard.sh	5	sync
@@ -163,14 +171,34 @@ Stop		stop-check.sh	10	sync
 PostToolUse	^(Edit|Write)$	memory-sync.sh	10	async
 PostToolUse	^Bash$	memory-sync.sh	10	async
 EOF
-  ); then
+}
+CODEX_HOOK_COUNT=""
+if [[ -z "$PYTHON" ]]; then
+  echo "  WARNING: Codex hooks unchanged (no working Python); hooks.json was not written"
+elif _codex_hook_output=$(_codex_hooks_merge "$CODEX_DIR/hooks.json"); then
   printf '  %s\n' "$_codex_hook_output"
   CODEX_HOOK_COUNT=$(printf '%s\n' "$_codex_hook_output" \
     | sed -n 's/^Codex hooks: \([0-9][0-9]*\) wired,.*/\1/p')
 else
   echo "  WARNING: Codex hooks unchanged (merger failed); hooks.json was not written"
 fi
-unset _codex_hook_output
+# A profile reads <CODEX_HOME>/hooks.json, so one holding its own file never
+# saw the wirings above (measured 2026-11-26: a profile in daily use had none
+# of the ten). Merge them into each such file, through the same adapter, each
+# reported with its own /hooks review line; trust state is never touched. A
+# hooks.json that is a link is left alone (one to ~/.codex/hooks.json already
+# has them), and so is a profile with none, as with AGENTS.md above.
+if [[ -n "$PYTHON" ]]; then
+  for _codex_profile_hooks in "$HOME/.codex-profiles/"*/hooks.json; do
+    [[ -f "$_codex_profile_hooks" && ! -L "$_codex_profile_hooks" ]] || continue
+    if _codex_hook_output=$(_codex_hooks_merge "$_codex_profile_hooks"); then
+      printf '  %s: %s\n' "$_codex_profile_hooks" "$_codex_hook_output"
+    else
+      echo "  $_codex_profile_hooks: WARNING: Codex hooks unchanged (merger failed)"
+    fi
+  done
+fi
+unset _codex_hook_output _codex_profile_hooks
 
 # Merge a Clade-managed block into an instruction file without ever touching
 # content outside the markers. Same guarantees as the Codex merge above: a

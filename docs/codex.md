@@ -19,8 +19,9 @@ codex plugin add clade@clade
 Start a new Codex thread after installation. Run `/hooks` once, review the
 plugin's two Clade hook definitions, and trust them if they match the checked-in
 files. If you also ran `./install.sh`, `/hooks` includes ten portable user-hook
-wirings appended to `~/.codex/hooks.json`; review those new entries too. The
-installer never writes trust state to `config.toml`.
+wirings appended to `~/.codex/hooks.json` (and to each Codex profile's own
+`hooks.json`, below); review those new entries too. The installer never writes
+trust state to `config.toml`.
 
 For local development from a Clade checkout:
 
@@ -90,6 +91,16 @@ cleanliness, session cleanup, and memory sync without running either plugin hook
 a second time. Existing groups stay at their original indices, a no-op reinstall
 does not rewrite the file, and new or configuration-changed entries still
 require the owner's review in `/hooks`.
+
+A Codex profile (`CODEX_HOME=~/.codex-profiles/<name>`) reads its own
+`hooks.json`, `agents/` and `AGENTS.md`, not those in `~/.codex`. For each
+profile where one of these is a file or directory of its own, `./install.sh`
+merges the same ten wirings into its `hooks.json` (through the `~/.codex`
+adapter, reported per file with its own `/hooks` review line), copies the two
+Clade agents into its `agents/`, and refreshes the managed block in its
+`AGENTS.md`. One that is a link is left alone (a link into `~/.codex` already
+gets them there), and one a profile does not have is never created. The
+profile's trust state is not touched.
 
 Codex loads executable workflow instructions from `SKILL.md`, while Clade's
 original Claude distribution executes `prompt.md`. The generator combines both
@@ -361,7 +372,8 @@ verified success per dollar and per wall-hour hold for a task class.
 
 `./install.sh` also installs two native profiles under `~/.codex/agents/` and
 merges an idempotent managed block into `~/.codex/AGENTS.md` without replacing
-user instructions. The block carries adaptive-delegation rules, the
+user instructions (and does both in each Codex profile that holds its own
+`agents/` or `AGENTS.md`, above). The block carries adaptive-delegation rules, the
 delivery-completion invariant, and the don't-block escalation ladder. The lead keeps architecture and
 ambiguous/high-risk work, delegates bounded read-only discovery to
 `clade_cheap_explorer`, and uses `clade_cheap_worker` only with explicit file
