@@ -27,7 +27,7 @@ repositories that moved their CI to owned hardware (scamai, 2026-11-21):
    so a step's `npm install -g` writes into a prefix of its own. Here it wrote
    into the developer's (2026-11-17, the first gate of #251): two gates at
    once raced there and one failed with npm `ENOTEMPTY`, and a gate replaced
-   the user's own installed CLI.
+   the user's own installed CLI. A step that uses nvm is the exception (4).
 
 Stdlib only, like ci-local.py.
 """
@@ -340,23 +340,56 @@ class JobFiles:
 # every gate. Moving the prefix also moves the global npmrc npm reads
 # (<prefix>/etc/npmrc, which a runner does not have either); ~/.npmrc is read
 # as before, and its own `prefix=` is outranked by the environment.
+#
+# What still changes this host's npm state: a prefix the workflow names
+# itself (as on a runner, it wins); `sudo npm install -g`, since sudo resets
+# the environment; `npm config set prefix`, which writes ~/.npmrc; and a step
+# that uses nvm. nvm refuses NPM_CONFIG_PREFIX in any spelling outside
+# $NVM_DIR (nvm_die_on_prefix): `nvm use` returns 11, and sourcing nvm.sh
+# with a default alias set fails the step under `bash -e`, where it passes on
+# main and on a runner (found in review, 2026-11-25). Such a step gets no
+# prefix variable, and its output says so. It is read from the step's own text,
+# comments dropped: `nvm.sh` by any path, or `nvm` where a command starts, so
+# `$HOME/.nvm/bin`, `NVM_DIR` or a variable named nvm_x leave a step isolated.
+# A miss fails the step with exit 11, which names the variable; a false match
+# costs that one step its isolation, and its note names it.
+_SH_COMMENT = re.compile(r"(^|\s)#.*$", re.M)
+_NVM_USE = re.compile(
+    r"nvm\.sh|(?:^|[;&|(`{!]|\b(?:then|do|else|elif|if|while|until|time|command)\s)\s*nvm(?![\w./=-])",
+    re.M)
+NVM_NOTE = ("runs without the job's npm prefix: it uses nvm, which refuses NPM_CONFIG_PREFIX, "
+            "so its global installs go wherever nvm puts them, on this host")
 
 
-def isolate_npm_global(env: dict[str, str], prefix: Path, workflow_keys: list[str]) -> None:
+def uses_nvm(script: str) -> bool:
+    """Whether a step's run text sources nvm.sh or runs `nvm`, comments aside."""
+    return bool(_NVM_USE.search(_SH_COMMENT.sub(r"\1", script)))
+
+
+def isolate_npm_global(env: dict[str, str], prefix: Path, workflow_keys: list[str],
+                       script: str) -> str:
     """Point npm's global prefix in a step's `env` at `prefix`, and put its
     bins first on PATH. `env` already holds the workflow's env, and
     `workflow_keys` names what the workflow set there itself (its env: and
     $GITHUB_ENV, with a value): a prefix it names wins, as on a runner. Any
     other is replaced: the caller's, in any spelling, or a `${{ }}` one that
-    only the hosted run can set (unset, npm would fall back to this host's)."""
+    only the hosted run can set (unset, npm would fall back to this host's).
+    A step whose `script` uses nvm gets no prefix variable, only the PATH
+    entries; the return value is then why (NVM_NOTE), and "" otherwise."""
     named = {k for k in workflow_keys if k.lower() == "npm_config_prefix"}
     # npm reads npm_config_* in any case, and the LAST in the environment
     # wins, so a caller's stray lower-case npm_config_prefix (nvm warns about
     # one) would decide by environment order. No other spelling survives.
     for key in [k for k in env if k.lower() == "npm_config_prefix" and k not in named]:
         del env[key]
+    why = ""
     if not named:
-        env["NPM_CONFIG_PREFIX"] = str(prefix)
+        if uses_nvm(script):
+            why = NVM_NOTE
+        else:
+            env["NPM_CONFIG_PREFIX"] = str(prefix)
     # npm links global bins into <prefix>/bin, except on Windows, where they
-    # sit in the prefix itself. Both go first; an empty PATH adds no entry.
-    env["PATH"] = os.pathsep.join(p for p in (str(prefix / "bin"), str(prefix), env.get("PATH", "")) if p)
+    # sit in the prefix itself. Both go first. With no PATH at all (`env -i`),
+    # the rest is exec's default, os.defpath: the prefix alone has no bash.
+    env["PATH"] = os.pathsep.join([str(prefix / "bin"), str(prefix), env.get("PATH") or os.defpath])
+    return why

@@ -78,9 +78,12 @@ files per step. What a step writes to $GITHUB_ENV and $GITHUB_PATH reaches the
 later steps of that job; outputs are written and never read, since
 `${{ steps.<id>.outputs.* }}` is an expression this runner does not evaluate.
 It also gets an empty npm global prefix of its own (NPM_CONFIG_PREFIX, its
-bins first on PATH), so a step's `npm install -g` never touches this host's
-global packages and two gates at once do not race there; npm's cache stays
-shared.
+bins first on PATH), so a step's `npm install -g` lands there, not in this
+host's global packages, and two gates at once do not race there; npm's cache
+stays shared. Four things still change this host's npm state: a prefix the
+workflow names itself, `sudo npm install -g` (sudo resets the environment),
+`npm config set prefix` (it writes ~/.npmrc), and a step that uses nvm, which
+refuses the variable: that step runs without it, and its output says so.
 
 Exit 1 when a job that ran failed. Otherwise any unproven lane makes the
 summary read PARTIAL, a step that passed only on rerun makes it read FLAKY,
@@ -1033,10 +1036,14 @@ def run_job(job: Job, repo: Path, tail_lines: int, echo: bool, timeout: int,
                 env[key] = value
         # CI=true is what most tools read to pick non-interactive output.
         env.setdefault("CI", "true")
-        # `npm install -g` lands in the job's own prefix, never this host's,
-        # unless the workflow names one itself (a `${{ }}` one was unset above).
-        runner.isolate_npm_global(env, files.npm_prefix,
-                                  [*files.env, *(k for k, v in step.env.items() if not _EXPR.search(v))])
+        # `npm install -g` lands in the job's own prefix, not this host's,
+        # unless the workflow names one itself (a `${{ }}` one was unset above)
+        # or the step uses nvm, which refuses one: its output then says so.
+        why = runner.isolate_npm_global(env, files.npm_prefix, [
+            *files.env, *(k for k, v in step.env.items() if not _EXPR.search(v))], step.run)
+        note = f'ci-local: step "{step.display}" {why}' if why else ""
+        if note and echo:
+            print(f"    {note}")
         if extra_path:
             env["PATH"] = extra_path + os.pathsep + env.get("PATH", "")
             env["VIRTUAL_ENV"] = str(Path(extra_path).parent)
@@ -1050,6 +1057,7 @@ def run_job(job: Job, repo: Path, tail_lines: int, echo: bool, timeout: int,
             print(f"    · {step.display} … ", end="", flush=True)
         rc, elapsed, tail, timed_out = _attempt(step.run, cwd, {**env, **files.begin_step()},
                                                 timeout, tail_lines)
+        tail = "\n".join(filter(None, [note, tail]))
         first_exit: int | None = None
         first_tail = ""
         # One rerun of a failed step, same command, env and cwd: green the
@@ -1062,6 +1070,7 @@ def run_job(job: Job, repo: Path, tail_lines: int, echo: bool, timeout: int,
             first_exit, first_tail = rc, tail
             rc, again, tail, timed_out = _attempt(step.run, cwd, {**env, **files.begin_step()},
                                                   timeout, tail_lines)
+            tail = "\n".join(filter(None, [note, tail]))
             elapsed += again
         # A $GITHUB_ENV the runner cannot read fails the step that wrote it.
         bad_files = files.end_step() if rc == 0 and not timed_out else ""

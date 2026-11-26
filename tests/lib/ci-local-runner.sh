@@ -29,6 +29,9 @@
 # Each job now gets an npm global prefix of its own; two concurrent runs
 # install a local package into theirs while a throwaway "host" prefix, set the
 # ways a developer's machine sets one, must come out byte-for-byte unchanged.
+# A step that uses nvm is the exception, found in review on 2026-11-25: nvm
+# refuses NPM_CONFIG_PREFIX and the step exited 11, green on main. It now runs
+# with no prefix and its output says so; a stub nvm.sh plays nvm's part.
 # Every step that runs records what it saw, so the assertions read what
 # happened, not what was printed about it.
 
@@ -301,6 +304,92 @@ for p in paths + [root]:
 PY
 }
 
+# nvm refuses NPM_CONFIG_PREFIX. A stand-in for nvm.sh, so no real nvm is
+# needed: what nvm_die_on_prefix does (nvm 0.40.1, ~/.nvm/nvm.sh). Any
+# spelling of npm_config_prefix, compared upper-cased, set outside $NVM_DIR
+# makes `nvm use` return 11, and sourcing it with a default alias runs
+# `nvm use default`, which fails the step under bash -e. "Nvm By Name" loads
+# it through a variable, so only its `nvm use` says nvm; "Nvm Mentions Only"
+# says nvm every way that is not using it, and must keep the job's prefix.
+NVMW="$SANDBOX/npm-nvm"; mkdir -p "$NVMW/.github/workflows" "$NVMW/nvm-stub/alias" "$NVMW/nvm-bare"
+touch "$NVMW/nvm-stub/alias/default"
+cat > "$NVMW/nvm-stub/nvm.sh" <<'SH'
+nvm() {
+  _n=$(awk 'BEGIN { for (k in ENVIRON) if (toupper(k) == "NPM_CONFIG_PREFIX") { print k; exit } }')
+  if [ -n "$_n" ]; then
+    eval "_v=\${$_n}"
+    case "$_v" in
+      "" | "$NVM_DIR"/*) ;;
+      *) echo "nvm is not compatible with the \"$_n\" environment variable: currently set to \"$_v\"" >&2
+         return 11 ;;
+    esac
+  fi
+  echo "Now using node (stub)"
+}
+if [ -f "$NVM_DIR/alias/default" ]; then nvm use default --silent; fi
+SH
+cat > "$NVMW/.github/workflows/nvm.yml" <<'YAML'
+name: Nvm
+on: [push, pull_request]
+jobs:
+  sources:
+    name: Nvm Sources
+    runs-on: ubuntu-latest
+    steps:
+      - name: Sources nvm.sh and nothing else
+        run: |
+          r() { if eval "$2"; then echo "$1 ok"; else echo "$1 BAD"; fi >> .nvm-results; }
+          export NVM_DIR="$PWD/nvm-stub"
+          . "$NVM_DIR/nvm.sh"
+          r sourced-ran 'true'
+          r sourced-no-prefix 'test "$(env | grep -ci "^npm_config_prefix=")" = 0'
+          r sourced-bins-on-path 'case ":$PATH:" in *"/npm-prefix/bin:"*) true ;; *) false ;; esac'
+  by_name:
+    name: Nvm By Name
+    runs-on: ubuntu-latest
+    steps:
+      - name: Loads nvm under another name and runs it
+        run: |
+          r() { if eval "$2"; then echo "$1 ok"; else echo "$1 BAD"; fi >> .nvm-results; }
+          export NVM_DIR="$PWD/nvm-bare"
+          . "$CI_LOCAL_T_NVM_LOAD"
+          nvm use 22
+          r by-name-ran 'true'
+  mentions:
+    name: Nvm Mentions Only
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mentions nvm without using it
+        run: |
+          r() { if eval "$2"; then echo "$1 ok"; else echo "$1 BAD"; fi >> .nvm-results; }
+          # nvm use 22 is not needed here, and nor is nvm.sh
+          nvm_unused="$HOME/.nvm/versions NVM_DIR=${NVM_DIR-} nvm-free"
+          r mentions-own 'test -n "$NPM_CONFIG_PREFIX" && test "$NPM_CONFIG_PREFIX" != "$CI_LOCAL_T_NPMG"'
+  fails:
+    name: Nvm Fails
+    runs-on: ubuntu-latest
+    steps:
+      - name: Uses nvm, then fails
+        run: |
+          export NVM_DIR="$PWD/nvm-stub"
+          . "$NVM_DIR/nvm.sh"
+          echo "nvm step output"
+          exit 3
+YAML
+# A caller with no PATH at all (`env -u PATH`, as from cron or `env -i`).
+NOPATH="$SANDBOX/npm-nopath"; mkdir -p "$NOPATH/.github/workflows"
+cat > "$NOPATH/.github/workflows/p.yml" <<'YAML'
+name: No Path
+on: [push, pull_request]
+jobs:
+  p:
+    name: No Path
+    runs-on: ubuntu-latest
+    steps:
+      - name: Records its PATH
+        run: printf '%s\n' "${PATH-UNSET}" > .path-seen
+YAML
+
 # A git checkout: whether HEAD carries a tag decides the tag tier.
 TAGS="$SANDBOX/tags"; mkdir -p "$TAGS/.github/workflows"
 cat > "$TAGS/.github/workflows/release.yml" <<'YAML'
@@ -500,6 +589,56 @@ NPM_FIRST="$(cat "$NPMW/.npm-prefix-first" 2>/dev/null)"
 if [[ -n "$NPM_FIRST" && ! -e "$NPM_FIRST" ]]; then pass "the job's npm prefix is removed after the run"
 else fail "the job's npm prefix is removed after the run" "'$NPM_FIRST' is still there"; fi
 
+NP_DEF="$(python3 -c 'import os; print(os.defpath)')"
+rm -f "$NOPATH/.path-seen"
+OUT="$(env -u PATH "$(command -v python3)" "$RUNNER" --repo "$NOPATH" 2>&1)"; RC=$?
+NP_SEEN="$(cat "$NOPATH/.path-seen" 2>/dev/null)"
+# Exactly <prefix>/bin, <prefix>, then exec's default: no empty entry.
+NP_RE="^(/[^:]+)/npm-prefix/bin:(/[^:]+)/npm-prefix:${NP_DEF}\$"
+if [[ "$RC" == 0 && "$NP_SEEN" =~ $NP_RE && "${BASH_REMATCH[1]}" == "${BASH_REMATCH[2]}" ]]; then
+  pass "a caller with no PATH: the step finds bash, its PATH is the prefix's bins, then os.defpath"
+else fail "a caller with no PATH: the step finds bash, its PATH is the prefix's bins, then os.defpath" \
+  "rc=$RC PATH '$NP_SEEN': $(echo "$OUT" | tail -2 | tr '\n' ' ')"; fi
+
+section "a step that uses nvm runs without the prefix nvm refuses, and its output says so"
+nvm_result() { grep -E "^$1 (ok|BAD)$" "$NVMW/.nvm-results" 2>/dev/null | tr '\n' ' ' | sed 's/ $//'; }
+NVM_WHY="runs without the job's npm prefix: it uses nvm, which refuses NPM_CONFIG_PREFIX, so its global installs go wherever nvm puts them, on this host"
+rm -f "$NVMW"/.nvm-*
+OUT="$(CI_LOCAL_T_NVM_LOAD="$NVMW/nvm-stub/nvm.sh" npm_caller python3 "$RUNNER" --repo "$NVMW" \
+  --job "Nvm Sources" --job "Nvm By Name" --job "Nvm Mentions Only" 2>&1)"; RC=$?
+assert_eq "$RC" "0" "steps that use nvm pass: no prefix is left for nvm to refuse, the caller's included"
+assert_lacks "$OUT" "FLAKY" "on their first attempt"
+assert_eq "$(nvm_result sourced-ran)" "sourced-ran ok" "a step that sources nvm.sh gets past it (it would exit 11)"
+assert_eq "$(nvm_result sourced-no-prefix)" "sourced-no-prefix ok" \
+  "it sees no npm_config_prefix in any spelling, the caller's included"
+assert_eq "$(nvm_result sourced-bins-on-path)" "sourced-bins-on-path ok" "the job's prefix bins are still on its PATH"
+assert_eq "$(nvm_result by-name-ran)" "by-name-ran ok" "a step that runs nvm by name, no nvm.sh in its text, gets past nvm use"
+assert_eq "$(nvm_result mentions-own)" "mentions-own ok" \
+  "a step that only mentions nvm (a comment, ~/.nvm, NVM_DIR, a variable nvm_x) keeps the job's prefix"
+for s in "Sources nvm.sh and nothing else" "Loads nvm under another name and runs it"; do
+  assert_eq "$(grep -cxF "    ci-local: step \"$s\" $NVM_WHY" <<< "$OUT")" "1" "one line in the run's output names the step: $s"
+done
+assert_lacks "$OUT" "step \"Mentions nvm without using it\" runs without" "the step that only mentions nvm gets no such line"
+# The shape a review found (2026-11-25): no prefix in the caller's environment,
+# green on main, exit 11 once every step was handed the job's.
+env -u NPM_CONFIG_PREFIX -u npm_config_prefix python3 "$RUNNER" --repo "$NVMW" --job "Nvm Sources" \
+  > /dev/null 2>&1; RC=$?
+assert_eq "$RC" "0" "with no prefix in the caller's environment either, a step that sources nvm.sh passes"
+# The first attempt's tail (--no-rerun), then the rerun's: each is a step's output.
+for mode in --no-rerun rerun; do
+  if [[ "$mode" == --no-rerun ]]; then
+    OUT="$(npm_caller python3 "$RUNNER" --repo "$NVMW" --job "Nvm Fails" --json --no-rerun 2>/dev/null)"
+  else OUT="$(npm_caller python3 "$RUNNER" --repo "$NVMW" --job "Nvm Fails" --json 2>/dev/null)"; fi
+  CHECK=$(CL_NVM_WANT="ci-local: step \"Uses nvm, then fails\" $NVM_WHY" check_json "$OUT" '
+import os
+fs = d.get("failed") or [{}]
+tail = fs[0].get("output_tail", "").splitlines()
+if fs[0].get("exit_code") != 3 or tail[:1] != [os.environ["CL_NVM_WANT"]] or "nvm step output" not in tail:
+    problems.append("failed=%r" % fs)
+')
+  assert_eq "$CHECK" "ok" "JSON ($mode): a failed nvm step's output tail opens with that line, then its own output"
+done
+
 section "two gates at once, each running npm install -g: both pass, the host prefix is untouched"
 if command -v npm >/dev/null 2>&1; then
   NPM_BEFORE="$(npm_manifest "$NPMG")"
@@ -644,9 +783,10 @@ ci_local_runner_mutations() {
     '"GITHUB_STEP_SUMMARY": "step_summary"}'
   # npm's global prefix.
   mutation red "the job's npm prefix at its call site in run_job" \
-    '        runner.isolate_npm_global(env, files.npm_prefix,
-                                  [*files.env, *(k for k, v in step.env.items() if not _EXPR.search(v))])
-' ''
+    '        why = runner.isolate_npm_global(env, files.npm_prefix, [
+            *files.env, *(k for k, v in step.env.items() if not _EXPR.search(v))], step.run)
+' '        why = ""
+'
   mutation red "the caller's other spellings of npm_config_prefix being dropped" \
     '    for key in [k for k in env if k.lower() == "npm_config_prefix" and k not in named]:
         del env[key]
@@ -654,19 +794,20 @@ ci_local_runner_mutations() {
   mutation red "NPM_CONFIG_PREFIX naming the job's prefix" \
     'env["NPM_CONFIG_PREFIX"] = str(prefix)' 'pass'
   mutation red "the prefix's bin directory first on PATH" \
-    '(str(prefix / "bin"), str(prefix), env.get' '(str(prefix), env.get'
+    '[str(prefix / "bin"), str(prefix), env.get' '[str(prefix), env.get'
   mutation red "the prefix itself on PATH (where Windows npm puts bins)" \
-    '(str(prefix / "bin"), str(prefix), env.get' '(str(prefix / "bin"), env.get'
+    '[str(prefix / "bin"), str(prefix), env.get' '[str(prefix / "bin"), env.get'
   # The anchor carries `for k in workflow_keys if`: the same comparison is on
   # the deletion loop too.
   mutation red "a workflow's prefix counted in any spelling (npm_config_prefix too)" \
     'for k in workflow_keys if k.lower() == "npm_config_prefix"}' \
     'for k in workflow_keys if k == "NPM_CONFIG_PREFIX"}'
   mutation red "a step's own NPM_CONFIG_PREFIX winning" \
-    '[*files.env, *(k for k, v in step.env.items() if not _EXPR.search(v))]' '[*files.env]'
+    '*files.env, *(k for k, v in step.env.items() if not _EXPR.search(v))], step.run)' \
+    '*files.env], step.run)'
   mutation red "a \$GITHUB_ENV NPM_CONFIG_PREFIX winning" \
-    '[*files.env, *(k for k, v in step.env.items() if not _EXPR.search(v))]' \
-    '[*(k for k, v in step.env.items() if not _EXPR.search(v))]'
+    '*files.env, *(k for k, v in step.env.items() if not _EXPR.search(v))], step.run)' \
+    '*(k for k, v in step.env.items() if not _EXPR.search(v))], step.run)'
   mutation red "a \${{ }} NPM_CONFIG_PREFIX not counting as the workflow's" \
     'step.env.items() if not _EXPR.search(v))]' 'step.env.items())]'
   mutation red "the job's npm prefix existing, empty" \
@@ -676,6 +817,30 @@ ci_local_runner_mutations() {
         self.npm_prefix.mkdir()' \
     'self.npm_prefix = Path(os.environ["XDG_CACHE_HOME"]) / "ci-local-t-npm-shared"
         self.npm_prefix.mkdir(parents=True, exist_ok=True)'
+  mutation red "a caller with no PATH getting os.defpath after the prefix" \
+    'env.get("PATH") or os.defpath' 'env.get("PATH", "")'
+  # nvm steps.
+  mutation red "the step's text reaching the nvm check at its call site" \
+    '*files.env, *(k for k, v in step.env.items() if not _EXPR.search(v))], step.run)' \
+    '*files.env, *(k for k, v in step.env.items() if not _EXPR.search(v))], "")'
+  mutation red "nvm.sh in a step's text counting as nvm" 'r"nvm\.sh|(?:^|' 'r"(?:^|'
+  mutation red "nvm run by name counting as nvm" \
+    'r"nvm\.sh|(?:^|[;&|(`{!]|\b(?:then|do|else|elif|if|while|until|time|command)\s)\s*nvm(?![\w./=-])",' \
+    'r"nvm\.sh",'
+  mutation red "comments dropped before the nvm match" \
+    '_NVM_USE.search(_SH_COMMENT.sub(r"\1", script))' '_NVM_USE.search(script)'
+  mutation red "a word's end after nvm (a variable named nvm_x is not nvm)" \
+    '\s*nvm(?![\w./=-])' '\s*nvm'
+  mutation red "the nvm note in the run's output" \
+    '        if note and echo:
+            print(f"    {note}")
+' ''
+  mutation red "the nvm note opening the first attempt's output tail" \
+    '        tail = "\n".join(filter(None, [note, tail]))
+        first_exit' '        first_exit'
+  mutation red "the nvm note opening the rerun's output tail" \
+    '            tail = "\n".join(filter(None, [note, tail]))
+' ''
   # Tag-only tiers.
   mutation red "the tag-tier skip at its call site in skip_reason" \
     'if job.tag_tier and not head_tags and not include_conditional:' 'if False:'

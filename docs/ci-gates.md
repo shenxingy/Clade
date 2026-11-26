@@ -38,10 +38,16 @@ run inside a hosted job never writes the outer job's; `$GITHUB_ENV` and
 not read (`${{ steps.<id>.outputs.* }}` stays unproven). Each job also gets an
 empty npm global prefix of its own (`NPM_CONFIG_PREFIX`, overriding the
 caller's in any spelling, with its bins first on `PATH`), so
-`validate-plugin.yml`'s `npm install -g` never rewrites this machine's own
+`validate-plugin.yml`'s `npm install -g` no longer rewrites this machine's own
 `claude` and two gates at once no longer race in one prefix (npm `ENOTEMPTY`,
-2026-11-17); a prefix the workflow names itself still wins, and npm's cache
-stays shared, since cacache is built for concurrent writers. Runner labels
+2026-11-17); npm's cache stays shared, since cacache is built for concurrent
+writers. Four things still change this machine's npm state: a prefix the
+workflow names itself, which wins as on a runner; `sudo npm install -g`, since
+sudo resets the environment; `npm config set prefix`, which writes
+`~/.npmrc` (the job's prefix still outranks it); and a step that uses nvm (it
+sources `nvm.sh` or runs `nvm`), because nvm refuses `NPM_CONFIG_PREFIX` and
+the step would exit 11. That step runs without the prefix, and its output
+names it. Runner labels
 compare case-insensitively, so `[self-hosted, macOS]` or an `ARM64` label is a
 platform skip on another machine, and a workflow whose push trigger filters on
 `tags:` alone is a tag tier, skipped with its reason on a head that carries no
