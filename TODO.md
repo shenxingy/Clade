@@ -2567,14 +2567,16 @@ to a differently named upstream such as `origin/main`). Not built in that fix:
   commits as a loop worker, so the loop never pushes. Not changed: the
   no-committer fallback (`git commit … | tee`) still reports failure if `tee`
   alone fails after a commit.
-- [ ] 🟡 **A local gate is red for any PR that changes a loop or run-tasks
-  script.** `tests/test-loop-env.sh` suite 13 compares 13 of those scripts with
-  the host's installed `~/.claude/scripts` and skips only when no kit is
-  installed, as on a hosted runner. On a gate host with Clade installed, the
-  PR's own change is a "deployed … DIFFERS from source" failure: #270 failed
-  its first gate on castor this way (2 of 232), and #269 and #270 were re-gated
-  with `--clean-home`. Make the parity check opt-in (an install check, not a
-  tree check), or skip it when the checkout is not the installed source.
+- [ ] 🟡 **A local gate is red whenever the gate host's installed kit differs
+  from the tree's loop and run-tasks scripts.** `tests/test-loop-env.sh` suite 13
+  compares 13 of those scripts with the host's installed `~/.claude/scripts` and
+  skips only when no kit is installed, as on a hosted runner. So a PR that
+  changes one fails as "deployed … DIFFERS from source" (#270's first gate on
+  castor, 2 of 232), and so does any head whose base is newer than the host's
+  kit (#278's merge head, 5 of 241, after main gained #269 and #270). #269,
+  #270 and #278 were re-gated with `--clean-home`. Make the parity check opt-in
+  (an install check, not a tree check), or skip it when the checkout is not the
+  installed source.
 - [ ] 🔵 **On `main` tracking `origin/main`, committer still pushes straight to
   the default branch.** That is the same-name rule working as designed, but it
   sits beside the global rule "ask before git push to shared/protected
