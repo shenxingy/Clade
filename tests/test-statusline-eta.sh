@@ -469,8 +469,11 @@ fi
 section "COLUMNS: the line fits the pane, the task time last to go"
 
 UTF8=""
+# Not `grep -q`: it stops at the first match, `locale -a` then dies of SIGPIPE,
+# and pipefail makes the pipeline fail. macOS lists 288 locales, so the exact
+# strings below were skipped there although en_US.UTF-8 exists.
 for l in C.UTF-8 C.utf8 en_US.UTF-8 en_US.utf8; do
-  if locale -a 2>/dev/null | grep -qx "$l"; then UTF8=$l; break; fi
+  if locale -a 2>/dev/null | grep -x "$l" >/dev/null; then UTF8=$l; break; fi
 done
 printf 'number\n' > "$CLAUDE_DIR/.statusline-mode"
 LONG="$SANDBOX/faceswap-platform-100"
