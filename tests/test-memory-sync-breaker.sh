@@ -223,6 +223,12 @@ EOF
 case "\${1:-}" in push) exit 1 ;; esac
 exec '$real_git' "\$@"
 EOF
+  elif [[ "$mode" == "abort" ]]; then
+    cat > "$H/shim/git" <<EOF
+#!/usr/bin/env bash
+[[ "\${1:-} \${2:-}" == "merge --abort" ]] && exit 1
+exec '$real_git' "\$@"
+EOF
   elif [[ "$mode" == "commit" ]]; then
     cat > "$H/shim/git" <<EOF
 #!/usr/bin/env bash
@@ -327,6 +333,67 @@ t_failures() {
   assert_eq "$PUSH_RC" "1" "a commit failure after a successful add exits nonzero"
   assert_eq "$(backoff_line)" "4600 1 commit-failed" "a failed git commit records commit-failed"
   assert_eq "$(git -C "$STORE" rev-list --count HEAD)" "1" "the failed commit adds no history"
+}
+
+# A second clone of the store's remote: the other machine.
+other_git() {
+  git -C "$H/other" -c user.email=other@example.com -c user.name=other \
+    -c core.hooksPath=/dev/null "$@"
+}
+
+# The other machine deletes notes.txt while this one modifies it: a
+# modify/delete conflict, which `-X ours` cannot settle (it resolves hunks only).
+modify_delete_fixture() {
+  new_store "$1"
+  add_remote
+  git clone -q -b "$(git -C "$STORE" symbolic-ref --short HEAD)" "$H/remote.git" "$H/other"
+  other_git rm -q notes.txt
+  other_git commit -qm 'other machine deletes notes.txt'
+  other_git push -q origin HEAD
+  printf 'local\n' > "$STORE/notes.txt"
+}
+
+t_merge_abort() {
+  section "a failed -X ours merge is aborted, recorded, and the next run recovers"
+
+  # Before the abort the merge stayed in progress: MERGE_HEAD and a conflicted
+  # index, so every later run refused on unmerged paths until someone ran
+  # `git merge --abort` in the store by hand.
+  modify_delete_fixture modify-delete
+  run_push 3100
+  assert_eq "$PUSH_RC" "1" "a modify/delete conflict -X ours cannot settle makes sync-push fail"
+  assert_eq "$(backoff_line)" "3100 1 unresolved-conflict" \
+    "the failed merge records unresolved-conflict"
+  check "the failed merge is aborted: no MERGE_HEAD is left" \
+    test ! -e "$STORE/.git/MERGE_HEAD"
+  assert_eq "$(git -C "$STORE" ls-files -u)" "" "the abort leaves no unmerged index entries"
+  assert_eq "$(git -C "$STORE" status --porcelain)" "" "the abort leaves a clean index and tree"
+  assert_eq "$(git -C "$STORE" show HEAD:notes.txt)" "local" \
+    "the local change survives the abort in its own commit"
+  other_git revert --no-edit HEAD >/dev/null
+  other_git push -q origin HEAD
+  run_push 3101
+  assert_eq "$PUSH_RC" "0" "once the remote is fixed the next run proceeds"
+  assert_eq "$(backoff_line)" "<absent>" "the recovering run clears the backoff"
+  assert_eq "$(git --git-dir="$H/remote.git" rev-parse HEAD)" \
+    "$(git -C "$STORE" rev-parse HEAD)" "the recovering run delivers the local change"
+  assert_eq "$(git --git-dir="$H/remote.git" show HEAD:notes.txt)" "local" \
+    "the delivered tree carries this machine's notes.txt"
+
+  # An abort that itself fails leaves the store wedged; that is its own reason,
+  # never reported as an ordinary conflict and never silent.
+  modify_delete_fixture abort-fails
+  make_git_shim abort
+  run_push 3200
+  assert_eq "$PUSH_RC" "1" "a failed abort still makes sync-push fail"
+  assert_eq "$(backoff_line)" "3200 1 merge-abort-failed" \
+    "a failed abort records merge-abort-failed, not unresolved-conflict"
+  if grep -q 'could not abort the failed merge' "$H/push.out"; then
+    pass "a failed abort is named on stderr"
+  else
+    fail "a failed abort is named on stderr" "$(cat "$H/push.out")"
+  fi
+  check "the fixture really left the merge in progress" test -e "$STORE/.git/MERGE_HEAD"
 }
 
 t_delivery() {
@@ -667,7 +734,7 @@ t_defaults() {
   assert_eq "$(spawn_count)" "1" "the default cap is open just after 24 hours"
 }
 
-ALL_SECTIONS="failures delivery gate claim half_open robustness defaults"
+ALL_SECTIONS="failures merge_abort delivery gate claim half_open robustness defaults"
 for _section in ${MSB_ONLY:-$ALL_SECTIONS}; do
   "t_$_section"
 done
@@ -721,7 +788,15 @@ if [[ -z "$MSB_MUTANT" && -z "${MSB_SKIP_MUTATIONS:-}" ]]; then
   mutation red push "the unmerged-path guard" failures \
     'if [[ -n "$(git ls-files -u 2>/dev/null)" ]]; then' 'if false; then'
   mutation red push "unresolved-conflict failure recording" failures \
-    'sync_push_record_failure unresolved-conflict' ':'
+    'sync_push_record_failure "$_merge_reason"' ':'
+  mutation red push "the failed-merge abort" merge_abort \
+    'git merge --abort 2>/dev/null || {' ': || {'
+  mutation red push "the MERGE_HEAD check before the abort" failures \
+    'if git rev-parse -q --verify MERGE_HEAD >/dev/null 2>&1; then' 'if true; then'
+  mutation red push "the failed-abort reason" merge_abort \
+    '_merge_reason=merge-abort-failed' ':'
+  mutation red push "naming a failed abort on stderr" merge_abort \
+    'echo "sync-push: could not abort the failed merge; run git merge --abort in $SYNC_DIR." >&2' ':'
   mutation red push "rejected-push failure recording" failures \
     'sync_push_record_failure push-failed' ':'
   mutation red push "success clearing the breaker" failures \
