@@ -66,6 +66,14 @@ REPO = Path(__file__).resolve().parents[2]
 # lib that is missing or defines no check refuses what its rule reads, and
 # rm-guard.sh finds rm-targets.sh, or exempts nothing without it.
 #
+# Its commands over 128 KiB, run as GUARDIAN_LARGE_ONLY=1 under a fourth key
+# (the cases are in tests/lib/guardian-large-cases.sh): every value reaches jq
+# on stdin, a reason quotes the command clipped, a deny or a rewrite jq cannot
+# write is still a refusal, and the pkill rule neither hands its pattern to
+# grep nor cuts the text after it in quadratic time. The layers back each
+# other up, so those cases read the reason and not only the verdict: a deny
+# that fell back to the fixed refusal is still a BLOCK.
+#
 # Every anchor must occur exactly once across the hook and its libs: the edit
 # replaces the first match, and the hook and lib/force-push-walk.sh carry two
 # awk programs whose option-parsing lines are alike, so a duplicated anchor
@@ -254,12 +262,12 @@ HOOK_SUITES: dict[str, dict] = {
             ("python -c time.sleep",
              [('add_wait(d, min2(secs, sb), "python time.sleep", bg)', "secs = 0")]),
             ("a rewrite carrying the wait warning",
-             [('--arg why "$2${GD_WAIT_WARN:+ $GD_WAIT_WARN}"', '--arg why "$2"')]),
+             [('local why="$2${GD_WAIT_WARN:+ $GD_WAIT_WARN}" out', 'local why="$2" out')]),
             ("the warning reaching the model at all",
              [('[[ -n "$GD_WAIT_WARN" ]] && gd_warn "$GD_WAIT_WARN"', ":")]),
             ("a warning that never decides permission",
-             [('{hookSpecificOutput:{hookEventName:"PreToolUse",additionalContext:$c}}',
-               '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"allow",additionalContext:$c}}')]),
+             [('{hookSpecificOutput:{hookEventName:"PreToolUse",additionalContext:.}}',
+               '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"allow",additionalContext:.}}')]),
             # ── the remedy the warning gives (review, 2026-10-23) ──
             ("the recommended loop staying under 270 s",
              [("bound the loop (for i in \\$(seq 1 26);", "bound the loop (for i in \\$(seq 1 40);")]),
@@ -676,6 +684,44 @@ HOOK_SUITES: dict[str, dict] = {
                'source "$(dirname "${BASH_SOURCE[0]}")/../rm-targets.sh"')]),
             ("without rm-targets.sh no operand is exempt",
              [("  || rm_all_operands_deep() { return 1; }", "  || rm_all_operands_deep() { return 0; }")]),
+        ],
+    },
+    "configs/hooks/pre-tool-guardian.sh (commands over 128 KiB)": {
+        "hook": "configs/hooks/pre-tool-guardian.sh",
+        "suite": "tests/test-pre-tool-guardian.sh",
+        "hook_var": "GUARDIAN_HOOK",
+        "env": {"GUARDIAN_LARGE_ONLY": "1", "GUARDIAN_SIDE": "sh"},
+        "fail_fast_env": {"GUARDIAN_FAIL_FAST": "1"},
+        "mutations": [
+            ("a deny reason reaches jq on stdin, not as one exec argument",
+             [("  out=$(printf '%s' \"$1\" | jq -Rs \\\n", "  out=$(jq -n --arg r \"$1\" \\\n"),
+              ("permissionDecisionReason:.}}' 2>/dev/null)", "permissionDecisionReason:$r}}' 2>/dev/null)")]),
+            ("the hook before the fix: the whole command in a reason, as one jq argument",
+             [("  out=$(printf '%s' \"$1\" | jq -Rs \\\n", "  out=$(jq -n --arg r \"$1\" \\\n"),
+              ("permissionDecisionReason:.}}' 2>/dev/null)", "permissionDecisionReason:$r}}' 2>/dev/null)"),
+              ("if (( ${#COMMAND} > GD_CMD_MAX )); then", "if false; then")]),
+            ("a reason quotes the command clipped to 2,000 characters",
+             [("if (( ${#COMMAND} > GD_CMD_MAX )); then", "if false; then")]),
+            ("a deny jq cannot write goes out as a fixed refusal",
+             [("    || out='{\"hookSpecificOutput\":", "    || out='' || : '{\"hookSpecificOutput\":")]),
+            ("a rewrite reaches jq on stdin, not as exec arguments",
+             [("  out=$(printf '%s\\n%s\\n%s' \"$TOOL_INPUT\" \"$why\" \"$1\" | jq -Rs \\\n"
+               "    '(split(\"\\n\")[:2]) as [$ti, $why]\n"
+               "     | {hookSpecificOutput:{hookEventName:\"PreToolUse\",\n"
+               "        updatedInput:(($ti | fromjson) + {command:ltrimstr($ti + \"\\n\" + $why + \"\\n\")}),"
+               "additionalContext:$why}}' 2>/dev/null)",
+               "  out=$(jq -n --argjson ti \"$TOOL_INPUT\" --arg c \"$1\" --arg why \"$why\" \\\n"
+               "    '{hookSpecificOutput:{hookEventName:\"PreToolUse\",updatedInput:($ti + {command:$c}),"
+               "additionalContext:$why}}' 2>/dev/null)")]),
+            ("a rewrite jq cannot write refuses the original command",
+             [('    || gd_deny "pre-tool-guardian could not write the safer form',
+               '    || : "pre-tool-guardian could not write the safer form')]),
+            ("pkill's pattern is counted in bash, not as a grep argument",
+             [('    [[ "$COMMAND" == *"$_PK_PAT"*"$_PK_PAT"* ]] && _PK_TWICE=true',
+               '    [[ $(printf "%s\\n" "$COMMAND" | grep -oF -- "$_PK_PAT" | wc -l) -ge 2 ]] && _PK_TWICE=true')]),
+            ("the text after the last pkill is cut in linear time",
+             [("    _PK_PRE=${COMMAND%pkill*}\n    _PK_AFTER=$(printf '%s' \"${COMMAND:${#_PK_PRE}+5}\"",
+               "    _PK_AFTER=$(printf '%s' \"${COMMAND##*pkill}\"")]),
         ],
     },
     "plugins/clade/hooks/pre_tool_guardian.py": {
