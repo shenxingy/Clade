@@ -102,14 +102,26 @@ def test_artifact_helpers_run_outside_clade_without_claude_install(tmp_path) -> 
     assert "references/review.md" in text
     assert (skill / "references/review.md").is_file()
     for name in ("artifact-lint.py", "design-lint.py"):
+        assert f"<plugin-root>/skills/artifact/scripts/{name}" in text
+    # design-lint.py imports its two sibling modules from beside it, so they
+    # travel with it, byte for byte.
+    for name in ("artifact-lint.py", "design-lint.py",
+                 "design_lint_common.py", "design_lint_source.py"):
         helper = skill / "scripts" / name
         assert helper.read_bytes() == (REPO_ROOT / "configs/scripts" / name).read_bytes()
-        assert f"<plugin-root>/skills/artifact/scripts/{name}" in text
     result = subprocess.run(
         [sys.executable, str(skill / "scripts/artifact-lint.py"), "--self-test"],
         cwd=tmp_path, capture_output=True, text=True, check=False,
     )
     assert result.returncode == 0, result.stdout + result.stderr
+    (tmp_path / "a.css").write_text(".x { padding: 13px; }\n")
+    result = subprocess.run(
+        [sys.executable, str(skill / "scripts/design-lint.py"), "source", str(tmp_path), "--json"],
+        cwd=tmp_path, capture_output=True, text=True, check=False,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    checks = {f["check"]: f["severity"] for f in json.loads(result.stdout)["findings"]}
+    assert checks["source.spacing.grid"] == "WARN"
 
 
 def test_tasks_helper_matches_canonical_and_runs_outside_clade(tmp_path) -> None:

@@ -18,7 +18,9 @@ Modes
 -----
   --dry-run    FULL pipeline against 1-2 BUNDLED synthetic instances whose
                ``solve_fn`` is a canned patch and whose ``test_cmd`` is a
-               trivial local pytest. NO network, NO Docker, NO claude CLI.
+               trivial local pytest (``{pytest} …``: the harness picks the
+               launcher, see ``expand_bundled_cmd``). NO network, NO Docker,
+               NO claude CLI.
                Proves the scoring pipeline works; this is what CI/tests run.
 
   (default)    Real instances. Each instance needs a checked-out repo at
@@ -41,7 +43,9 @@ Instance schema (SWE-bench-Lite shape), one JSON file per case in
   problem_statement  the issue text → becomes the task description
   FAIL_TO_PASS       [pytest node ids] that must PASS after the patch
   PASS_TO_PASS       [pytest node ids] that must STAY passing after the patch
-  test_cmd           shell command that runs the suite (pytest -v style)
+  test_cmd           shell command that runs the suite (pytest -v style), run
+                     as given. Only on a ``synthetic`` case is a ``{pytest}``
+                     placeholder replaced, by the worker's pytest launcher.
   synthetic          {repo_files, canned_patch, held_out_files} — present ONLY
                      on bundled offline cases; real instances omit it (repo is
                      checked out by ``materialize_repo`` instead).
@@ -75,8 +79,6 @@ import argparse
 import asyncio
 import json
 import logging
-import re
-import shutil
 import subprocess
 import sys
 import tempfile
@@ -93,6 +95,7 @@ if str(EVALS_DIR.parent) not in sys.path:
     sys.path.insert(0, str(EVALS_DIR.parent))
 
 from pytest_report import color_free_env, force_verbose, parse_results  # noqa: E402
+from worker_utils import _pytest_launcher  # noqa: E402
 
 logger = logging.getLogger("resolve_eval")
 
@@ -331,37 +334,54 @@ def apply_patch(patch: str, repo_dir: Path) -> tuple[bool, str]:
 # the harness and the worker cannot drift into disagreeing about what a passing
 # test looks like. This file used to carry its own copy to avoid importing the
 # worker module; the leaf preserves that (no orchestrator dependencies) while
-# ending the duplication.
+# ending the duplication. ``_pytest_launcher`` comes from worker_utils for the
+# same reason, and that is a leaf too: stdlib plus pytest_report, never worker.py.
 parse_pytest_results = parse_results
 _force_verbose_pytest = force_verbose
 
 
-_LEADING_PY_RE = re.compile(r"^(\s*)(python3?)(\s)")
+# A bundled case's ``test_cmd`` names no interpreter; it says this instead.
+PYTEST_PLACEHOLDER = "{pytest}"
 
 
-def resolve_interpreter(cmd: str) -> str:
-    """Rewrite a leading bare ``python``/``python3`` to this interpreter when,
-    and only when, the named one does not resolve on PATH.
+def expand_bundled_cmd(inst: dict, repo_dir: Path) -> str:
+    """The command ``run_tests`` runs, before verbosity normalization.
 
-    A real SWE-bench instance runs inside a prepared environment where
-    ``python`` means THAT environment's interpreter, so the name is left alone
-    whenever it resolves. The synthetic cases in ``resolve_cases/`` also say
-    ``python``, and on a machine that only ships ``python3`` — every stock
-    macOS, which is where this is developed — that command does not exist. The
-    shell prints "command not found", the parser sees no node lines, and every
-    instance scores UNRESOLVED: the same 0%-reported-as-a-result failure the
-    colour handling below already exists to prevent, one layer up.
+    A user-supplied ``test_cmd`` comes back exactly as given. The harness
+    promises to run what it is handed, and a real SWE-bench instance runs inside
+    a prepared environment where ``python`` means THAT environment's interpreter.
+
+    Only a BUNDLED case (one carrying ``synthetic``) is templated, and only its
+    ``{pytest}`` placeholder. Those cases used to name ``python -m pytest``
+    themselves. A bare ``python`` resolves its packages through the user site
+    directory, which is computed from $HOME, so under a different HOME the
+    subprocess could not import pytest, the parser saw no result lines, and all
+    three bundled cases scored UNMEASURED. On a machine that ships only
+    ``python3`` (stock macOS) the shell said "command not found", with the same
+    result. The placeholder routes them through ``_pytest_launcher``, the
+    worker's own answer to "how do I run pytest here", which checks that a
+    launcher RUNS rather than that ``which`` finds it, so the harness and the
+    worker cannot disagree about it.
     """
-    match = _LEADING_PY_RE.match(cmd)
-    if not match or shutil.which(match.group(2)):
+    cmd = inst["test_cmd"]
+    if not inst.get("synthetic") or PYTEST_PLACEHOLDER not in cmd:
         return cmd
-    return _LEADING_PY_RE.sub(lambda m: f"{m.group(1)}{sys.executable}{m.group(3)}", cmd, count=1)
+    launcher = _pytest_launcher(repo_dir)
+    if launcher is None:
+        # _pytest_launcher needs a pytest.ini or pyproject.toml; left as is, the
+        # placeholder fails as "command not found" and the case reads UNMEASURED.
+        logger.warning("%s: no pytest launcher for %s — does synthetic.repo_files "
+                       "carry a pytest.ini?", inst["instance_id"], repo_dir)
+        return cmd
+    return cmd.replace(PYTEST_PLACEHOLDER, launcher)
 
 
 def run_tests(inst: dict, repo_dir: Path, timeout: int = 120) -> dict[str, bool]:
     """Run ``inst['test_cmd']`` in ``repo_dir`` (forced verbose so node-level
     results parse). Returns {node_id: passed}; {} if the suite can't run."""
-    cmd = resolve_interpreter(force_verbose(inst["test_cmd"]))
+    # Expand first: force_verbose rewrites the first "pytest" it finds, which in
+    # an unexpanded command is the one inside the placeholder.
+    cmd = force_verbose(expand_bundled_cmd(inst, repo_dir))
     try:
         proc = subprocess.run(
             cmd, cwd=str(repo_dir), shell=True,

@@ -794,12 +794,85 @@ push_walk_cases() {
   BOTH_CWD=""
 }
 
+# ─── The libs the hook sources, and what it does without them ────────
+#
+# The recursive-delete rules live in lib/rm-guard.sh (their depth exemption in
+# lib/rm-targets.sh) and the force-push walk in lib/force-push-walk.sh, split
+# out when the hook reached 1,496 of its 1,500 lines. A hook installed or
+# copied without them must refuse what it can no longer check, never let it
+# through: each case runs a copy of $HOOK beside only the libs it names.
+# Defined here and run with the rm cases; GUARDIAN_LIBS_ONLY=1 runs only this
+# block, which is how orchestrator/tests/test_hook_guards_can_fire.py mutates
+# those guards (its copy of the hook sits beside a copy of lib/).
+LIB_SRC="$(cd "$(dirname "$HOOK")" && pwd)/lib"
+# lib_tree <lib>... — a fresh copy of the hook beside only the named libs, an
+# "empty:" prefix writing that lib as an empty file; prints the copy's path.
+lib_tree() {
+  local d f
+  d=$(mktemp -d "$NOREPO_CWD/tree.XXXXXX")
+  mkdir -p "$d/lib"; cp "$HOOK" "$d/pre-tool-guardian.sh"
+  for f in "$@"; do
+    case "$f" in empty:*) : > "$d/lib/${f#empty:}" ;; *) cp "$LIB_SRC/$f" "$d/lib/" ;; esac
+  done
+  printf '%s' "$d/pre-tool-guardian.sh"
+}
+# assert_tree <label> <hook copy> <command> <verdict> [text the reason holds]
+assert_tree() {
+  local out rc got why
+  TESTS_RUN=$((TESTS_RUN + 1))
+  out=$(payload "$3" | bash "$2" 2>/dev/null); rc=$?
+  got=$(classify "$out" "$rc" claude)
+  why=$(jq -r '.hookSpecificOutput.permissionDecisionReason // empty' <<< "$out" 2>/dev/null)
+  if [[ "$got" == "$4" && "$why" == *"${5:-}"* ]]; then
+    TESTS_PASSED=$((TESTS_PASSED + 1))
+    printf "  ${GREEN}✓${NC} %s\n" "$1"
+  else
+    printf "  ${RED}✗${NC} %s (got=%s want=%s)\n      cmd: %s\n      why: %s\n" "$1" "$got" "$4" "$3" "$why"
+    case_failed
+  fi
+  return 0
+}
+
+lib_cases() {
+  local none empty bare full
+  none=$(lib_tree)
+  section "Libs — a hook without lib/ refuses what it cannot check"
+  assert_tree "a home delete"                  "$none" 'rm -rf ~'                     BLOCK "rm-guard.sh is missing"
+  assert_tree "a deep delete the lib exempts"  "$none" 'rm -rf /var/tmp/mr56s2-t2'    BLOCK "rm-guard.sh is missing"
+  assert_tree "a force push to main"           "$none" 'git push --force origin main' BLOCK "force-push-walk.sh is missing"
+  assert_tree "a push the lib would rewrite"   "$none" 'git push -f origin feat/x'    BLOCK "force-push-walk.sh is missing"
+  assert_tree "a command neither rule reads"   "$none" 'git status'                   ALLOW
+  assert_tree "a later rule still runs"        "$none" 'psql -c "DROP DATABASE prod"' BLOCK "SQL DROP"
+
+  empty=$(lib_tree empty:rm-guard.sh rm-targets.sh empty:force-push-walk.sh)
+  section "Libs — an empty or stale lib is a missing one"
+  assert_tree "a home delete"                  "$empty" 'rm -rf ~'                     BLOCK "rm-guard.sh is missing"
+  assert_tree "a force push to main"           "$empty" 'git push --force origin main' BLOCK "force-push-walk.sh is missing"
+
+  # Without the lib nothing is exempt: the verdict from before the exemption.
+  bare=$(lib_tree rm-guard.sh force-push-walk.sh)
+  section "Libs — without lib/rm-targets.sh no operand is exempt"
+  assert_tree "a deep delete is refused"       "$bare" 'rm -rf /var/tmp/mr56s2-t2'    BLOCK "Catastrophic rm -rf blocked"
+  assert_tree "the rm rules still run"         "$bare" 'rm -rf /tmp/build'            ALLOW
+  assert_tree "and still rewrite an unset name" "$bare" 'rm -rf $BUILD_DIR/'          REWRITE
+
+  full=$(lib_tree rm-guard.sh rm-targets.sh force-push-walk.sh)
+  section "Libs — every lib in place is the hook as installed"
+  assert_tree "a deep delete is exempt"        "$full" 'rm -rf /var/tmp/mr56s2-t2'    ALLOW
+  assert_tree "a feature-branch force push is rewritten" "$full" 'git push -f origin feat/x' REWRITE
+  assert_tree "a force push to main"           "$full" 'git push --force origin main' BLOCK "Force push to main/master blocked"
+}
+
 if [[ -n "${GUARDIAN_WAITS_ONLY:-}" ]]; then
   wait_cases
   finish
 fi
 if [[ -n "${GUARDIAN_PUSH_ONLY:-}" ]]; then
   push_walk_cases
+  finish
+fi
+if [[ -n "${GUARDIAN_LIBS_ONLY:-}" ]]; then
+  lib_cases
   finish
 fi
 
@@ -1131,19 +1204,8 @@ else
   printf "  ${RED}✗${NC} codex refusal text\n      got: %s\n" "$_rm_reason"; case_failed
 fi
 
-# Without the lib (a copy of the hook run from another directory, as the
-# mutation harness does) nothing is exempt: the old verdict, never a crash.
-section "Catastrophic rm — the hook fails closed without lib/rm-targets.sh"
-_rm_lone=$(mktemp -d)
-cp "$HOOK" "$_rm_lone/pre-tool-guardian.sh"
-TESTS_RUN=$((TESTS_RUN + 1))
-_rm_out=$(payload 'rm -rf /var/tmp/mr56s2-t2' | bash "$_rm_lone/pre-tool-guardian.sh" 2>/dev/null); _rm_rc=$?
-if [[ "$(classify "$_rm_out" "$_rm_rc" claude)" == BLOCK ]]; then
-  TESTS_PASSED=$((TESTS_PASSED + 1)); printf "  ${GREEN}✓${NC} a lone copy refuses a deep delete, as before\n"
-else
-  printf "  ${RED}✗${NC} a lone copy gave %s\n" "$(classify "$_rm_out" "$_rm_rc" claude)"; case_failed
-fi
-rm -rf "$_rm_lone"
+# A copy of the hook beside some, none or empty libs: it fails closed.
+lib_cases
 
 # ─── Other guardian rules still fire ─────────────────────────────────
 section "Other rules — unaffected by the rm change"
