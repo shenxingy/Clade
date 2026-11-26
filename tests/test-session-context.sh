@@ -872,6 +872,23 @@ OUT=$(todo_ctx)
 assert_line "$OUT" "Next TODO: - [ ] 🟠 Agent orange item" \
   "a dash one column in with no space after it starts no item"
 
+# The bounds: a marker four columns in starts no item, and one three columns in
+# does. Read the other way, each opens a fence where markdown-it opens none (or the
+# reverse), and the fence three columns in then runs to the end of the file.
+printf '%s\n' 'Example output:' '    - Four columns in, which is paragraph text' '      ```' \
+  ' - Run the installer:' '   ```bash' '   ./install.sh' '- [ ] 🔴 Red item after the setup note' \
+  > "$TODO_PROJ/TODO.md"
+OUT=$(todo_ctx)
+assert_line "$OUT" "Next TODO: - [ ] 🔴 Red item after the setup note" \
+  "a marker four columns in starts no item, so a fence six columns in under it opens nothing"
+
+printf '%s\n' 'Notes:' $'-\tTab after the marker' '   - Three columns in' '    ```' \
+  ' - Run the installer:' '   ```bash' '   ./install.sh' '- [ ] 🔴 Red item after the setup note' \
+  > "$TODO_PROJ/TODO.md"
+OUT=$(todo_ctx)
+assert_line "$OUT" "Next TODO: - [ ] 🔴 Red item after the setup note" \
+  "a marker three columns in, left of a tab item's content, starts an item, so a fence four columns in is not the tab item's"
+
 cat > "$TODO_PROJ/TODO.md" <<'EOF'
 - [ ] 🔴 Agent red item is eligible
 - [ ] 🟠 Owner: the next item's phrase is not this item's
