@@ -10,10 +10,11 @@
 # Nothing ever deleted them except the detector's own 8-hour sweep, so a machine
 # that runs many short sessions accumulated one stale file per session.
 #
-# Attribution is the whole safety story: this deletes ONLY the single file keyed
-# by the session_id Claude Code just ended. Parallel live sessions own different
-# session_ids, so their shadows are never touched. No session_id (older Claude
-# Code) means no attributable file — do nothing rather than guess from $PPID.
+# Attribution is the whole safety story: this deletes ONLY what is keyed by the
+# session_id the host just ended — its shadow file and, under Kimi, its empty
+# <id>.*.once sentinel dirs. Parallel live sessions own different session_ids,
+# so their shadows and sentinels are never touched. No session_id (older Claude
+# Code) means nothing is attributable — do nothing rather than guess from $PPID.
 #
 # Fail-open: any error is silently ignored; cleanup must never break session exit.
 
@@ -34,8 +35,8 @@ source "$LIBDIR/correction-pair.sh" 2>/dev/null || true
 # sanitizer below, which folds "a.b" onto "a_b", another session's key. With no
 # dot in the id, "<id>.*.once" matches this session's names and no other id's.
 # clade_runtime_dir fails closed on a squatted root; rmdir removes only an empty
-# directory, never a file or a link. It runs before the shadow checks below,
-# which exit early when this session has no shadow to clean.
+# directory, never a file, a link or a directory with contents. It runs before
+# the shadow checks below, which exit early when this session has no shadow.
 if [[ "$SESSION_ID" =~ ^[A-Za-z0-9_-]+$ ]] && ONCE_ROOT=$(clade_runtime_dir 2>/dev/null); then
   for SENTINEL in "$ONCE_ROOT/kimi-session-context/$SESSION_ID".*.once; do
     rmdir "$SENTINEL" 2>/dev/null

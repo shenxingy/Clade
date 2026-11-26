@@ -744,12 +744,36 @@ for HOSTILE in 'session.context_once_02' '../kimi-session-context/session_contex
   assert_file "$OTHER_SENTINEL" "id '$HOSTILE' cannot release another session's sentinel"
   assert_file "$SENTINEL" "id '$HOSTILE' leaves the first session's sentinel"
 done
+# Names the ending id's glob does match, but that are not an empty sentinel
+# directory: a regular file, a directory with contents, and a symlink to an
+# empty directory. The hook's rmdir must leave all three, and must not follow
+# the link to the directory behind it.
+PLANTED_FILE="$ONCE_DIR/${CONTEXT_SID}.planted.once"
+PLANTED_FULL="$ONCE_DIR/${CONTEXT_SID}.full.once"
+PLANTED_LINK="$ONCE_DIR/${CONTEXT_SID}.link.once"
+LINK_TARGET="$TMP_ROOT/once-link-target"
+mkdir -p "$PLANTED_FULL" "$LINK_TARGET"
+: > "$PLANTED_FILE"
+: > "$PLANTED_FULL/keep"
+ln -s "$LINK_TARGET" "$PLANTED_LINK"
 run_payload SessionEnd session-end-cleanup.sh \
   "$(tool_payload SessionEnd "$CONTEXT_SID" Bash '{"command":""}')" \
   "SessionEnd with a sentinel to release has no protocol output" ALLOW
 assert_no_file "$SENTINEL" "SessionEnd releases the ending session's sentinel"
 assert_file "$OTHER_SENTINEL" "a parallel session's sentinel survives that SessionEnd"
 assert_file "$PREFIX_SENTINEL" "an id that only extends the ending id keeps its sentinel"
+if [[ -f "$PLANTED_FILE" && ! -L "$PLANTED_FILE" ]]; then
+  pass "a regular file under the ending id's sentinel name survives"
+else
+  fail "a regular file under the ending id's sentinel name survives" "missing $PLANTED_FILE"
+fi
+assert_file "$PLANTED_FULL/keep" "a sentinel-named directory with contents keeps them"
+if [[ -L "$PLANTED_LINK" && -d "$LINK_TARGET" ]]; then
+  pass "a sentinel-named symlink is neither removed nor followed"
+else
+  fail "a sentinel-named symlink is neither removed nor followed" "link or its target is gone"
+fi
+rm -rf "$PLANTED_FILE" "$PLANTED_FULL" "$PLANTED_LINK" "$LINK_TARGET"
 run_payload UserPromptSubmit session-context.sh "$PAYLOAD" \
   "a resumed session (same id after SessionEnd) gets the context once more" MESSAGE
 assert_file "$SENTINEL" "the resumed session claims a fresh sentinel"
