@@ -57,7 +57,9 @@ print(json.dumps({'tool_name':'Bash','tool_input':{'command':sys.argv[1],'descri
 # rejections, every one running the original command). And an empty output
 # read ALLOW, so a guardian that crashed with exit 1 passed every ALLOW case.
 # Now:
-#   CRASH              non-zero exit — Claude Code runs the command unchecked
+#   CRASH              non-zero exit — Claude Code runs the command unchecked,
+#                      or, under settings-hooks.json's onFailure "block"
+#                      (2.1.295+), refuses it, safe or not
 #   LEGACY             a top-level decision/reason — deprecated, or rejected
 #   NO-EVENT           hookSpecificOutput without hookEventName "PreToolUse"
 #   REWRITE-ESCALATES  Claude shape: updatedInput with a permissionDecision —
