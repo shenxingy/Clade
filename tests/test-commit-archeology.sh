@@ -759,6 +759,8 @@ hung_refresh_case() {
   stop_hung "$hang_log"
   assert_eq "$(head -1 "$(head_file)" 2>/dev/null)" "$old_head" "$label: a killed scan records no new HEAD"
   assert_empty "$(ls "$CLAUDE_DIR/commit-lessons" | grep '[.]tmp[.]')" "$label: a killed scan leaves no temporary file"
+  # A red case's leftover would otherwise fail every later case's check too.
+  rm -f "$CLAUDE_DIR/commit-lessons/"*.tmp.*
   reset_scan_log
   PATH="$path" COMMIT_ARCH_TEST_SCAN_DELAY=0 run_arch --inject > /dev/null
   wait_for_scan_count 1
