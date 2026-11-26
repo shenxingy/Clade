@@ -17,7 +17,7 @@ codex plugin add clade@clade
 
 安装后启动新的 Codex thread。首次使用时运行 `/hooks`，检查 plugin 的两个
 hook definitions，并在内容与仓库一致时信任它们。如果还运行了 `./install.sh`，
-它会在 `~/.codex/hooks.json`（以及每个 Codex profile 自有的 `hooks.json`，见下文）
+它会在 `~/.codex/hooks.json`（以及每个 Codex profile 的 `hooks.json`，见下文）
 追加十个 portable user-hook wiring；这些新条目也需要在 `/hooks` 中检查，安装器不会
 写入 trust state。
 
@@ -77,12 +77,15 @@ session cleanup 与 memory sync。它不会重复安装 plugin 已有的两个 h
 重排用户条目或修改 trust state；新增条目仍需在 `/hooks` 中检查。
 
 Codex profile（`CODEX_HOME=~/.codex-profiles/<name>`）读取的是自己目录下的
-`hooks.json`、`agents/` 和 `AGENTS.md`，而不是 `~/.codex` 里的。只要某个 profile
-里这些是它自有的文件或目录，`./install.sh` 就会把同样十个 wiring 合并进它的
-`hooks.json`（经由 `~/.codex` 的 adapter，并逐个文件打印各自的 `/hooks` 检查提示）、
-把两个 Clade agent 复制进它的 `agents/`，并刷新它 `AGENTS.md` 里的托管区块。是链接的
-保持不动（指向 `~/.codex` 的链接已经在那里拿到这些内容）；profile 没有的文件不会被
-创建，trust state 也不会被修改。
+`hooks.json`、`agents/` 和 `AGENTS.md`，而不是 `~/.codex` 里的。`./install.sh` 会对
+每个 profile 把同样十个 wiring 合并进它的 `hooks.json`（经由 `~/.codex` 的 adapter，
+并逐个文件打印各自的 `/hooks` 检查提示）、把两个 Clade agent 复制进它的 `agents/`，
+并在它有 `AGENTS.md` 时刷新其中的托管区块。只要 Codex 已把该目录当作 home 使用过
+（目录里有 `config.toml` 或 `auth.json`），profile 缺少的 `hooks.json` 或 `agents/`
+就会像在 `~/.codex` 里一样被创建；空目录不算 profile，缺少的 `AGENTS.md` 也不会被
+创建，因为那里的指令文件由用户决定。是链接的保持不动（指向 `~/.codex` 的链接已经在
+那里拿到这些内容）；安装器无法写入的 `hooks.json` 或 `agents/` 会打印一条点名它的
+警告，而不会中断安装；trust state 也不会被修改。
 
 Codex 从 `SKILL.md` 加载可执行 workflow；Clade 原来的 Claude distribution
 执行 `prompt.md`。Generator 会合并两份 canonical source，并应用 Codex
@@ -231,8 +234,9 @@ FastAPI orchestrator 已能把 `codex exec` 当作一等 worker provider。全�
 质量/总时间都不退化后再考虑默认开启。
 
 `./install.sh` 会把 `clade_cheap_explorer` 与 `clade_cheap_worker` 安装到
-`~/.codex/agents/`，并在不覆盖用户内容的前提下幂等合并全局托管规则（自有
-`agents/` 或 `AGENTS.md` 的 Codex profile 也会同样处理，见上文），其中同时
+`~/.codex/agents/`，并在不覆盖用户内容的前提下幂等合并全局托管规则（Codex
+profile 也会处理，见上文：`agents/` 不是链接的都装 agent，自有 `AGENTS.md` 的才合并
+托管规则），其中同时
 包含自适应委派与 delivery completion。架构、含糊、高风险或不可机械验收的工作
 仍由主模型完成；写入小弟必须有明确文件所有权和 verifier。Spark 因套餐可用性
 不同，不作为默认廉价层。

@@ -225,28 +225,56 @@ LINK_MODE=$(stat -c %a "$LINK_HOME/actual/hooks.json" 2>/dev/null || stat -f %Lp
 if [[ -L "$LINK_HOME/.codex/hooks.json" ]]; then LINK_PRESERVED=yes; else LINK_PRESERVED=no; fi
 assert_eq "$LINK_RC|$LINK_PRESERVED|$LINK_MODE" "0|yes|640" "a symlink remains a symlink and its target keeps mode 0640"
 
-section "Codex profiles with their own hooks.json and agents/ get Clade's"
+section "Codex profiles get Clade's hooks.json and agents/, as ~/.codex does"
 # CODEX_HOME=~/.codex-profiles/<name> reads that directory, not ~/.codex. On the
 # author's host a profile in daily use held its own hooks.json and agents/ and
 # had none of the ten wirings and a stale agent file. Profiles: own (own files,
-# user hooks, own trust state), linked (links to ~/.codex), none (nothing), and
-# broken (unparseable hooks.json).
+# user hooks, own trust state), linked (links to ~/.codex), fresh (config.toml
+# only) and login (auth.json only), both of which get the files created as
+# ~/.codex does, dangling (links to nowhere), odd (an agents file and a
+# hooks.json directory), locked (config.toml in a directory install.sh cannot
+# write), none (an empty directory, which is not a Codex home) and broken
+# (unparseable hooks.json, nothing else).
 PROFILE_HOME="$TMP_ROOT/profile-home"
 PROFILES="$PROFILE_HOME/.codex-profiles"
 amsg_fixture "$TMP_ROOT/profile-fixture"
-mkdir -p "$PROFILE_HOME/.codex/agents" "$PROFILES/own/agents" "$PROFILES/linked" "$PROFILES/none" "$PROFILES/broken"
+mkdir -p "$PROFILE_HOME/.codex/agents" "$PROFILES/own/agents" "$PROFILES/linked" "$PROFILES/none" "$PROFILES/broken" \
+  "$PROFILES/fresh" "$PROFILES/login" "$PROFILES/dangling" "$PROFILES/odd/hooks.json"
 cp "$TMP_ROOT/profile-fixture/.codex/hooks.json" "$PROFILES/own/hooks.json"
 cp "$PROFILES/own/hooks.json" "$TMP_ROOT/profile-own-before.json"
 printf '[hooks.state."/fake/profile/hooks.json:session_start:0:0"]\ntrusted_hash = "fixture"\n' > "$PROFILES/own/config.toml"
 cp "$PROFILES/own/config.toml" "$TMP_ROOT/profile-config-before.toml"
 printf 'stale-profile-agent\n' > "$PROFILES/own/agents/clade_cheap_worker.toml"
 printf 'name = "my_own"\n' > "$PROFILES/own/agents/my_own.toml"
+printf 'model = "linked"\n' > "$PROFILES/linked/config.toml"
 ln -s "$PROFILE_HOME/.codex/hooks.json" "$PROFILES/linked/hooks.json"
 ln -s "$PROFILE_HOME/.codex/agents" "$PROFILES/linked/agents"
+printf 'model = "fresh"\n' > "$PROFILES/fresh/config.toml"
+cp "$PROFILES/fresh/config.toml" "$TMP_ROOT/profile-fresh-config-before.toml"
+printf '{"auth_mode":"fixture"}\n' > "$PROFILES/login/auth.json"
+printf 'model = "dangling"\n' > "$PROFILES/dangling/config.toml"
+ln -s "$TMP_ROOT/profile-nowhere/hooks.json" "$PROFILES/dangling/hooks.json"
+ln -s "$TMP_ROOT/profile-nowhere/agents" "$PROFILES/dangling/agents"
+printf 'model = "odd"\n' > "$PROFILES/odd/config.toml"
+printf 'not a directory\n' > "$PROFILES/odd/agents"
 printf '{not json\n' > "$PROFILES/broken/hooks.json"
 cp "$PROFILES/broken/hooks.json" "$TMP_ROOT/profile-broken-before.json"
+# Root writes through mode 0555, so the locked case only means something as a user.
+if [[ "$(id -u)" != 0 ]]; then
+  mkdir -p "$PROFILES/locked"
+  printf 'model = "locked"\n' > "$PROFILES/locked/config.toml"
+  chmod 555 "$PROFILES/locked"
+fi
+# profile_agents_diff DIR: the Clade agents DIR lacks or holds a different copy of.
+profile_agents_diff() {
+  local agent diff=""
+  for agent in "$SRC_ROOT/configs/codex-agents/"*.toml; do
+    cmp -s "$agent" "$1/$(basename "$agent")" || diff+="$(basename "$agent") "
+  done
+  printf '%s' "$diff"
+}
 install_home "$PROFILE_HOME" "$TMP_ROOT/profile-install.log"
-assert_eq "$?" "0" "install.sh succeeds with own, linked, empty and broken Codex profiles"
+assert_eq "$?" "0" "install.sh succeeds with own, linked, new, dangling, odd, empty and broken Codex profiles"
 PROFILE_LOG=$(cat "$TMP_ROOT/profile-install.log")
 assert_probe check_wiring "$PROFILE_HOME" "$PROFILES/own/hooks.json" \
   "a profile's own hooks.json gets all ten wirings, through the ~/.codex adapter"
@@ -264,18 +292,38 @@ cmp -s "$PROFILES/own/config.toml" "$TMP_ROOT/profile-config-before.toml"
 assert_eq "$?" "0" "the profile's trust state in config.toml is byte-identical"
 assert_eq "$(grep -cF "$PROFILES/own/hooks.json: Codex hooks: 10 wired, 10 new; review new Clade hooks in the Codex TUI with /hooks" <<< "$PROFILE_LOG")" "1" \
   "install names the profile's hooks.json with its own /hooks review line"
-PROFILE_AGENTS_DIFF=""
-for agent in "$SRC_ROOT/configs/codex-agents/"*.toml; do
-  cmp -s "$agent" "$PROFILES/own/agents/$(basename "$agent")" || PROFILE_AGENTS_DIFF+="$(basename "$agent") "
-done
-assert_eq "$PROFILE_AGENTS_DIFF|$(cat "$PROFILES/own/agents/my_own.toml")" '|name = "my_own"' \
+assert_eq "$(profile_agents_diff "$PROFILES/own/agents")|$(cat "$PROFILES/own/agents/my_own.toml")" '|name = "my_own"' \
   "a profile's own agents/ gets the current Clade agents and keeps the user's"
 if [[ -L "$PROFILES/linked/hooks.json" && -L "$PROFILES/linked/agents" ]]; then LINKED_KEPT=yes; else LINKED_KEPT=no; fi
 assert_eq "$LINKED_KEPT|$(grep -cF "$PROFILES/linked" <<< "$PROFILE_LOG")" "yes|0" \
   "a profile linked to ~/.codex keeps its links and is left alone"
 assert_probe check_wiring "$PROFILE_HOME" "$PROFILE_HOME/.codex/hooks.json" \
   "~/.codex/hooks.json, which the linked profile reads, holds the ten wirings once"
-assert_eq "$(ls -A "$PROFILES/none")" "" "a profile with no hooks.json or agents/ gets neither created"
+assert_probe check_wiring "$PROFILE_HOME" "$PROFILES/fresh/hooks.json" \
+  "a profile holding only config.toml gets a hooks.json created with all ten wirings, as ~/.codex does"
+assert_eq "$(grep -cF "$PROFILES/fresh/hooks.json: Codex hooks: 10 wired, 10 new; review new Clade hooks in the Codex TUI with /hooks" <<< "$PROFILE_LOG")" "1" \
+  "install names the created hooks.json with its own /hooks review line"
+cmp -s "$PROFILES/fresh/config.toml" "$TMP_ROOT/profile-fresh-config-before.toml"
+FRESH_CONFIG_CMP=$?
+assert_eq "$(profile_agents_diff "$PROFILES/fresh/agents")|$FRESH_CONFIG_CMP" "|0" \
+  "a profile holding only config.toml gets agents/ created with the Clade agents, and its config.toml is untouched"
+assert_probe check_wiring "$PROFILE_HOME" "$PROFILES/login/hooks.json" \
+  "a profile holding only auth.json gets a hooks.json created with all ten wirings"
+assert_eq "$(profile_agents_diff "$PROFILES/login/agents")" "" \
+  "a profile holding only auth.json gets agents/ created with the Clade agents"
+if [[ -L "$PROFILES/dangling/hooks.json" && -L "$PROFILES/dangling/agents" ]]; then DANGLING_KEPT=yes; else DANGLING_KEPT=no; fi
+assert_eq "$DANGLING_KEPT|$(ls -A "$TMP_ROOT/profile-nowhere" 2>/dev/null)|$(grep -cF "$PROFILES/dangling" <<< "$PROFILE_LOG")" "yes||0" \
+  "a profile's dangling hooks.json and agents links are not written through or replaced"
+assert_eq "$(ls -A "$PROFILES/none")" "" "an empty directory under ~/.codex-profiles is not a Codex home and gets nothing created"
+assert_eq "$(ls -A "$PROFILES/odd/hooks.json")|$(cat "$PROFILES/odd/agents")|$(grep -cF "$PROFILES/odd" <<< "$PROFILE_LOG")" "|not a directory|0" \
+  "a profile whose agents is a file and hooks.json a directory keeps both as they are"
+if [[ -d "$PROFILES/locked" ]]; then
+  assert_eq "$(ls -A "$PROFILES/locked")|$(grep -cF "$PROFILES/locked/agents: WARNING: Clade's Codex agents not installed" <<< "$PROFILE_LOG")|$(grep -cF "$PROFILES/locked/hooks.json: WARNING: Codex hooks unchanged" <<< "$PROFILE_LOG")" \
+    "config.toml|1|1" "a profile install.sh cannot write gets one warning per file and does not stop the install"
+  chmod 755 "$PROFILES/locked"
+else
+  printf '  - skipped: the unwritable-profile case (running as root, which writes through mode 0555)\n'
+fi
 cmp -s "$PROFILES/broken/hooks.json" "$TMP_ROOT/profile-broken-before.json"
 BROKEN_CMP=$?
 assert_eq "$BROKEN_CMP|$(grep -cF "$PROFILES/broken/hooks.json: WARNING: Codex hooks unchanged" <<< "$PROFILE_LOG")" "0|1" \

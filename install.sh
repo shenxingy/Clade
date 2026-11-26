@@ -62,15 +62,32 @@ echo "  Installed: $(ls "$SCRIPT_DIR/configs/agents/"*.md | xargs -I{} basename 
 echo "Installing Codex agents..."
 cp "$SCRIPT_DIR/configs/codex-agents/"*.toml "$CODEX_DIR/agents/"
 echo "  Installed: $(ls "$SCRIPT_DIR/configs/codex-agents/"*.toml | xargs -I{} basename {} | tr '\n' ' ')"
-# A Codex profile (CODEX_HOME=~/.codex-profiles/<name>) reads its own agents/.
-# One linked to ~/.codex/agents got the copy above; one that is a directory of
-# its own kept whatever it was copied with (measured 2026-11-26: a profile in
-# daily use held a 2026-09-20 clade_cheap_worker.toml). Copy Clade's agents by
-# name into each such directory, as above. A profile with no agents/ is left alone.
-for _codex_profile_agent_dir in "$HOME/.codex-profiles/"*/agents; do
-  [[ -d "$_codex_profile_agent_dir" && ! -L "$_codex_profile_agent_dir" ]] || continue
-  cp "$SCRIPT_DIR/configs/codex-agents/"*.toml "$_codex_profile_agent_dir/"
-  echo "  Refreshed Clade's Codex agents in $_codex_profile_agent_dir"
+# A Codex profile (CODEX_HOME=~/.codex-profiles/<name>) reads its own agents/
+# and hooks.json, never ~/.codex's. One linked into ~/.codex gets what is written
+# there; one holding its own kept whatever it was copied with, and one holding
+# none ran without them (measured 2026-11-26: a profile in daily use held a
+# 2026-09-20 clade_cheap_worker.toml and none of the ten hook wirings below).
+# _codex_profile_entry PROFILE NAME TYPE succeeds when Clade writes NAME there:
+# it is a TYPE (-f or -d) of the profile's own, or it is absent from a directory
+# Codex has used as its home (config.toml or auth.json), where it is created as
+# ~/.codex's is. A link is never written through, and an empty directory is not
+# a profile.
+_codex_profile_entry() {
+  local entry="$1/$2"
+  [[ ! -L "$entry" ]] || return 1
+  if [[ -e "$entry" ]]; then test "$3" "$entry"; return; fi
+  [[ -e "$1/config.toml" || -e "$1/auth.json" ]]
+}
+# A profile Clade cannot write (another account's, read-only) is warned about,
+# never allowed to stop the install halfway.
+for _codex_profile in "$HOME/.codex-profiles/"*/; do
+  _codex_profile_entry "${_codex_profile%/}" agents -d || continue
+  if mkdir -p "${_codex_profile}agents" 2>/dev/null \
+      && cp "$SCRIPT_DIR/configs/codex-agents/"*.toml "${_codex_profile}agents/" 2>/dev/null; then
+    echo "  Installed Clade's Codex agents in ${_codex_profile}agents"
+  else
+    echo "  ${_codex_profile}agents: WARNING: Clade's Codex agents not installed (cannot write there)"
+  fi
 done
 
 # Merge the Clade-managed adaptive-delegation block without replacing any
@@ -182,15 +199,16 @@ elif _codex_hook_output=$(_codex_hooks_merge "$CODEX_DIR/hooks.json"); then
 else
   echo "  WARNING: Codex hooks unchanged (merger failed); hooks.json was not written"
 fi
-# A profile reads <CODEX_HOME>/hooks.json, so one holding its own file never
-# saw the wirings above (measured 2026-11-26: a profile in daily use had none
-# of the ten). Merge them into each such file, through the same adapter, each
-# reported with its own /hooks review line; trust state is never touched. A
-# hooks.json that is a link is left alone (one to ~/.codex/hooks.json already
-# has them), and so is a profile with none, as with AGENTS.md above.
+# A profile reads <CODEX_HOME>/hooks.json, not the one above. Merge the same
+# wirings, through the same adapter, into each profile's own hooks.json, or
+# create it where the profile has none, by the rule of _codex_profile_entry
+# (agents, above). Each is reported with its own /hooks review line; trust state
+# is never touched. A hooks.json that is a link is left alone: one to
+# ~/.codex/hooks.json already has them.
 if [[ -n "$PYTHON" ]]; then
-  for _codex_profile_hooks in "$HOME/.codex-profiles/"*/hooks.json; do
-    [[ -f "$_codex_profile_hooks" && ! -L "$_codex_profile_hooks" ]] || continue
+  for _codex_profile in "$HOME/.codex-profiles/"*/; do
+    _codex_profile_entry "${_codex_profile%/}" hooks.json -f || continue
+    _codex_profile_hooks="${_codex_profile}hooks.json"
     if _codex_hook_output=$(_codex_hooks_merge "$_codex_profile_hooks"); then
       printf '  %s: %s\n' "$_codex_profile_hooks" "$_codex_hook_output"
     else
@@ -198,7 +216,7 @@ if [[ -n "$PYTHON" ]]; then
     fi
   done
 fi
-unset _codex_hook_output _codex_profile_hooks
+unset _codex_hook_output _codex_profile _codex_profile_hooks
 
 # Merge a Clade-managed block into an instruction file without ever touching
 # content outside the markers. Same guarantees as the Codex merge above: a
