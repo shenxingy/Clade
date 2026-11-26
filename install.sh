@@ -1080,8 +1080,9 @@ PY
     #
     # Idempotency needs event + matcher + command: memory-sync intentionally
     # uses the SAME command on Edit|Write and on Bash. Append only, and skip an
-    # exact entry whether Clade or the user wrote it. In particular, the old
-    # guardian command remains byte-for-byte identical across re-installs.
+    # exact entry whether Clade or the user wrote it; the one rewrite is the
+    # matcher anchoring below. In particular, the old guardian command remains
+    # byte-for-byte identical across re-installs.
     _kimi_hook_present() {
       awk -v want_event="$1" -v want_matcher="$2" -v want_command="$3" '
         function value(line) {
@@ -1104,20 +1105,74 @@ PY
       ' "$KIMI_CONFIG"
     }
 
+    # Kimi applies a matcher as an UNANCHORED JavaScript RegExp: matchHooks.ts
+    # `matches$1` is `new RegExp(pattern).test(value)` (read in the 2.7.3
+    # binary and the npm 2.0.1 bundle), and a tool event's value is the tool
+    # name. So a bare "Edit|Write" also fires on any tool whose name merely
+    # contains either word, such as an MCP tool `mcp__notes__Write`. The list
+    # below names the alternation; every non-empty one is written as ^(…)$.
+    # An entry an earlier install wrote unanchored (same event and command) is
+    # anchored in place, and a second copy of it is dropped, so an upgrade
+    # neither duplicates nor leaves the unanchored one firing. Anything with
+    # another event or command, such as a user's own hook, is not touched. cp
+    # first so the rewrite keeps config.toml's mode: it can hold credentials.
+    _kimi_hook_anchor() {
+      local keep=1
+      ! _kimi_hook_present "$1" "$3" "$4" || keep=0
+      cp "$KIMI_CONFIG" "$KIMI_CONFIG.clade-tmp" && awk -v want_event="$1" \
+          -v old_matcher="$2" -v new_matcher="$3" -v want_command="$4" -v keep="$keep" '
+        function value(line) {
+          sub(/^[^=]*=[[:space:]]*/, "", line)
+          sub(/[[:space:]]+$/, "", line)
+          return line
+        }
+        function flush(  i) {
+          if (event == "\"" want_event "\"" && matcher == "\"" old_matcher "\"" \
+              && command == "\"" want_command "\"") {
+            if (!keep) { n = 0; return }
+            keep = 0
+            for (i = 1; i <= n; i++)
+              if (block[i] ~ /^matcher[[:space:]]*=/) block[i] = "matcher = \"" new_matcher "\""
+          }
+          for (i = 1; i <= n; i++) print block[i]
+          n = 0
+        }
+        /^\[\[hooks\]\][[:space:]]*$/ {
+          flush(); event = ""; matcher = ""; command = ""; inside = 1
+          block[++n] = $0; next
+        }
+        /^\[/ { if (inside) { flush(); inside = 0 } }
+        inside {
+          if ($0 ~ /^event[[:space:]]*=/) event = value($0)
+          else if ($0 ~ /^matcher[[:space:]]*=/) matcher = value($0)
+          else if ($0 ~ /^command[[:space:]]*=/) command = value($0)
+          block[++n] = $0; next
+        }
+        { print }
+        END { flush() }
+      ' "$KIMI_CONFIG" > "$KIMI_CONFIG.clade-tmp" && mv "$KIMI_CONFIG.clade-tmp" "$KIMI_CONFIG"
+    }
+
     while IFS='^' read -r _event _matcher _hook _timeout _mode; do
       [[ -n "$_event" ]] || continue
       _KIMI_HOOK_CMD="$KIMI_DIR/hooks/decision-to-kimi.sh"
       [[ "$_mode" != once ]] || _KIMI_HOOK_CMD="$_KIMI_HOOK_CMD --once-per-session"
       _KIMI_HOOK_CMD="$_KIMI_HOOK_CMD $CLAUDE_DIR/hooks/$_hook"
-      if ! _kimi_hook_present "$_event" "$_matcher" "$_KIMI_HOOK_CMD"; then
+      _kimi_matcher=""
+      [[ -z "$_matcher" ]] || _kimi_matcher="^(${_matcher})\$"
+      if [[ -n "$_matcher" ]] && _kimi_hook_present "$_event" "$_matcher" "$_KIMI_HOOK_CMD"; then
+        _kimi_hook_anchor "$_event" "$_matcher" "$_kimi_matcher" "$_KIMI_HOOK_CMD"
+        echo "  Anchored: $_event/$_matcher -> $_kimi_matcher ($_hook)"
+      fi
+      if ! _kimi_hook_present "$_event" "$_kimi_matcher" "$_KIMI_HOOK_CMD"; then
         {
           printf '\n[[hooks]]\n'
           printf 'event = "%s"\n' "$_event"
-          printf 'matcher = "%s"\n' "$_matcher"
+          printf 'matcher = "%s"\n' "$_kimi_matcher"
           printf 'command = "%s"\n' "$_KIMI_HOOK_CMD"
           printf 'timeout = %s\n' "$_timeout"
         } >> "$KIMI_CONFIG"
-        echo "  Configured: $_event/${_matcher:-*} -> $_hook"
+        echo "  Configured: $_event/${_kimi_matcher:-*} -> $_hook"
       fi
     done <<'EOF'
 PreToolUse^Bash^pre-tool-guardian.sh^5^
@@ -1133,8 +1188,8 @@ Stop^^stop-check.sh^10^
 PostToolUse^Edit|Write^memory-sync.sh^10^
 PostToolUse^Bash^memory-sync.sh^10^
 EOF
-    unset -f _kimi_hook_present
-    unset _KIMI_HOOK_CMD _event _matcher _hook _timeout _mode
+    unset -f _kimi_hook_present _kimi_hook_anchor
+    unset _KIMI_HOOK_CMD _kimi_matcher _event _matcher _hook _timeout _mode
 
     echo "  Configured: default_permission_mode (yolo if unset); extra_skill_dirs is handled after the Kimi skill view is built"
   fi
