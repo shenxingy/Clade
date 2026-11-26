@@ -2,18 +2,24 @@
 validator (WCAG contrast math, CSS custom-property resolution, the text-vs-surface
 thinness discriminator, and relative-path finding labels).
 
-design-lint.py has no local imports of sibling files, so it is loaded the same
-way configs/scripts/redact.py is in test_redact.py: via spec_from_file_location,
-registered in sys.modules BEFORE exec_module so its @dataclass decorators can
-resolve the module through cls.__module__. A plain `import design-lint` is not
-valid Python syntax (hyphenated filename), which is why this indirection is
-needed rather than a sys.path insert + import statement.
+design-lint.py is loaded the same way configs/scripts/redact.py is in
+test_redact.py: via spec_from_file_location, registered in sys.modules BEFORE
+exec_module so its @dataclass decorators can resolve the module through
+cls.__module__. A plain `import design-lint` is not valid Python syntax
+(hyphenated filename), which is why this indirection is needed rather than a
+sys.path insert + import statement. Its two sibling modules,
+design_lint_common.py and design_lint_source.py, have importable names: the
+CLI puts its own directory on sys.path and imports them, so loading it here
+loads them as `design_lint_common` and `design_lint_source`, once each.
 """
 
 from __future__ import annotations
 
 import importlib.util
 import json
+import os
+import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -811,3 +817,60 @@ def test_clean_scroll_story_runtime_raises_no_warn(tmp_path):
     assert noisy == [], [f.detail for f in noisy]
     assert _finding(report, "source.motion.dpr").severity == "PASS"
     assert _finding(report, "source.motion.render-loop").severity == "PASS"
+
+
+# ─── The split: the CLI, the pieces its lanes share, and the source lane ────
+#
+# design-lint.py reached 1,489 of the 1,500-line cap, so the source lane moved
+# to design_lint_source.py and the five pieces it shares with the html lane to
+# design_lint_common.py. install.sh and the Codex plugin each copy the files
+# into a directory of their own, so these pin what such a copy needs.
+
+_SPLIT_FILES = ("design-lint.py", "design_lint_common.py", "design_lint_source.py")
+
+
+def test_the_lanes_share_one_copy_of_each_common_piece():
+    # A second definition of _FOCUS_RESTORE or Report in the CLI would let the
+    # html lane and the source lane drift apart again, silently.
+    common = sys.modules["design_lint_common"]
+    source = sys.modules["design_lint_source"]
+    for module in (common, source):
+        assert Path(module.__file__).resolve().parent == _DESIGN_LINT_PATH.parent
+    for name in ("Report", "custom_properties", "resolve_value", "_STYLE_BLOCK", "_FOCUS_RESTORE"):
+        assert getattr(design_lint, name) is getattr(common, name), name
+        assert getattr(source, name) is getattr(common, name), name
+    assert design_lint.lint_source is source.lint_source
+
+
+def test_the_cli_runs_from_a_directory_holding_only_its_three_files(tmp_path):
+    bundle = tmp_path / "scripts"
+    bundle.mkdir()
+    for name in _SPLIT_FILES:
+        shutil.copy2(_DESIGN_LINT_PATH.with_name(name), bundle / name)
+    ui = tmp_path / "ui"
+    ui.mkdir()
+    (ui / "a.css").write_text(".x { padding: 13px; transition: opacity 200ms; }\n")
+    page = tmp_path / "page.html"
+    page.write_text("<style>body { color: #111; background: #fff; font-size: 16px; }</style>"
+                    "<h1>Title</h1><p>Body copy.</p>\n")
+    # The CLI turns bytecode off itself; an inherited PYTHONDONTWRITEBYTECODE
+    # would hide a missing guard.
+    env = {k: v for k, v in os.environ.items() if k != "PYTHONDONTWRITEBYTECODE"}
+
+    def run(lane, target):
+        result = subprocess.run(
+            [sys.executable, str(bundle / "design-lint.py"), lane, str(target), "--json"],
+            cwd=tmp_path, env=env, capture_output=True, text=True, check=False)
+        assert result.returncode in (0, 1), result.stdout + result.stderr
+        data = json.loads(result.stdout)
+        assert data["lane"] == lane
+        assert not [f for f in data["findings"] if f["check"].endswith(".error")], data
+        return result.returncode, {f["check"]: f["severity"] for f in data["findings"]}
+
+    code, checks = run("source", ui)
+    assert code == 1
+    assert checks["source.spacing.grid"] == "WARN"
+    assert checks["source.motion.reduced"] == "FAIL"
+    _, checks = run("html", page)
+    assert checks, "the html lane ran no check"
+    assert not list(bundle.rglob("*.pyc")), "the CLI left bytecode beside the installed scripts"
