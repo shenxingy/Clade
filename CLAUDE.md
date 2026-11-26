@@ -315,7 +315,10 @@ said so, which is how the next defect went unseen for months.
 
 Fixed by `.gitattributes merge=union` on the append-only files (verified to keep
 both sides where `-X ours` dropped one), plus a guard that refuses to commit any
-file carrying conflict markers. Both pinned by `tests/test-hooks.sh`.
+file carrying conflict markers. Both pinned by `tests/test-hooks.sh`. A merge
+`-X ours` cannot settle (a modify/delete) is aborted before the run records
+`unresolved-conflict`, so the next run is not refused on unmerged paths; an abort
+that itself fails records `merge-abort-failed` (`tests/test-memory-sync-breaker.sh`).
 
 **A per-host circuit breaker stops a wedged store from spawning endless pushes.**
 `sync-push.sh` records conflict, staging, commit and push failures as one
