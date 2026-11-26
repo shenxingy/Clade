@@ -23,6 +23,12 @@
 #     $GITHUB_WORKSPACE, and inside a hosted job a step wrote into the OUTER
 #     job's files. Each job now gets its own, and $GITHUB_ENV and $GITHUB_PATH
 #     writes reach the later steps of that job only.
+# And one from 2026-11-17: validate-plugin.yml's `npm install -g` wrote into
+# the host's own global npm prefix, so two gates on one host raced there
+# (npm ENOTEMPTY) and a local gate replaced the developer's installed CLI.
+# Each job now gets an npm global prefix of its own; two concurrent runs
+# install a local package into theirs while a throwaway "host" prefix, set the
+# ways a developer's machine sets one, must come out byte-for-byte unchanged.
 # Every step that runs records what it saw, so the assertions read what
 # happened, not what was printed about it.
 
@@ -169,6 +175,122 @@ jobs:
       - name: Never closes its heredoc
         run: printf 'CI_LOCAL_T_X<<END\nvalue\n' >> "$GITHUB_ENV"
 YAML
+
+# npm's global prefix. The caller's is a throwaway "host" prefix, set every
+# way a developer's machine sets one: ~/.npmrc, NPM_CONFIG_PREFIX and a
+# lower-case npm_config_prefix (npm reads both spellings, and the last in the
+# environment wins). It is on PATH and holds a decoy of each bin a step
+# installs, so a step that runs the host's copy says so.
+NPMG="$SANDBOX/npm-global"; mkdir -p "$NPMG/bin" "$NPMG/lib/node_modules" "$SANDBOX/npm-home"
+for b in ci-local-t-npmbin ci-local-t-hello; do
+  printf '#!/bin/sh\necho host-global\n' > "$NPMG/bin/$b"; chmod +x "$NPMG/bin/$b"
+done
+printf 'prefix=%s\n' "$NPMG" > "$SANDBOX/npm-home/.npmrc"
+NPM_TMP="$SANDBOX/npm-tmp"; mkdir -p "$NPM_TMP"
+npm_caller() {
+  env HOME="$SANDBOX/npm-home" NPM_CONFIG_PREFIX="$NPMG" npm_config_prefix="$NPMG" \
+    CI_LOCAL_T_NPMG="$NPMG" PATH="$NPMG/bin:$PATH" TMPDIR="$NPM_TMP" "$@"
+}
+NPMW="$SANDBOX/npm-env"; mkdir -p "$NPMW/.github/workflows"
+cat > "$NPMW/.github/workflows/npm.yml" <<'YAML'
+name: Npm
+on: [push, pull_request]
+jobs:
+  first:
+    name: Npm Prefix
+    runs-on: ubuntu-latest
+    steps:
+      - name: Installs into its own prefix
+        run: |
+          r() { if eval "$2"; then echo "$1 ok"; else echo "$1 BAD"; fi >> .npm-results; }
+          echo "$NPM_CONFIG_PREFIX" > .npm-prefix-first
+          r one-spelling 'test "$(env | grep -ci "^npm_config_prefix=")" = 1'
+          r not-callers 'test "$NPM_CONFIG_PREFIX" != "$CI_LOCAL_T_NPMG"'
+          r empty 'test -d "$NPM_CONFIG_PREFIX" && test -z "$(ls -A "$NPM_CONFIG_PREFIX")"'
+          r outside 'case "$NPM_CONFIG_PREFIX" in "$PWD"/*) false ;; *) true ;; esac'
+          r root-on-path 'case ":$PATH:" in *":$NPM_CONFIG_PREFIX:"*) true ;; *) false ;; esac'
+          test -n "$NPM_CONFIG_PREFIX" || exit 1     # never write /bin
+          mkdir -p "$NPM_CONFIG_PREFIX/bin"
+          printf '#!/bin/sh\necho job-prefix\n' > "$NPM_CONFIG_PREFIX/bin/ci-local-t-npmbin"
+          chmod +x "$NPM_CONFIG_PREFIX/bin/ci-local-t-npmbin"
+          r bin-first 'test "$(ci-local-t-npmbin)" = job-prefix'
+      - name: Runs what the step before installed
+        run: |
+          r() { if eval "$2"; then echo "$1 ok"; else echo "$1 BAD"; fi >> .npm-results; }
+          r same-prefix 'test "$NPM_CONFIG_PREFIX" = "$(cat .npm-prefix-first)"'
+          r installed-earlier 'test "$(ci-local-t-npmbin)" = job-prefix'
+      - name: Names a prefix of its own
+        env:
+          NPM_CONFIG_PREFIX: npm-own-prefix
+        run: |
+          r() { if eval "$2"; then echo "$1 ok"; else echo "$1 BAD"; fi >> .npm-results; }
+          r workflow-wins 'test "$NPM_CONFIG_PREFIX" = npm-own-prefix'
+          echo "NPM_CONFIG_PREFIX=npm-env-file-prefix" >> "$GITHUB_ENV"
+      - name: Reads the prefix GITHUB_ENV names
+        run: |
+          r() { if eval "$2"; then echo "$1 ok"; else echo "$1 BAD"; fi >> .npm-results; }
+          r env-file-wins 'test "$NPM_CONFIG_PREFIX" = npm-env-file-prefix'
+  second:
+    name: Npm Next Job
+    runs-on: ubuntu-latest
+    steps:
+      - name: Starts from an empty prefix
+        run: |
+          r() { if eval "$2"; then echo "$1 ok"; else echo "$1 BAD"; fi >> .npm-results; }
+          r next-job-own 'test "$NPM_CONFIG_PREFIX" != "$(cat .npm-prefix-first)"'
+          r next-job-empty 'test -d "$NPM_CONFIG_PREFIX" && test -z "$(ls -A "$NPM_CONFIG_PREFIX")"'
+          r host-bins-kept 'test "$(ci-local-t-npmbin)" = host-global'
+  expr:
+    name: Npm Expression Prefix
+    runs-on: ubuntu-latest
+    env:
+      NPM_CONFIG_PREFIX: ${{ runner.temp }}/npm
+    steps:
+      - name: Its prefix only the hosted run can set
+        run: |
+          r() { if eval "$2"; then echo "$1 ok"; else echo "$1 BAD"; fi >> .npm-results; }
+          r expr-own 'test -n "$NPM_CONFIG_PREFIX" && test "$NPM_CONFIG_PREFIX" != "$CI_LOCAL_T_NPMG"'
+          r expr-one-spelling 'test "$(env | grep -ci "^npm_config_prefix=")" = 1'
+YAML
+# The real thing: `npm install -g` of a local package (a tarball, no network),
+# then its bin, in two checkouts gated at once, as two worktrees were.
+NPM_PKG="$SANDBOX/npm-pkg/package"; mkdir -p "$NPM_PKG"
+printf '{"name": "ci-local-t-pkg", "version": "1.0.0", "bin": {"ci-local-t-hello": "hello.js"}}\n' \
+  > "$NPM_PKG/package.json"
+printf '#!/usr/bin/env node\nconsole.log("hello-from-ci-local-t-pkg");\n' > "$NPM_PKG/hello.js"
+chmod +x "$NPM_PKG/hello.js"
+for c in a b; do
+  mkdir -p "$SANDBOX/npm-$c/.github/workflows"
+  tar -czf "$SANDBOX/npm-$c/ci-local-t-pkg.tgz" -C "$SANDBOX/npm-pkg" package
+  cat > "$SANDBOX/npm-$c/.github/workflows/npm.yml" <<'YAML'
+name: Npm Install
+on: [push, pull_request]
+jobs:
+  install:
+    name: Npm Install
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install a CLI globally
+        run: npm install -g --offline --no-audit --no-fund ./ci-local-t-pkg.tgz
+      - name: Run it
+        run: |
+          ci-local-t-hello > .npm-hello
+          npm prefix -g > .npm-global-prefix
+          command -v ci-local-t-hello > .npm-hello-path
+YAML
+done
+# Every entry under a directory with its mtime and size, the directory's own
+# mtime last: what "unchanged" means for the host prefix.
+npm_manifest() {
+  python3 - "$1" <<'PY'
+import os, sys
+root = sys.argv[1]
+paths = sorted(os.path.join(d, n) for d, dirs, files in os.walk(root) for n in dirs + files)
+for p in paths + [root]:
+    st = os.lstat(p)
+    print(os.path.relpath(p, root), st.st_mtime_ns, st.st_size)
+PY
+}
 
 # A git checkout: whether HEAD carries a tag decides the tag tier.
 TAGS="$SANDBOX/tags"; mkdir -p "$TAGS/.github/workflows"
@@ -340,6 +462,71 @@ if f.get("first_exit") is not None:
 ')
 assert_eq "$CHECK" "ok" "JSON: a heredoc with no closing delimiter fails, with the reason, and is not rerun"
 
+# ─── npm's global prefix ─────────────────────────────────────────────
+section "each job gets an npm global prefix of its own, never the host's"
+npm_result() { grep -E "^$1 (ok|BAD)$" "$NPMW/.npm-results" 2>/dev/null | tr '\n' ' ' | sed 's/ $//'; }
+rm -f "$NPMW"/.npm-*
+OUT="$(npm_caller python3 "$RUNNER" --repo "$NPMW" 2>&1)"; RC=$?
+assert_eq "$RC" "0" "a job that installs into its npm prefix passes"
+assert_lacks "$OUT" "FLAKY" "on its first attempt"
+assert_contains "$OUT" "unproven Npm Expression Prefix › Its prefix only the hosted run can set" \
+  "the step whose prefix is a \${{ }} still reads unproven"
+for k in one-spelling not-callers empty outside root-on-path bin-first; do
+  assert_eq "$(npm_result "$k")" "$k ok" "npm prefix: $k"
+done
+assert_eq "$(npm_result same-prefix)" "same-prefix ok" "the prefix is the job's: the next step has the same one"
+assert_eq "$(npm_result installed-earlier)" "installed-earlier ok" "what a step installs, a later step runs"
+assert_eq "$(npm_result workflow-wins)" "workflow-wins ok" "a step's own NPM_CONFIG_PREFIX still wins, as on a runner"
+assert_eq "$(npm_result env-file-wins)" "env-file-wins ok" "so does one a step wrote to \$GITHUB_ENV"
+for k in expr-own expr-one-spelling; do
+  assert_eq "$(npm_result "$k")" "$k ok" "a \${{ }} prefix, unset here, falls back to the job's, not the host's: $k"
+done
+for k in next-job-own next-job-empty host-bins-kept; do
+  assert_eq "$(npm_result "$k")" "$k ok" "the next job starts from an empty prefix: $k"
+done
+NPM_FIRST="$(cat "$NPMW/.npm-prefix-first" 2>/dev/null)"
+if [[ -n "$NPM_FIRST" && ! -e "$NPM_FIRST" ]]; then pass "the job's npm prefix is removed after the run"
+else fail "the job's npm prefix is removed after the run" "'$NPM_FIRST' is still there"; fi
+
+section "two gates at once, each running npm install -g: both pass, the host prefix is untouched"
+if command -v npm >/dev/null 2>&1; then
+  NPM_BEFORE="$(npm_manifest "$NPMG")"
+  rm -f "$SANDBOX"/npm-[ab]/.npm-*
+  npm_caller python3 "$RUNNER" --repo "$SANDBOX/npm-a" --json > "$SANDBOX/npm-a.json" 2>/dev/null &
+  NPM_PID_A=$!
+  npm_caller python3 "$RUNNER" --repo "$SANDBOX/npm-b" --json > "$SANDBOX/npm-b.json" 2>/dev/null &
+  NPM_PID_B=$!
+  wait "$NPM_PID_A"; NPM_RC_A=$?
+  wait "$NPM_PID_B"; NPM_RC_B=$?
+  assert_eq "$NPM_RC_A $NPM_RC_B" "0 0" "both concurrent runs exit 0"
+  for c in a b; do
+    CHECK=$(check_json "$(cat "$SANDBOX/npm-$c.json")" '
+if d.get("verdict") != "pass" or d.get("passed") != ["Npm Install"]:
+    problems.append("verdict=%r passed=%r failed=%r flaky=%r" % (d.get("verdict"), d.get("passed"),
+                    [f.get("output_tail", "")[-300:] for f in d.get("failed", [])], d.get("flaky")))
+')
+    assert_eq "$CHECK" "ok" "gate $c: verdict pass on the first attempt, not flaky"
+    assert_eq "$(cat "$SANDBOX/npm-$c/.npm-hello" 2>/dev/null)" "hello-from-ci-local-t-pkg" \
+      "gate $c: the installed bin runs, not the host's decoy"
+    NPM_P="$(cat "$SANDBOX/npm-$c/.npm-global-prefix" 2>/dev/null)"
+    assert_eq "$(cat "$SANDBOX/npm-$c/.npm-hello-path" 2>/dev/null)" "$NPM_P/bin/ci-local-t-hello" \
+      "gate $c: the bin resolves from the prefix npm installed it into"
+    if [[ -n "$NPM_P" && "$NPM_P" != "$NPMG" && ! -e "$NPM_P" ]]; then
+      pass "gate $c: that prefix was its own, and is removed after the run"
+    else fail "gate $c: that prefix was its own, and is removed after the run" "prefix '$NPM_P'"; fi
+  done
+  if [[ "$(cat "$SANDBOX/npm-a/.npm-global-prefix" 2>/dev/null)" != "$(cat "$SANDBOX/npm-b/.npm-global-prefix" 2>/dev/null)" ]]; then
+    pass "the two gates installed into different prefixes"
+  else fail "the two gates installed into different prefixes" "both used one"; fi
+  NPM_AFTER="$(npm_manifest "$NPMG")"
+  if [[ "$NPM_AFTER" == "$NPM_BEFORE" ]]; then
+    pass "the host's global prefix is unchanged: every entry, mtime and size"
+  else fail "the host's global prefix is unchanged: every entry, mtime and size" \
+    "$(diff <(echo "$NPM_BEFORE") <(echo "$NPM_AFTER") | head -6 | tr '\n' ' ')"; fi
+else
+  echo -e "  ${YELLOW}-${NC} not run: npm is not on PATH, so no real npm install -g was gated (the env cases above still ran)"
+fi
+
 # ─── Tag-only tiers ──────────────────────────────────────────────────
 section "a workflow only a tag push starts is a tag tier: skipped on a head with no tag"
 tags_reset() { rm -f "$TAGS"/.*-ran; }
@@ -443,6 +630,35 @@ ci_local_runner_mutations() {
   mutation red "a step's own \$GITHUB_STATE, not the outer job's" \
     '"GITHUB_STEP_SUMMARY": "step_summary", "GITHUB_STATE": "save_state"}' \
     '"GITHUB_STEP_SUMMARY": "step_summary"}'
+  # npm's global prefix.
+  mutation red "the job's npm prefix at its call site in run_job" \
+    '        runner.isolate_npm_global(env, files.npm_prefix,
+                                  [*files.env, *(k for k, v in step.env.items() if not _EXPR.search(v))])
+' ''
+  mutation red "the caller's other spellings of npm_config_prefix being dropped" \
+    '    for key in [k for k in env if k.lower() == "npm_config_prefix" and k not in named]:
+        del env[key]
+' ''
+  mutation red "NPM_CONFIG_PREFIX naming the job's prefix" \
+    'env["NPM_CONFIG_PREFIX"] = str(prefix)' 'pass'
+  mutation red "the prefix's bin directory first on PATH" \
+    '(str(prefix / "bin"), str(prefix), env.get' '(str(prefix), env.get'
+  mutation red "the prefix itself on PATH (where Windows npm puts bins)" \
+    '(str(prefix / "bin"), str(prefix), env.get' '(str(prefix / "bin"), env.get'
+  mutation red "a step's own NPM_CONFIG_PREFIX winning" \
+    '[*files.env, *(k for k, v in step.env.items() if not _EXPR.search(v))]' '[*files.env]'
+  mutation red "a \$GITHUB_ENV NPM_CONFIG_PREFIX winning" \
+    '[*files.env, *(k for k, v in step.env.items() if not _EXPR.search(v))]' \
+    '[*(k for k, v in step.env.items() if not _EXPR.search(v))]'
+  mutation red "a \${{ }} NPM_CONFIG_PREFIX not counting as the workflow's" \
+    'step.env.items() if not _EXPR.search(v))]' 'step.env.items())]'
+  mutation red "the job's npm prefix existing, empty" \
+    'self.npm_prefix.mkdir()' 'pass'
+  mutation red "an npm prefix per job, removed with it" \
+    'self.npm_prefix = root / "npm-prefix"
+        self.npm_prefix.mkdir()' \
+    'self.npm_prefix = Path(os.environ["XDG_CACHE_HOME"]) / "ci-local-t-npm-shared"
+        self.npm_prefix.mkdir(parents=True, exist_ok=True)'
   # Tag-only tiers.
   mutation red "the tag-tier skip at its call site in skip_reason" \
     'if job.tag_tier and not head_tags and not include_conditional:' 'if False:'

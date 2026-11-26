@@ -94,9 +94,10 @@ checkout, cache, artifact upload/download or a `setup-*` action, so a job whose
 only gates are a lint action or a local composite is unproven, not setup-only.
 A step whose *inherited* env holds a non-secret `${{ }}` value (a
 workflow-level `REPO: ${{ github.repository }}`) runs with that variable unset,
-and its pass is unproven too. (Each job gets its own `$RUNNER_TEMP` and
-command files, and a `$GITHUB_ENV`/`$GITHUB_PATH` write reaches its later steps;
-a `${{ steps.<id>.outputs.* }}` it does not read.) Those are **unproven**: the
+and its pass is unproven too. (Each job gets its own `$RUNNER_TEMP`, command
+files and npm global prefix, so `npm install -g` never touches this machine's,
+and a `$GITHUB_ENV`/`$GITHUB_PATH` write reaches its later steps; a
+`${{ steps.<id>.outputs.* }}` it does not read.) Those are **unproven**: the
 summary line reads `PARTIAL`, names each one, and the JSON lists them under
 `unproven`. A run in which no job ran at all reads `NOTHING RAN` (JSON
 `verdict: none`). **Neither is green** — prove those lanes hosted (or where

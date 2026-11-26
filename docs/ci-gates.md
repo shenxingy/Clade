@@ -35,8 +35,14 @@ minutes at 9% CPU. Each job gets what a runner gives it: an empty
 `$GITHUB_OUTPUT`, `$GITHUB_STEP_SUMMARY` and `$GITHUB_STATE` files, so a step
 run inside a hosted job never writes the outer job's; `$GITHUB_ENV` and
 `$GITHUB_PATH` writes reach the job's later steps, and outputs are written but
-not read (`${{ steps.<id>.outputs.* }}` stays unproven). Runner labels compare
-case-insensitively, so `[self-hosted, macOS]` or an `ARM64` label is a
+not read (`${{ steps.<id>.outputs.* }}` stays unproven). Each job also gets an
+empty npm global prefix of its own (`NPM_CONFIG_PREFIX`, overriding the
+caller's in any spelling, with its bins first on `PATH`), so
+`validate-plugin.yml`'s `npm install -g` never rewrites this machine's own
+`claude` and two gates at once no longer race in one prefix (npm `ENOTEMPTY`,
+2026-11-17); a prefix the workflow names itself still wins, and npm's cache
+stays shared, since cacache is built for concurrent writers. Runner labels
+compare case-insensitively, so `[self-hosted, macOS]` or an `ARM64` label is a
 platform skip on another machine, and a workflow whose push trigger filters on
 `tags:` alone is a tag tier, skipped with its reason on a head that carries no
 tag (`--all` runs it). `/green` drives it to green without weakening a gate.

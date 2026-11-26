@@ -77,6 +77,10 @@ and fresh $GITHUB_ENV, $GITHUB_PATH, $GITHUB_OUTPUT and $GITHUB_STEP_SUMMARY
 files per step. What a step writes to $GITHUB_ENV and $GITHUB_PATH reaches the
 later steps of that job; outputs are written and never read, since
 `${{ steps.<id>.outputs.* }}` is an expression this runner does not evaluate.
+It also gets an empty npm global prefix of its own (NPM_CONFIG_PREFIX, its
+bins first on PATH), so a step's `npm install -g` never touches this host's
+global packages and two gates at once do not race there; npm's cache stays
+shared.
 
 Exit 1 when a job that ran failed. Otherwise any unproven lane makes the
 summary read PARTIAL, a step that passed only on rerun makes it read FLAKY,
@@ -1029,6 +1033,10 @@ def run_job(job: Job, repo: Path, tail_lines: int, echo: bool, timeout: int,
                 env[key] = value
         # CI=true is what most tools read to pick non-interactive output.
         env.setdefault("CI", "true")
+        # `npm install -g` lands in the job's own prefix, never this host's,
+        # unless the workflow names one itself (a `${{ }}` one was unset above).
+        runner.isolate_npm_global(env, files.npm_prefix,
+                                  [*files.env, *(k for k, v in step.env.items() if not _EXPR.search(v))])
         if extra_path:
             env["PATH"] = extra_path + os.pathsep + env.get("PATH", "")
             env["VIRTUAL_ENV"] = str(Path(extra_path).parent)

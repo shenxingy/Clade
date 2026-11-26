@@ -3,8 +3,8 @@ ci_local_runner.py — what a GitHub runner gives a job that the workflow text
 does not spell out. Imported by ci-local.py, which sits at this repository's
 1500-line cap; installed and bundled beside it.
 
-Three things, each found by running ci-local.py against real repositories that
-moved their CI to owned hardware (scamai, 2026-11-21):
+Four things. The first three were found by running ci-local.py against real
+repositories that moved their CI to owned hardware (scamai, 2026-11-21):
 
 1. **Which machine a `runs-on:` can land on.** GitHub matches runner labels
    case-insensitively, and a self-hosted runner carries OS labels spelled
@@ -23,12 +23,18 @@ moved their CI to owned hardware (scamai, 2026-11-21):
    with `bash: : No such file or directory`. Inside a hosted job (this
    repository's own CI runs ci-local's tests) a step inherited the OUTER
    job's files instead, and wrote into the outer job's environment.
+4. **A global prefix nobody else uses.** A runner is a fresh machine per job,
+   so a step's `npm install -g` writes into a prefix of its own. Here it wrote
+   into the developer's (2026-11-17, the first gate of #251): two gates at
+   once raced there and one failed with npm `ENOTEMPTY`, and a gate replaced
+   the user's own installed CLI.
 
 Stdlib only, like ci-local.py.
 """
 
 from __future__ import annotations
 
+import os
 import re
 import subprocess
 import tempfile
@@ -277,6 +283,9 @@ class JobFiles:
         self.temp.mkdir()
         self._commands = root / "commands"
         self._commands.mkdir()
+        # npm's global prefix for this job's steps (isolate_npm_global).
+        self.npm_prefix = root / "npm-prefix"
+        self.npm_prefix.mkdir()
         # Written by earlier steps: env (NAME -> value) and PATH entries, the
         # newest first, as the runner prepends them.
         self.env: dict[str, str] = {}
@@ -315,3 +324,39 @@ class JobFiles:
 
     def close(self) -> None:
         self._dir.cleanup()
+
+
+# ─── 4. npm's global prefix ──────────────────────────────────────────────────
+# validate-plugin.yml installs Claude Code with `npm install -g`. On a runner
+# that lands in a machine nobody else uses; here it landed in the developer's
+# own node install (nvm, Homebrew, /usr/local): the gate replaced their `claude`,
+# forcing the Linux jobs on a Mac put a second one under /opt/homebrew, and two
+# gates at once on one host raced in that directory. So every step of a job
+# gets the job's own empty prefix, removed with the job's directory, and its
+# bins go first on PATH, so what one step installs is what a later step runs.
+#
+# npm's cache is NOT moved. cacache is content-addressed and written for
+# concurrent writers, and a per-job cache would download the package again on
+# every gate. Moving the prefix also moves the global npmrc npm reads
+# (<prefix>/etc/npmrc, which a runner does not have either); ~/.npmrc is read
+# as before, and its own `prefix=` is outranked by the environment.
+
+
+def isolate_npm_global(env: dict[str, str], prefix: Path, workflow_keys: list[str]) -> None:
+    """Point npm's global prefix in a step's `env` at `prefix`, and put its
+    bins first on PATH. `env` already holds the workflow's env, and
+    `workflow_keys` names what the workflow set there itself (its env: and
+    $GITHUB_ENV, with a value): a prefix it names wins, as on a runner. Any
+    other is replaced: the caller's, in any spelling, or a `${{ }}` one that
+    only the hosted run can set (unset, npm would fall back to this host's)."""
+    named = {k for k in workflow_keys if k.lower() == "npm_config_prefix"}
+    # npm reads npm_config_* in any case, and the LAST in the environment
+    # wins, so a caller's stray lower-case npm_config_prefix (nvm warns about
+    # one) would decide by environment order. No other spelling survives.
+    for key in [k for k in env if k.lower() == "npm_config_prefix" and k not in named]:
+        del env[key]
+    if not named:
+        env["NPM_CONFIG_PREFIX"] = str(prefix)
+    # npm links global bins into <prefix>/bin, except on Windows, where they
+    # sit in the prefix itself. Both go first; an empty PATH adds no entry.
+    env["PATH"] = os.pathsep.join(p for p in (str(prefix / "bin"), str(prefix), env.get("PATH", "")) if p)
