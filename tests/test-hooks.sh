@@ -21,6 +21,8 @@
 #   (the `# exists-for: … · retire-when: …` line every hook carries is checked
 #    in tests/test-hook-provenance.sh — split out when this file would have
 #    crossed the 1500-line rule a third time)
+#   (worker-checkpoint.sh tests live in tests/test-worker-checkpoint.sh —
+#    split out when its ignore-rule cases would have crossed the 1500-line rule)
 #
 # Every path is redirected to throwaway dirs under /tmp, the runtime root
 # included; the real ~/.claude and the real runtime root (its shadows and the
@@ -499,75 +501,6 @@ else
   pass "stop-completeness-check does not ask whether the user's whole goal is done"
 fi
 
-# ─── worker-checkpoint: per-tool-call workspace snapshots ─────────────────────
-# A worker commits exactly once, at the end of verification, and stop()
-# force-removes the worktree — so "correct at call 14, wrong at 15" had no
-# record anywhere. This hook writes one commit per Edit/Write into a shadow
-# repo OUTSIDE the worktree.
-section "worker-checkpoint hook"
-
-CK_HOOK="$REPO_ROOT/configs/hooks/worker-checkpoint.sh"
-CK_ROOT=$(mktemp -d /tmp/clade-ck-XXXXXX)
-mkdir -p "$CK_ROOT/wt"
-( cd "$CK_ROOT/wt" && git init -q . && git config user.email t@e.com && git config user.name t \
-  && echo v1 > f.txt && git add -A && git commit -q -m base ) >/dev/null 2>&1
-
-ck_write() {  # $1 = new content
-  echo "$1" > "$CK_ROOT/wt/f.txt"
-  printf '{"tool_name":"Write","tool_input":{"file_path":"%s/wt/f.txt"}}' "$CK_ROOT" \
-    | CLADE_WORKER_SHADOW_DIR="$CK_ROOT/shadow.git" CLADE_WORKER_WORKTREE="$CK_ROOT/wt" \
-      bash "$CK_HOOK" >/dev/null 2>&1
-}
-
-# Inert without the env var — an interactive session must be untouched.
-echo v0 > "$CK_ROOT/wt/f.txt"
-printf '{"tool_name":"Write","tool_input":{"file_path":"%s/wt/f.txt"}}' "$CK_ROOT" \
-  | bash "$CK_HOOK" >/dev/null 2>&1
-if [[ -d "$CK_ROOT/shadow.git" ]]; then
-  fail "hook is inert without CLADE_WORKER_SHADOW_DIR" "it created a shadow repo anyway"
-else
-  pass "hook is inert without CLADE_WORKER_SHADOW_DIR"
-fi
-
-ck_write v2; ck_write v3; ck_write v4
-CK_N=$(git --git-dir="$CK_ROOT/shadow.git" rev-list --count HEAD 2>/dev/null || echo 0)
-assert_eq "3" "$CK_N" "one checkpoint per tool call"
-
-CK_OLD=$(git --git-dir="$CK_ROOT/shadow.git" show HEAD~2:f.txt 2>/dev/null)
-assert_eq "v2" "$CK_OLD" "an earlier call's content is recoverable"
-
-# The property the whole design rests on: a separate git-dir means a separate
-# index, so checkpoints cannot contend with the worker's own commits.
-CK_IDX_BEFORE=$(md5sum "$CK_ROOT/wt/.git/index" 2>/dev/null | cut -d' ' -f1)
-ck_write v5
-CK_IDX_AFTER=$(md5sum "$CK_ROOT/wt/.git/index" 2>/dev/null | cut -d' ' -f1)
-assert_eq "$CK_IDX_BEFORE" "$CK_IDX_AFTER" "checkpointing never touches the worktree's own index"
-
-( cd "$CK_ROOT/wt" && git add -A && git commit -q -m "worker commit" ) >/dev/null 2>&1 \
-  && pass "the worker can still commit after a checkpoint" \
-  || fail "the worker can still commit after a checkpoint"
-
-# A repo-supplied pre-commit hook must not be able to block a checkpoint.
-printf '#!/bin/sh\nexit 1\n' > "$CK_ROOT/wt/.git/hooks/pre-commit"
-chmod +x "$CK_ROOT/wt/.git/hooks/pre-commit"
-CK_N_BEFORE=$(git --git-dir="$CK_ROOT/shadow.git" rev-list --count HEAD)
-ck_write v6
-CK_N_AFTER=$(git --git-dir="$CK_ROOT/shadow.git" rev-list --count HEAD)
-if [[ "$CK_N_AFTER" -gt "$CK_N_BEFORE" ]]; then
-  pass "a hostile pre-commit hook cannot block a checkpoint"
-else
-  fail "a hostile pre-commit hook cannot block a checkpoint"
-fi
-
-# The shadow must live outside the worktree, or `git add -A` would sweep it in.
-if ls -a "$CK_ROOT/wt" | grep -q shadow; then
-  fail "the shadow repo lives outside the worktree" "found it inside"
-else
-  pass "the shadow repo lives outside the worktree"
-fi
-
-rm -rf "$CK_ROOT"
-
 
 # ─── 5. lib/runtime-dir.sh — per-user scratch root ───────────────────
 # Every lock, pid file and shadow dir used to be a fixed /tmp path. On aries
@@ -992,52 +925,6 @@ else
        "$(grep -n '^exit' "$REPO_ROOT/configs/hooks/verify-task-completed.sh")"
 fi
 rm -rf "$VTC_DIR"
-
-# ─── worker-checkpoint must see a write that never touched Edit/Write ───
-#
-# It did not. The hook was wired to PostToolUse Edit|Write and additionally
-# exited 0 on an empty .tool_input.file_path — so an agent writing through a
-# `python - <<EOF` heredoc produced no checkpoint at all. That is the precise
-# failure mode the unattended-run literature names ("once the model abandoned
-# the edit tool for Python string splicing…"), i.e. the hook was blind in the
-# one case it exists for. The path was only ever a commit-message label; the
-# snapshot is `git add -A` over the whole worktree.
-
-WC_DIR=$(mktemp -d)
-(
-  cd "$WC_DIR" || exit 1
-  git init -q .
-  git config user.email t@example.com; git config user.name t
-  echo base > file.txt; git add -A; git -c core.hooksPath=/dev/null commit -qm base
-) >/dev/null 2>&1
-echo "written by bash, not by Edit" > "$WC_DIR/from-bash.txt"
-WC_SHADOW="$WC_DIR/.shadow.git"
-WC_OUT=$(CLADE_WORKER_SHADOW_DIR="$WC_SHADOW" CLADE_WORKER_WORKTREE="$WC_DIR" \
-  bash "$REPO_ROOT/configs/hooks/worker-checkpoint.sh" \
-  <<< '{"tool_name":"Bash","tool_input":{"command":"python - <<EOF"}}' 2>&1)
-WC_N=$(git --git-dir="$WC_SHADOW" rev-list --count HEAD 2>/dev/null || echo 0)
-if [[ "${WC_N:-0}" -ge 1 ]]; then
-  pass "a Bash write with no file_path still produces a checkpoint"
-else
-  fail "a Bash write with no file_path still produces a checkpoint" \
-       "shadow has $WC_N commit(s); hook said: $WC_OUT"
-fi
-# And the snapshot must actually contain the file the Bash tool wrote.
-if git --git-dir="$WC_SHADOW" --work-tree="$WC_DIR" show --name-only --format= HEAD 2>/dev/null \
-   | grep -q "from-bash.txt"; then
-  pass "the checkpoint contains the file written outside Edit/Write"
-else
-  fail "the checkpoint contains the file written outside Edit/Write" \
-       "$(git --git-dir="$WC_SHADOW" show --name-only --format= HEAD 2>&1 | head -3)"
-fi
-# The hook must still be inert when no shadow dir is configured.
-if bash "$REPO_ROOT/configs/hooks/worker-checkpoint.sh" \
-   <<< '{"tool_name":"Bash","tool_input":{}}' >/dev/null 2>&1; then
-  pass "worker-checkpoint stays inert without CLADE_WORKER_SHADOW_DIR"
-else
-  fail "worker-checkpoint stays inert without CLADE_WORKER_SHADOW_DIR" "non-zero exit"
-fi
-rm -rf "$WC_DIR"
 
 # ─── kit-checksum: the staleness detector must be able to say "clean" ───
 #
