@@ -4567,13 +4567,18 @@ and the reviews of the units the sweep closed. Each item names its evidence.
 
 **Tooling residue** (found in this batch's reviews and gates)
 
-- [ ] 🟠 **`tests/test-hooks.sh` is over the 1,500-line cap on main, so
+- [x] 🟠 **`tests/test-hooks.sh` is over the 1,500-line cap on main, so
   `test_conventions.py` fails there.** Two squash merges of this batch, each under
   the cap on its own base, added up: the file was 1,495 lines after
   #PR:bash32-source and 1,503 after #PR:cc-331-rechecks (`git show <sha>:tests/test-hooks.sh
   | wc -l`). Seen running `test_conventions.py` on this closing branch, which does not
   touch the file. Split it by suite into a second file; never add it to
   `LINE_LIMIT_EXCEPTIONS`, which is for upstream-synced code.
+  Done 2026-11-26 (#PR:checkpoint-exclude): its worker-checkpoint cases moved
+  verbatim into `tests/test-worker-checkpoint.sh`, and main's merge into that
+  branch took `tests/test-hooks.sh` to 1,390 lines. Main was red on this gate
+  from #PR:cc-331-rechecks until then: each head was gated on its own base, which
+  cannot see two merges adding up.
 - [ ] 🔵 **`ci-local.py --clean-home` keeps PATH, but Python's user site follows
   HOME.** A `pip install --user` tool on PATH (for example `~/.local/bin/mypy`)
   crashes with `ModuleNotFoundError` under the clean HOME, and
