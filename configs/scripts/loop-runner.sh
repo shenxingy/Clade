@@ -294,6 +294,18 @@ node_pre_flight() {
 
 # ─── [DET] NODE: HYDRATE CONTEXT ────────────────────────────────
 # Generates .claude/loop-context.md with git log + relevant files. No LLM calls.
+# `git status` is the one section a dirty tree grows without bound: a converge
+# run with 13,094 status lines produced a supervisor prompt exec refused (TODO,
+# 2026-09-18). Untracked directories collapse to one line whatever
+# status.showUntrackedFiles says, and the list stops at
+# CONTEXT_STATUS_MAX_LINES with a count of what was left out. awk reads every
+# line, so git never takes a SIGPIPE that pipefail would turn into "none".
+readonly CONTEXT_STATUS_MAX_LINES=200
+_context_git_status() {
+  git status -sb --untracked-files=normal 2>/dev/null \
+    | awk -v max="$CONTEXT_STATUS_MAX_LINES" 'NR <= max { print }
+        END { if (NR > max) printf "... %d more line(s) not shown (git status -s lists them)\n", NR - max }'
+}
 node_hydrate_context() {
   log_info "[DET] hydrate_context → .claude/loop-context.md"
   mkdir -p .claude
@@ -320,7 +332,7 @@ node_hydrate_context() {
     git branch --show-current 2>/dev/null || echo "unknown"
     echo ""
     echo "## Uncommitted Changes"
-    git status -sb 2>/dev/null || echo "none"
+    _context_git_status || echo "none"
 
     # Counts only — loop_holdout.sh keeps scenario names and paths out of it.
     holdout_context_block
@@ -507,9 +519,13 @@ You output tasks. The script decides convergence. Do NOT output CONVERGED.
 EOF
 )
 
+  # The prompt goes in on stdin, never argv. It carries the whole goal file and
+  # the hydrated context, and Linux refuses any one exec argument over 128 KiB
+  # (MAX_ARG_STRLEN): exit 126, "Argument list too long", before claude starts.
+  # Bounding git status above does not settle it: a large goal file alone overflows.
   local result supervisor_rc=0 detail
   result=$(_timeout "$SUPERVISOR_TIMEOUT" claude --model "$SUPERVISOR_MODEL" \
-    "${PURE_JUDGE_FLAGS[@]}" --tools "" -p "$supervisor_prompt" 2>&1) || supervisor_rc=$?
+    "${PURE_JUDGE_FLAGS[@]}" --tools "" -p <<< "$supervisor_prompt" 2>&1) || supervisor_rc=$?
   printf '%s\n' "$result" > "$LOG_DIR/iter-${iteration}-supervisor.raw.txt"
   if [ "$supervisor_rc" -ne 0 ]; then
     detail=$(printf '%s\n' "$result" | tail -n 1)

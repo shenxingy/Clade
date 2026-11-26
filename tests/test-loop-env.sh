@@ -20,6 +20,8 @@
 #   14  Signal handling — the SIGTERM cleanup writes INTERRUPTED=true
 #   15  --max-runtime wall-clock bound, and setsid --wait availability
 #   16  scan-health.sh test-runtime probe
+#   17  Loop context on a dirty tree — git status is bounded in the supervisor
+#       prompt, and the prompt travels on stdin (added here, not split out)
 
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
   echo "test-loop-env.sh is sourced by tests/test-loop.sh, not run on its own:" >&2
@@ -312,3 +314,86 @@ assert_contains "$out" "health_slow_tests" "slow failing suite still emits runti
 assert_contains "$out" "exit code: 1" "task records the suite exit code"
 fi
 
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# TEST SUITE 17: Loop context on a dirty tree
+# ═══════════════════════════════════════════════════════════════════════
+# A converge run whose tree held 13,094 `git status` lines never reached its
+# supervisor: the prompt rode on argv, and Linux refuses any one exec argument
+# over 128 KiB (exit 126, "/usr/bin/timeout: Argument list too long"). Two
+# halves, one run each: hydrate_context bounds the status list, and the
+# supervisor reads its prompt on stdin, so a large goal file cannot do the same.
+
+if should_run "dirtytree"; then
+section "Loop context on a dirty tree"
+
+# The prompts below run past the 64 KiB pipe buffer, where `echo | grep -q`
+# under pipefail reported a match as a miss (tests/lib/loop-fixture.sh).
+assert_contains "$(seq 1 100000)" "1" "assert_contains finds a match early in a haystack past 64 KiB"
+
+REPO_DIR=$(setup_test_repo)
+cd "$REPO_DIR"
+mkdir -p .claude junk-dir
+# `all` lists every file of an untracked directory; the loop must not inherit it.
+git config status.showUntrackedFiles all
+for i in $(seq 1 50); do : > "junk-dir/inner-$i.txt"; done
+for i in $(seq 1 3000); do : > "untracked-file-with-a-long-generated-name-$i.txt"; done
+printf '# Goal\n\n- [ ] an open item\n' > .claude/goal-dirty.md
+export MOCK_CLAUDE_RESPONSE='[]'
+export MOCK_CLAUDE_ARGS_LOG="$TEST_DIR/claude-args-dirty-$$.log"
+export MOCK_CLAUDE_STDIN_LOG="$TEST_DIR/claude-stdin-dirty-$$.log"
+rm -f "$MOCK_CLAUDE_ARGS_LOG" "$MOCK_CLAUDE_STDIN_LOG"
+out_dirty=$(
+  exec 3>&- 4>&- 5>&- 6>&- 7>&- 8>&- 9>&- 2>/dev/null
+  timeout --kill-after=5s 60s bash "$SCRIPTS_DIR/loop-runner.sh" .claude/goal-dirty.md \
+    --max-iter 1 --max-workers 1 --state .claude/loop-state-dirty --log-dir logs/loop-dirty 2>&1 < /dev/null
+) || true
+# Wherever the prompt went, this is what the supervisor was handed.
+sup_prompt=$(cat "$MOCK_CLAUDE_ARGS_LOG" "$MOCK_CLAUDE_STDIN_LOG" 2>/dev/null)
+assert_not_contains "$out_dirty" "Supervisor call failed" "3,000 untracked files: the supervisor call still runs"
+assert_contains "$sup_prompt" "autonomous improvement loop" "the supervisor was handed a prompt"
+shown=$(printf '%s\n' "$sup_prompt" | grep -c '^?? untracked-file-with-a-long-generated-name-' || true)
+TESTS_RUN=$((TESTS_RUN + 1))
+if [[ "$shown" -gt 0 && "$shown" -le 200 ]]; then
+  pass "git status in the prompt stops at 200 lines ($shown untracked files shown)"
+else
+  fail "git status in the prompt stops at 200 lines" "untracked-file lines in the prompt: $shown"
+fi
+assert_contains "$sup_prompt" "more line(s) not shown (git status -s lists them)" "the prompt says how many status lines were left out"
+TESTS_RUN=$((TESTS_RUN + 1))
+if grep -qxF -- "?? junk-dir/" <<< "$sup_prompt"; then
+  pass "an untracked directory is one line despite status.showUntrackedFiles=all"
+else
+  fail "an untracked directory is one line despite status.showUntrackedFiles=all" "no '?? junk-dir/' line in the prompt"
+fi
+assert_not_contains "$sup_prompt" "junk-dir/inner-1.txt" "its files are not listed one by one"
+
+# The other half: a goal file past 128 KiB, on a clean tree. Bounding git status
+# cannot help here; only the transport can.
+rm -rf junk-dir untracked-file-with-a-long-generated-name-*
+{
+  printf '# Goal\n\n- [ ] an open item\n\n'
+  for i in $(seq 1 2000); do
+    printf 'Background paragraph %s, padding the goal past the per-argument exec limit.\n' "$i"
+  done
+  printf 'END-OF-LARGE-GOAL\n'
+} > .claude/goal-large.md
+rm -f "$MOCK_CLAUDE_ARGS_LOG" "$MOCK_CLAUDE_STDIN_LOG"
+out_large=$(
+  exec 3>&- 4>&- 5>&- 6>&- 7>&- 8>&- 9>&- 2>/dev/null
+  timeout --kill-after=5s 60s bash "$SCRIPTS_DIR/loop-runner.sh" .claude/goal-large.md \
+    --max-iter 1 --max-workers 1 --state .claude/loop-state-large --log-dir logs/loop-large 2>&1 < /dev/null
+) || true
+goal_bytes=$(wc -c < .claude/goal-large.md | tr -d ' ')
+TESTS_RUN=$((TESTS_RUN + 1))
+if [[ "$goal_bytes" -gt 131072 ]]; then
+  pass "the large goal is past 128 KiB ($goal_bytes bytes)"
+else
+  fail "the large goal is past 128 KiB" "only $goal_bytes bytes: this case would prove nothing"
+fi
+assert_not_contains "$out_large" "Argument list too long" "a goal past 128 KiB does not overflow exec"
+assert_contains "$(cat "$MOCK_CLAUDE_STDIN_LOG" 2>/dev/null)" "END-OF-LARGE-GOAL" "the supervisor reads the whole goal on stdin"
+assert_not_contains "$(cat "$MOCK_CLAUDE_ARGS_LOG" 2>/dev/null)" "autonomous improvement loop" "the supervisor prompt is not passed in argv"
+unset MOCK_CLAUDE_ARGS_LOG MOCK_CLAUDE_STDIN_LOG MOCK_CLAUDE_RESPONSE
+fi
