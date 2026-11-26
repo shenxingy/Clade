@@ -30,8 +30,11 @@ unset CLADE_SYNC_PUSH_BACKOFF_BASE_SECONDS CLADE_SYNC_PUSH_BACKOFF_MAX_SECONDS
 export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 GIT_TERMINAL_PROMPT=0 LC_ALL=C
 
 UTF8_LOCALE=""
+# Not `grep -q`: it stops at the first match, `locale -a` then dies of SIGPIPE,
+# and pipefail makes the pipeline fail. macOS lists 288 locales, so the case
+# read NOT MEASURED there although en_US.UTF-8 exists.
 for CANDIDATE in C.UTF-8 C.utf8 en_US.UTF-8 en_US.utf8; do
-  if locale -a 2>/dev/null | grep -qxF "$CANDIDATE"; then
+  if locale -a 2>/dev/null | grep -xF "$CANDIDATE" >/dev/null; then
     UTF8_LOCALE=$CANDIDATE
     break
   fi
