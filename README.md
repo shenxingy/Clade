@@ -141,6 +141,7 @@ agent call. It does not validate your credentials or execute a coding workflow.
 | Run the repository's real local CI gates | `/green` |
 | Check a task's behavior anchors | `/verify` |
 | Keep work isolated and reviewable | `/worktree`, `/commit`, and `/create-pr` |
+| Work a Linear issue end to end | `/linear ABC-123` |
 | Review a pull request or security boundary | `/review-pr`, `/cso`, or `/incident` |
 | Continue after context is exhausted | `/handoff` then `/pickup` |
 | Research an unfamiliar approach | `/research` |

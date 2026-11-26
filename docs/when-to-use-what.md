@@ -78,6 +78,12 @@ For most day-to-day work — bug fixes, small features, refactoring, codebase qu
 - `--holdout DIR` adds acceptance scenarios kept outside the repository, where a
   worker's commit cannot rewrite them; no prompt names them (see the loop skill)
 
+### `/linear ABC-123`
+**When:** The work is a Linear issue.
+- Reads the issue through Linear's MCP server (Claude Code, Codex and Kimi Code each have a one-line setup)
+- Runs it as one delivery on an `abc-123-…` branch; the PR body opens `Fixes ABC-123`, so Linear's GitHub integration moves the issue
+- Drafts the report comment and posts it only after you say yes; it never changes the issue on its own
+
 ### `/worktree`
 **When:** Running parallel Claude Code sessions on the same repo.
 - Creates an isolated git worktree with its own branch so sessions don't conflict

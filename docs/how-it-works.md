@@ -410,12 +410,12 @@ clade/
 ├── install.sh               # One-command deployment
 ├── uninstall.sh             # Removes what install.sh deployed
 ├── configs/                 # ← THE PRODUCT CENTER
-│   ├── skills/              # 148 skill definitions
+│   ├── skills/              # 149 skill definitions
 │   ├── hooks/               # 36 event hooks
 │   ├── agents/              # 40 agent definitions
 │   ├── output-styles/       # 2 output styles (system-prompt register; opt-in)
 │   └── scripts/             # 45 shell + 65 Python utilities
-├── plugins/clade/           # Native Codex plugin (30 generated core skills + hooks)
+├── plugins/clade/           # Native Codex plugin (31 generated core skills + hooks)
 ├── .agents/plugins/         # Codex marketplace manifest
 ├── orchestrator/            # ← THE EXECUTION ADAPTER
 │   ├── server.py            # FastAPI app, routes, WebSocket

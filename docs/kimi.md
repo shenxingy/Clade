@@ -357,7 +357,7 @@ builds a view instead:
    guard), or **claude-only** (such a primitive used without a guard: Workflow,
    Monitor, `claude -p`, the Claude hook lifecycle). Mentions in front matter,
    comments or prose comparing the runtimes are not uses. On this tree: 114
-   native, 13 adapted, 6 degraded, 15 claude-only of 148. The scan is static
+   native, 14 adapted, 6 degraded, 15 claude-only of 149. The scan is static
    triage, not proof that a skill runs.
 2. `configs/scripts/kimi-skill-view.py` writes `~/.kimi-code/clade-skills/`,
    owned through a `.clade-managed` marker; a directory there without the
