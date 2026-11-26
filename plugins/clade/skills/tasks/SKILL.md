@@ -1,6 +1,6 @@
 ---
 name: tasks
-description: "Coordinate dependency-aware project tasks across independent Codex, Codex, Kimi and human sessions using Beads. Use for shared plans, claiming work, task handoffs, acceptance and agent monitoring snapshots."
+description: "Coordinate dependency-aware project tasks across independent Codex, Claude Code, Kimi and human sessions using Beads. Use for shared plans, claiming work, task handoffs, acceptance and agent monitoring snapshots."
 ---
 
 # Clade for Codex
