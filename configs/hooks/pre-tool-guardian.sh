@@ -63,26 +63,61 @@ if [[ -z "$COMMAND" ]]; then
 fi
 
 # ─── Output helpers ───────────────────────────────────────────────────
-# gd_deny <reason> — refuse the call; Claude sees the reason.
+# Every value reaches jq on its stdin, never as an argument. Linux will not
+# start a program when any one argument is over 128 KiB (MAX_ARG_STRLEN,
+# 131,072 bytes), and every deny reason quotes the command. Until 2026-11-26
+# the helpers passed it with --arg and --argjson, so on a longer command jq
+# never ran ("Argument list too long"): the hook printed nothing, exited 0, and
+# Claude Code ran the call, a block-on-failure setting included, since exit 0
+# is no failure. Probed that day with a quoted heredoc of harmless lines and
+# then a delete of the home directory: refused at 122,924 and 129,098 bytes,
+# run at 131,107, 133,165, 143,406 and 266,298. Both rewrites failed the same
+# way, and ran the original command.
+#
+# GD_CMD is the command as a reason quotes it: its first GD_CMD_MAX characters
+# and a marker, since 140 KB of heredoc tells the reader nothing. Every reason
+# quotes it after its first sentence, which friction-rank.py groups refusals
+# by, so those sentences are unchanged.
+GD_CMD_MAX=2000
+GD_CMD=$COMMAND
+if (( ${#COMMAND} > GD_CMD_MAX )); then
+  GD_CMD="${COMMAND:0:GD_CMD_MAX}… [command clipped: the first $GD_CMD_MAX of ${#COMMAND} characters are shown]"
+fi
+# gd_deny <reason> — refuse the call; Claude sees the reason. When jq cannot
+# write it, a fixed refusal goes out instead: a deny never turns into silence.
 gd_deny() {
-  jq -n --arg r "$1" \
-    '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:$r}}'
+  local out
+  out=$(printf '%s' "$1" | jq -Rs \
+    '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:.}}' 2>/dev/null) \
+    && [[ -n "$out" ]] \
+    || out='{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"pre-tool-guardian refused this command and could not write why: jq failed. Check it, then run it in your own terminal."}}'
+  printf '%s\n' "$out"
   exit 0
 }
 # gd_rewrite <new-command> <why> — run a safer command in place of the
 # proposed one. The rest of tool_input (description, timeout,
 # run_in_background) is carried over; updatedInput replaces the whole input.
 # A pending wait warning (below) rides along: the rewritten command still waits.
+# jq reads tool_input (one line: jq -c escapes every newline), the why (its
+# newlines made spaces), then the command, lines and all. When it cannot write
+# the rewrite the call is refused, so the original never runs in its place.
 gd_rewrite() {
-  jq -n --argjson ti "$TOOL_INPUT" --arg c "$1" --arg why "$2${GD_WAIT_WARN:+ $GD_WAIT_WARN}" \
-    '{hookSpecificOutput:{hookEventName:"PreToolUse",updatedInput:($ti + {command:$c}),additionalContext:$why}}'
+  local why="$2${GD_WAIT_WARN:+ $GD_WAIT_WARN}" out
+  why=${why//$'\n'/ }
+  out=$(printf '%s\n%s\n%s' "$TOOL_INPUT" "$why" "$1" | jq -Rs \
+    '(split("\n")[:2]) as [$ti, $why]
+     | {hookSpecificOutput:{hookEventName:"PreToolUse",
+        updatedInput:(($ti | fromjson) + {command:ltrimstr($ti + "\n" + $why + "\n")}),additionalContext:$why}}' 2>/dev/null) \
+    && [[ -n "$out" ]] \
+    || gd_deny "pre-tool-guardian could not write the safer form of this command, so it refuses it rather than run the original. Command: $GD_CMD"
+  printf '%s\n' "$out"
   exit 0
 }
 # gd_warn <text> — let the command run unchanged, and tell the model why it
 # should not have been written this way. No permissionDecision, for the same
 # reason a rewrite carries none: "allow" would also skip permission prompts.
 gd_warn() {
-  jq -n --arg c "$1" '{hookSpecificOutput:{hookEventName:"PreToolUse",additionalContext:$c}}'
+  printf '%s' "$1" | jq -Rs '{hookSpecificOutput:{hookEventName:"PreToolUse",additionalContext:.}}'
   exit 0
 }
 
@@ -650,7 +685,7 @@ MIGRATION_PATTERNS=(
 
 for pattern in "${MIGRATION_PATTERNS[@]}"; do
   if printf '%s\n' "$SCANNABLE" | grep -qF "$pattern"; then
-    gd_deny "Database migration detected: '$pattern' cannot run inside Claude Code (interactive prompts / timeouts). Run manually in your terminal: $COMMAND"
+    gd_deny "Database migration detected: '$pattern' cannot run inside Claude Code (interactive prompts / timeouts). Run manually in your terminal: $GD_CMD"
   fi
 done
 fi  # end dev-mode gate
@@ -669,7 +704,7 @@ source "$GD_LIB/rm-guard.sh" 2>/dev/null
 if declare -F gd_rm_check >/dev/null; then
   gd_rm_check
 elif printf '%s\n' "$COMMAND" | grep -qE '\brm\b'; then
-  gd_deny "pre-tool-guardian cannot check this delete: $GD_LIB/rm-guard.sh is missing or incomplete, so a command with an rm word is refused. Reinstall Clade (./install.sh) to restore it. Command: $COMMAND"
+  gd_deny "pre-tool-guardian cannot check this delete: $GD_LIB/rm-guard.sh is missing or incomplete, so a command with an rm word is refused. Reinstall Clade (./install.sh) to restore it. Command: $GD_CMD"
 fi
 
 # ─── Force push (lib/force-push-walk.sh) ──────────────────────────────
@@ -680,14 +715,14 @@ if [[ "$_gd_plain" == *push* || "$COMMAND" == *"\$'"* ]]; then
   # shellcheck source=SCRIPTDIR/lib/force-push-walk.sh
   source "$GD_LIB/force-push-walk.sh" 2>/dev/null
   declare -F gd_push_check >/dev/null \
-    || gd_deny "pre-tool-guardian cannot check this push: $GD_LIB/force-push-walk.sh is missing or incomplete, so a command that may push is refused. Reinstall Clade (./install.sh) to restore it. Command: $COMMAND"
+    || gd_deny "pre-tool-guardian cannot check this push: $GD_LIB/force-push-walk.sh is missing or incomplete, so a command that may push is refused. Reinstall Clade (./install.sh) to restore it. Command: $GD_CMD"
   gd_push_check
 fi
 
 # ─── SQL DROP DATABASE / DROP TABLE ──────────────────────────────────
 # These are irreversible. Redirect to manual execution.
 if printf '%s\n' "$COMMAND" | grep -qiE '\bDROP[[:space:]]+(DATABASE|TABLE|SCHEMA)\b'; then
-  gd_deny "SQL DROP statement blocked. Irreversible operation must be run manually in your terminal after review. Command: $COMMAND"
+  gd_deny "SQL DROP statement blocked. Irreversible operation must be run manually in your terminal after review. Command: $GD_CMD"
 fi
 
 # ─── Self-killing pkill -f ───────────────────────────────────────────
@@ -706,16 +741,21 @@ if printf '%s\n' "$COMMAND" | grep -qE '(^|[;&|(]|[[:space:]]&&[[:space:]]|["'"'
     | sed -nE "s/.*(^|[;&|('\"]|[[:space:]])pkill[[:space:]]+(-[a-zA-Z]*f|--full)[[:space:]]+['\"]?([^'\"[:space:]]+).*/\3/p" \
     | head -1 || true)
   if [[ -n "$_PK_PAT" ]]; then
-    _PK_N=$(printf '%s\n' "$COMMAND" | grep -oF -- "$_PK_PAT" | wc -l | tr -d ' ')  # occurrences of PAT
+    # PAT twice, matched in bash: as a grep argument a PAT over 128 KiB never ran.
+    _PK_TWICE=false
+    [[ "$COMMAND" == *"$_PK_PAT"*"$_PK_PAT"* ]] && _PK_TWICE=true
     _PK_WRAPPED=false
     printf '%s\n' "$COMMAND" | grep -qE '(^|[[:space:]])(ssh|bash[[:space:]]+-c|sh[[:space:]]+-c)([[:space:]]|$)' \
       && _PK_WRAPPED=true
     # What follows the last pkill, quoted text and a `|| true` tail removed.
-    _PK_AFTER=$(printf '%s' "${COMMAND##*pkill}" | tr '\n' ';' | sed -E "s/\"[^\"]*\"//g; s/'[^']*'//g; s/[|][|][[:space:]]*(true|:)[[:space:];]*\$//")
+    # Cut as "all before the last pkill" and the rest: ${COMMAND##*pkill} is
+    # quadratic in what follows it, 40 s on 286 KB, past the hook's 5 s timeout.
+    _PK_PRE=${COMMAND%pkill*}
+    _PK_AFTER=$(printf '%s' "${COMMAND:${#_PK_PRE}+5}" | tr '\n' ';' | sed -E "s/\"[^\"]*\"//g; s/'[^']*'//g; s/[|][|][[:space:]]*(true|:)[[:space:];]*\$//")
     _PK_RE='(;|&&|[|][|])[[:space:]]*[^[:space:];&|]'
     [[ "$_PK_PAT" != *'['* && "$_PK_AFTER" =~ $_PK_RE ]] && _PK_WRAPPED=true
-    if [[ "${_PK_N:-0}" -ge 2 || "$_PK_WRAPPED" == true ]]; then
-      gd_deny "pkill -f ${_PK_PAT} will match the command line of the shell running it, so this kills its own launcher (exit 255/144) and everything after it never runs. Fixes: use the bracket trick, pkill -f \"[n]ame\", whose regex cannot match its own text; or run the pkill as its own call, or from a script file; and anchor the pattern (\"name\\.py --flag\"). Command: $COMMAND"
+    if [[ "$_PK_TWICE" == true || "$_PK_WRAPPED" == true ]]; then
+      gd_deny "pkill -f ${_PK_PAT} will match the command line of the shell running it, so this kills its own launcher (exit 255/144) and everything after it never runs. Fixes: use the bracket trick, pkill -f \"[n]ame\", whose regex cannot match its own text; or run the pkill as its own call, or from a script file; and anchor the pattern (\"name\\.py --flag\"). Command: $GD_CMD"
     fi
   fi
 fi

@@ -41,11 +41,14 @@ PY_HOOK="${GUARDIAN_PY_HOOK:-$REPO_ROOT/plugins/clade/hooks/pre_tool_guardian.py
 NOREPO_CWD=$(mktemp -d)
 trap 'rm -rf "$NOREPO_CWD"' EXIT
 
-# payload <command> [cwd] → the hook-input JSON both guardians read
+# payload <command> [cwd] → the hook-input JSON both guardians read. The
+# command goes in on stdin: as an argument, one over 128 KiB never reaches
+# python3 (tests/lib/guardian-large-cases.sh).
 payload() {
-  python3 -c "
+  printf '%s' "$1" | python3 -c "
 import json,sys
-print(json.dumps({'tool_name':'Bash','tool_input':{'command':sys.argv[1],'description':'d','timeout':5000},'cwd':sys.argv[2]}))" "$1" "${2:-$NOREPO_CWD}"
+cmd = sys.stdin.buffer.read().decode('utf-8', 'surrogateescape')
+print(json.dumps({'tool_name':'Bash','tool_input':{'command':cmd,'description':'d','timeout':5000},'cwd':sys.argv[1]}))" "${2:-$NOREPO_CWD}"
 }
 
 # classify <hook-output> <exit-code> <claude|codex> → the verdict, read against
@@ -71,9 +74,10 @@ print(json.dumps({'tool_name':'Bash','tool_input':{'command':sys.argv[1],'descri
 # REWRITE is a third verdict, not a flavour of ALLOW: the command that runs is
 # not the command that was proposed.
 classify() {
-  local out="$1" rc="$2" shape="$3"
+  local out="$1" rc="$2" shape="$3" blank='^[[:space:]]*$'
   if [[ "$rc" != 0 ]]; then echo "CRASH"; return; fi
-  if [[ -z "${out//[[:space:]]/}" ]]; then echo "ALLOW"; return; fi
+  # A regex, not ${out//[[:space:]]/}: that took 24 s on a 146 KB rewrite.
+  if [[ "$out" =~ $blank ]]; then echo "ALLOW"; return; fi
   jq -r --arg shape "$shape" '
     if (type != "object") then "UNPARSED"
     elif has("decision") or has("reason") then "LEGACY"
@@ -875,6 +879,13 @@ if [[ -n "${GUARDIAN_LIBS_ONLY:-}" ]]; then
   lib_cases
   finish
 fi
+# Commands over 128 KiB, which no exec argument can carry: large_cases.
+# shellcheck source=lib/guardian-large-cases.sh
+source "$REPO_ROOT/tests/lib/guardian-large-cases.sh"
+if [[ -n "${GUARDIAN_LARGE_ONLY:-}" ]]; then
+  large_cases
+  finish
+fi
 
 # ─── Catastrophic rm: must stay blocked ──────────────────────────────
 section "Catastrophic rm — true positives"
@@ -1450,6 +1461,7 @@ assert_parity "malformed -f-with-lease"       'git push -q -f-with-lease origin 
 
 push_walk_cases
 wait_cases
+large_cases
 
 # ─── Summary ─────────────────────────────────────────────────────────
 finish
