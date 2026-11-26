@@ -248,13 +248,17 @@ def cmd_sync(facts: dict, facts_path: Path, repo_root: Path) -> int:
 
 # ─── Self-test ─────────────────────────────────────────────────────────
 def _run(argv: list[str]) -> tuple[int, str]:
-    """main() as the CLI runs it, with its stdout captured."""
+    """main() as the CLI runs it: its exit code (argparse's SystemExit included) and its stdout and stderr."""
     import contextlib
     import io
 
     out = io.StringIO()
-    with contextlib.redirect_stdout(out):
-        code = main(argv)
+    with contextlib.redirect_stdout(out), contextlib.redirect_stderr(out):
+        try:
+            code = main(argv)
+        except SystemExit as exc:
+            # As the interpreter reads it: None exits 0, a message exits 1.
+            code = exc.code if isinstance(exc.code, int) else int(exc.code is not None)
     return code, out.getvalue()
 
 
@@ -323,13 +327,23 @@ def self_test() -> int:
         if "re-verify" in out:
             problems.append(f"apply printed the dated-row report with no dated row rewritten\n{out}")
 
+        # No mode: argparse no longer requires one (--self-test stands alone),
+        # so main() refuses it itself. Without that, a bare run exits 0 having
+        # checked nothing; --root names a repo with a facts file, so that 0 is
+        # not the missing-facts no-op.
+        for argv in ([], ["--root", str(md.parent)]):
+            code, out = _run(argv)
+            if code != 2 or "a mode is required" not in out:
+                problems.append(f"{argv}: no mode exited {code}, want 2 and 'a mode is required'\n{out}")
+
     if problems:
         for line in problems:
             print(f"SELF-TEST FAILED: {line}")
         return 1
     print("SELF-TEST PASSED: sync and apply rewrite a count under an unchanged date and name each dated row "
           "they rewrote, once, on the line holding the value; an undated row, an untouched dated row and a "
-          "date that is itself the value are not named, and a run with no dated rewrite prints no report.")
+          "date that is itself the value are not named, a run with no dated rewrite prints no report, and a "
+          "run with no mode exits 2.")
     return 0
 
 
@@ -344,6 +358,8 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
     if args.self_test:
         return self_test()
+    # mode is optional only so --self-test can stand alone; argparse no longer
+    # enforces it, so this does. Without it a bare run exits 0 having checked nothing.
     if args.mode is None:
         ap.error("a mode is required")
 
