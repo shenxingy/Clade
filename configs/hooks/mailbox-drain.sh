@@ -44,8 +44,8 @@ fi
 TASK_ID="${CLADE_WORKER_TASK_ID:-}"
 [ -z "$TASK_ID" ] && exit 0
 
-# Path-safety: the env var is orchestrator-set, but never interpolate
-# uncontrolled text into a filesystem path (defense in depth).
+# Path-safety: the env var is set by our own runners (listed above), but never
+# interpolate uncontrolled text into a filesystem path (defense in depth).
 case "$TASK_ID" in
   *[!A-Za-z0-9._-]*) exit 0 ;;
 esac

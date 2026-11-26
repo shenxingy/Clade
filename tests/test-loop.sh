@@ -893,6 +893,10 @@ assert_eq "2" "$(git rev-list --count "$HEAD_BEFORE"..HEAD 2>/dev/null)" "serial
 assert_eq "$ORIGIN_BEFORE" "$(git -C "$WID_ROOT/origin.git" rev-parse refs/heads/main)" \
   "serial: a worker commit through committer is not pushed to the same-name upstream"
 assert_contains "$(git log -1 --format=%B)" "X-Clade-Task: $id2" "serial: the last commit carries its own worker's X-Clade-Task trailer"
+# The worker's log is what a human reads afterwards. This runner neither
+# integrates nor pushes, so committer's skip line must not say one will.
+assert_contains "$(cat logs/claude-tasks/*-task-2-attempt-1.log 2>/dev/null)" \
+  "or leaves it on this branch for its caller" "serial: the worker's log says its commit stays on this branch"
 # A caller's id (loop-runner.sh passes loop-iter<N>) is kept for every task.
 export WID_LOG="$WID_ROOT/serial-inherited.log"
 unset WID_COMMITTER

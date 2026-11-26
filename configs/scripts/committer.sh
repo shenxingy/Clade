@@ -196,7 +196,7 @@ echo "Committed: $MSG"
 push_same_name_branch() {
   local ref branch merge upstream_branch remote shown
   if [[ -n "${CLADE_WORKER_TASK_ID:-}" ]]; then
-    echo "Not pushed: autonomous worker commit (CLADE_WORKER_TASK_ID is set); the runner that launched it integrates or pushes. The commit is kept." >&2
+    echo "Not pushed: autonomous worker commit (CLADE_WORKER_TASK_ID is set); the runner that launched it integrates or pushes it, or leaves it on this branch for its caller. The commit is kept." >&2
     return 0
   fi
   # The full ref, not `--short`: when a tag or another ref shares the branch's
