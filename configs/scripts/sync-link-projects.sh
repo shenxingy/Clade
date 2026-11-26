@@ -103,7 +103,12 @@
 #
 # Usage: sync-link-projects.sh [--dry-run] [--verbose]
 #   --dry-run  print what would change, and every skip with its reason; change
-#              nothing (no budget, no log). Safe against a live ~/.claude.
+#              nothing (no budget, no log). Safe against a live ~/.claude. Each
+#              pass reads what the earlier ones would have done (a planned
+#              migration's new key and paths, a link pruned or made), so its
+#              migrations, prunes, links and conflicts are the real run's. Not
+#              modelled: one adoption seen by the next (two profiles adopting
+#              into one new key are each previewed alone).
 #   --verbose  also print what was skipped, and why.
 #
 # Limits: a slug past 200 characters is skipped (Claude Code's hash suffix is
@@ -229,6 +234,43 @@ conflict() {   # MESSAGE — printed, kept for the state file, logged once a day
   log_once_today conflict "$1"
 }
 
+# ─── Dry run: what the earlier passes would have left ────────────────────────
+# A dry run creates and removes nothing, so a later pass reading only the disk
+# plans against a store the real run no longer has. On aries (#209's first real
+# run) the dry run planned 15 migrations and 0 conflicts; the real run made the
+# same 15 and reported 5 link conflicts, because a migrated project's links named
+# a different legacy key, and the new key, never created, never reached the dry
+# link pass. So every write a dry run skips is noted here, one line per item, and
+# the readers below consult these tables after the disk. Written only under
+# --dry-run; a real run reads none of them.
+DRY_MIGRATED=$'\n'            # legacy key <TAB> the key it would migrate to
+DRY_MIGRATION_SOURCES=$'\n'   # destination key <TAB> a legacy entry planned into it
+DRY_NEW=$'\n'                 # destination key it would create <TAB> its origin
+DRY_PATHS=$'\n'               # entry key <TAB> a checkout path it would record
+DRY_GONE=$'\n'                # a memory link the prune pass would remove
+DRY_LINKS=$'\n'               # a memory link the link pass would make <TAB> its key
+DRY_VALUE=""
+
+dry_lookup() {   # TABLE KEY — DRY_VALUE is KEY's value in TABLE; 1 when absent
+  DRY_VALUE=""
+  case "$1" in *$'\n'"$2"$'\t'*) ;; *) return 1 ;; esac
+  DRY_VALUE=${1#*$'\n'"$2"$'\t'}
+  DRY_VALUE=${DRY_VALUE%%$'\n'*}
+}
+
+planned_migration() {   # KEY — a legacy entry this dry run would have migrated
+  [[ "$DRY_RUN" -eq 1 ]] || return 1
+  case "$DRY_MIGRATED" in *$'\n'"$1"$'\t'*) return 0 ;; esac
+  return 1
+}
+
+entry_exists() {   # KEY — an entry in the store, or one this dry run would create
+  [[ -d "$PROJECTS_MEMORY_DIR/$1" ]] && return 0
+  [[ "$DRY_RUN" -eq 1 ]] || return 1
+  case "$DRY_NEW" in *$'\n'"$1"$'\t'*) return 0 ;; esac
+  return 1
+}
+
 # ─── Lock: one linker at a time per user ─────────────────────────────────────
 # Several sessions start together; two adopt passes racing on one directory
 # would both copy and one `mv` would fail. Same lock pattern as sync-push.sh.
@@ -321,7 +363,11 @@ key_of_remote() { printf 'repo-%s' "$(enc "$1")"; }
 
 read_project_remote() {   # an entry's normalised repository identity
   local f="$1/.project-remote" remote=""
-  [[ -f "$f" ]] || return 0
+  if [[ ! -f "$f" ]]; then
+    # A destination a dry run would create carries the origin it would write.
+    [[ "$DRY_RUN" -eq 1 ]] && dry_lookup "$DRY_NEW" "${1##*/}" && printf '%s' "$DRY_VALUE"
+    return 0
+  fi
   IFS= read -r remote < "$f" || true
   remote=${remote%$'\r'}
   case "$remote" in ''|*$'\t'*) return 0 ;; esac
@@ -330,14 +376,23 @@ read_project_remote() {   # an entry's normalised repository identity
 
 read_host_paths() {   # ENTRY -> every safe relative path recorded for this host
   local f="$1/.project-paths" host="" rel="" extra="" safe seen=$'\n'
-  [[ -f "$f" ]] || return 0
-  while IFS=$'\t' read -r host rel extra || [[ -n "$host$rel$extra" ]]; do
-    [[ "$host" == "$HOST_NAME" && -z "$extra" ]] || continue
-    safe=$(clean_project_rel "$rel") || continue
-    case "$seen" in *$'\n'"$safe"$'\n'*) continue ;; esac
-    seen="$seen$safe"$'\n'
-    printf '%s\n' "$safe"
-  done < "$f"
+  if [[ -f "$f" ]]; then
+    while IFS=$'\t' read -r host rel extra || [[ -n "$host$rel$extra" ]]; do
+      [[ "$host" == "$HOST_NAME" && -z "$extra" ]] || continue
+      safe=$(clean_project_rel "$rel") || continue
+      case "$seen" in *$'\n'"$safe"$'\n'*) continue ;; esac
+      seen="$seen$safe"$'\n'
+      printf '%s\n' "$safe"
+    done < "$f"
+  fi
+  [[ "$DRY_RUN" -eq 1 ]] || return 0
+  # A dry run also counts the paths it would have recorded by now.
+  while IFS=$'\t' read -r host rel; do
+    [[ "$host" == "${1##*/}" && -n "$rel" ]] || continue
+    case "$seen" in *$'\n'"$rel"$'\n'*) continue ;; esac
+    seen="$seen$rel"$'\n'
+    printf '%s\n' "$rel"
+  done <<< "$DRY_PATHS"
   return 0
 }
 
@@ -347,6 +402,7 @@ record_host_path() {   # ENTRY REL — add this host/path if absent; never repla
   if printf '%s\n' "$current" | grep -Fx -- "$rel" >/dev/null 2>&1; then return 0; fi
   if [[ "$DRY_RUN" -eq 1 ]]; then
     say "record projects-memory/${entry##*/}: $HOST_NAME -> ~/$rel"
+    DRY_PATHS="$DRY_PATHS${entry##*/}"$'\t'"$rel"$'\n'
     return 0
   fi
   if [[ -s "$entry/.project-paths" && -n "$(tail -c 1 "$entry/.project-paths")" ]]; then
@@ -364,7 +420,11 @@ record_host_path() {   # ENTRY REL — add this host/path if absent; never repla
 
 read_migrated_to() {   # a safe store key, never a path supplied by the marker
   local f="$1/.migrated-to" key=""
-  [[ -f "$f" ]] || return 0
+  if [[ ! -f "$f" ]]; then
+    # A migration a dry run planned reads as the marker the real run writes.
+    [[ "$DRY_RUN" -eq 1 ]] && dry_lookup "$DRY_MIGRATED" "${1##*/}" && printf '%s' "$DRY_VALUE"
+    return 0
+  fi
   IFS= read -r key < "$f" || true
   key=${key%$'\r'}
   case "$key" in ''|*[!A-Za-z0-9-]*) return 0 ;; esac
@@ -720,25 +780,19 @@ for pd in "${PROJECTS_DIRS[@]}"; do
 done
 # ─── Pass 1b: retire this host's path-keyed entries into repository identity ──
 
-DRY_MIGRATED_KEYS=$'\n'
-DRY_MIGRATION_SOURCES=$'\n'
 planned_migration_sources() {   # NEWKEY -> source entries already planned into it
   printf '%s' "$DRY_MIGRATION_SOURCES" | awk -F '\t' -v dst="$1" \
     '$1 == dst { sub(/^[^\t]*\t/, ""); print }'
 }
-remember_planned_migration() {   # NEWKEY SRC — a successful dry-run preview only
-  DRY_MIGRATION_SOURCES="$DRY_MIGRATION_SOURCES$1"$'\t'"$2"$'\n'
-}
-
-planned_migration() {
-  [[ "$DRY_RUN" -eq 1 ]] || return 1
-  case "$DRY_MIGRATED_KEYS" in *$'\n'"$1"$'\n'*) return 0 ;; esac
-  return 1
+remember_planned_migration() {   # KEY NEWKEY REMOTE SRC — a successful dry-run preview only
+  DRY_MIGRATION_SOURCES="$DRY_MIGRATION_SOURCES$2"$'\t'"$4"$'\n'
+  DRY_MIGRATED="$DRY_MIGRATED$1"$'\t'"$2"$'\n'
+  entry_exists "$2" || DRY_NEW="$DRY_NEW$2"$'\t'"$3"$'\n'
 }
 
 migrate_legacy_entry() {   # ENTRY KEY REL PROJECT — never deletes the legacy entry
   local src=$1 key=$2 rel=$3 proj=$4 remote newkey dst dest_remote files clash nfiles bad
-  local slug pd where mem target planned planned_src
+  local planned planned_src
   if is_private "$proj"; then
     note "projects-memory/$key: $proj is a private project, not migrated"
     return 0
@@ -785,23 +839,10 @@ migrate_legacy_entry() {   # ENTRY KEY REL PROJECT — never deletes the legacy 
   nfiles=$(printf '%s\n' "$files" | grep -c .)
   if [[ "$DRY_RUN" -eq 1 ]]; then
     say "migrate projects-memory/$key -> projects-memory/$newkey ($nfiles files, ~/$rel; legacy entry kept with .migrated-to)"
-    remember_planned_migration "$newkey" "$src"
-    DRY_MIGRATED_KEYS="$DRY_MIGRATED_KEYS$key"$'\n'
+    # The prune and link passes then read this as done: the legacy links retire,
+    # and the new key claims every path recorded for it, as in a real run.
+    remember_planned_migration "$key" "$newkey" "$remote" "$src"
     record_host_path "$dst" "$rel"
-    slug=$(slug_of_path "$proj")
-    if [[ ${#slug} -le 200 ]]; then
-      for pd in "${PROJECTS_DIRS[@]}"; do
-        where="$(label_of "$pd")$slug"; mem="$pd/$slug/memory"
-        if [[ -L "$mem" ]]; then
-          target=$(link_target_phys "$mem") || target=""
-          [[ "$target" == "$src" ]] || continue
-          say "prune $where/memory -> projects-memory/$key (migrated to projects-memory/$newkey; original kept beside it)"
-        elif [[ -e "$mem" ]]; then
-          continue
-        fi
-        say "link $where/memory -> projects-memory/$newkey"
-      done
-    fi
     return 0
   fi
 
@@ -905,8 +946,8 @@ for pd in "${PROJECTS_DIRS[@]}"; do
           reason="projects-memory/$key has no checkout with origin $remote at this slug on $HOST_NAME"
         fi
       fi
-    elif [[ -f "$entry/.migrated-to" ]]; then
-      if [[ -z "$migrated" || ! -d "$PROJECTS_MEMORY_DIR/$migrated" ]]; then
+    elif [[ -f "$entry/.migrated-to" ]] || planned_migration "$key"; then
+      if [[ -z "$migrated" ]] || ! entry_exists "$migrated"; then
         note "$where/memory: projects-memory/$key has an invalid migration target, left for a human"; continue
       fi
       if [[ -n "$owner" ]]; then
@@ -951,6 +992,7 @@ for pd in "${PROJECTS_DIRS[@]}"; do
     if [[ "$DRY_RUN" -eq 1 ]]; then
       extra=""; [[ "$retire" -eq 1 ]] && extra="; original kept beside it"
       say "prune $where/memory -> projects-memory/$key ($reason$extra)"
+      DRY_GONE="$DRY_GONE$mem"$'\n'
       continue
     fi
     if [[ "$retire" -eq 1 ]]; then
@@ -1011,10 +1053,38 @@ find_remote_project() {   # REMOTE — every indexed checkout of this origin
     '$1 == wanted { sub(/^[^\t]*\t/, ""); print }'
 }
 
-for entry in "$PROJECTS_MEMORY_DIR"/*/; do
+claimed_elsewhere() {   # WHERE TARGET KEY NAMED — MEM already links to TARGET
+  if [[ "$4" -eq 1 ]]; then
+    conflict "$1/memory -> $2 is kept; projects-memory/$3 claims the same project (merge by hand)"
+  else
+    note "projects-memory/$3: $1/memory already links to $2"
+  fi
+}
+
+dry_link() {   # WHERE MEM KEY — preview a link; the entries after this one see it made
+  say "link $1/memory -> projects-memory/$3"
+  DRY_LINKS="$DRY_LINKS$2"$'\t'"$3"$'\n'
+}
+
+# Entries in glob order, because the first entry to reach an unlinked slug takes
+# it. A destination a dry run would create goes where the real run's glob, taken
+# after its migrations, puts it: sort orders these "<dir>/" names as the glob
+# does (checked under C, C.UTF-8 and en_US.UTF-8).
+LINK_ENTRIES=("$PROJECTS_MEMORY_DIR"/*/)
+if [[ "$DRY_RUN" -eq 1 && "$DRY_NEW" != $'\n' ]]; then
+  LINK_ENTRIES=()
+  while IFS= read -r entry; do
+    LINK_ENTRIES[${#LINK_ENTRIES[@]}]=$entry
+  done < <( { printf '%s\n' "$PROJECTS_MEMORY_DIR"/*/
+              while IFS=$'\t' read -r key _; do
+                [[ -n "$key" ]] && printf '%s/%s/\n' "$PROJECTS_MEMORY_DIR" "$key"
+              done <<< "$DRY_NEW"; } | sort)
+fi
+
+for entry in "${LINK_ENTRIES[@]}"; do
   entry=${entry%/}
-  [[ -d "$entry" ]] || continue
   key=${entry##*/}
+  entry_exists "$key" || continue
   if [[ -f "$entry/.migrated-to" ]] || planned_migration "$key"; then
     note "projects-memory/$key: retired by .migrated-to, not linked"; continue
   fi
@@ -1096,23 +1166,29 @@ for entry in "$PROJECTS_MEMORY_DIR"/*/; do
     for pd in "${PROJECTS_DIRS[@]}"; do
       where="$(label_of "$pd")$slug"
       mem="$pd/$slug/memory"
+      if [[ "$DRY_RUN" -eq 1 ]]; then
+        # What the real run has here by now: a link made for an earlier entry
+        # (named as `ln -s "$entry"` names it), or none where a prune removed it.
+        if dry_lookup "$DRY_LINKS" "$mem"; then
+          [[ "$DRY_VALUE" == "$key" ]] \
+            || claimed_elsewhere "$where" "$PROJECTS_MEMORY_DIR/$DRY_VALUE" "$key" "$named"
+          continue
+        fi
+        case "$DRY_GONE" in *$'\n'"$mem"$'\n'*) dry_link "$where" "$mem" "$key"; continue ;; esac
+      fi
       if [[ -L "$mem" ]]; then
         # Followed to the end: a profile's link to ~/.claude/projects/<slug>/memory,
         # itself a link to this entry, is already right.
         cur=$(cd "$mem" 2>/dev/null && pwd -P) || cur=""
         [[ "$cur" == "$PM_PHYS/$key" ]] && continue
-        if [[ "$named" -eq 1 ]]; then
-          conflict "$where/memory -> $(readlink "$mem") is kept; projects-memory/$key claims the same project (merge by hand)"
-        else
-          note "projects-memory/$key: $where/memory already links to $(readlink "$mem")"
-        fi
+        claimed_elsewhere "$where" "$(readlink "$mem")" "$key" "$named"
         continue
       fi
       if [[ -e "$mem" ]]; then
         note "projects-memory/$key: $where/memory is a local directory (see the adopt pass)"; continue
       fi
       if [[ "$DRY_RUN" -eq 1 ]]; then
-        say "link $where/memory -> projects-memory/$key"
+        dry_link "$where" "$mem" "$key"
         continue
       fi
       mkdir -p "$pd/$slug" && ln -s "$entry" "$mem" \

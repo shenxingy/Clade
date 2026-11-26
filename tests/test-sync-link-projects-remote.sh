@@ -7,15 +7,26 @@
 #   discovery  one origin index per run, non-HOME slugs skipped before decode,
 #              and a per-slug budget whose incomplete-index misses defer and resume
 #   dryrun     an existing remote entry gains no .project-paths under --dry-run,
-#              either through discovery or migration into that entry
+#              either through discovery or migration into that entry; and parity:
+#              on one project with two legacy keys (a basename or a second path
+#              key, clashing or not, sorting before or after the new key), and on
+#              two checkouts sharing one slug, a dry run changes no byte and then
+#              the real run migrates, prunes, links, records and conflicts
+#              exactly as the dry run said
 #   identity   remote/key mismatches are left alone in link and prune; repo
 #              subdirectories and linked worktrees keep path keys
 #
 # The mutation suite removes recorded and unrecorded checkout retention, the
 # shared discovery index, HOME-prefix filter, per-slug budget, final-newline
 # guard, planned-destination conflict check, record_host_path dry-run guard,
-# link and prune remote/key checks, and the repository-root identity guard.
-# Each must make its section fail. A no-op control must stay green. Every
+# each dry-run table the later passes read (planned destinations, their glob
+# order, entry status and origin, planned checkout paths read and recorded, a
+# planned migration's marker, its prune and valid target, dry prunes recorded
+# and freeing the slug, dry links recorded, seen, and already right), link and
+# prune remote/key checks, and the repository-root identity guard.
+# Each must make its section fail. A no-op control must stay green. NOT mutated:
+# skipping a planned destination that already exists (it would only list one
+# entry twice, and the second visit finds every link already right). Every
 # fixture uses a temporary HOME and git store.
 #
 # SLP_SCRIPTS_DIR selects a copy of the linker (for pre-fix red proofs).
@@ -65,6 +76,69 @@ two_legacy_entries() {
 migration_keys() {
   sed -n -e 's/^  would migrate projects-memory\/\([^ ]*\) -> .*/\1/p' \
     -e 's/^  migrated projects-memory\/\([^ ]*\) -> .*/\1/p' | LC_ALL=C sort
+}
+
+# plan_of — a linker's actions and conflicts with the tense and the parenthesised
+# detail removed, so a dry run's "would link X -> Y (...)" and a real run's
+# "linked X -> Y (...)" compare equal. Not de-duplicated: a dry run that plans
+# one link twice differs from a real run that makes it once.
+plan_of() {
+  awk '
+    /^  conflict: / { print; next }
+    { sub(/^  would /, "  ") }
+    {
+      v = $1
+      if (v == "adopted") v = "adopt"; else if (v == "migrated") v = "migrate"
+      else if (v == "pruned") v = "prune"; else if (v == "linked") v = "link"
+      else if (v == "recorded") v = "record"; else if (v == "detached") v = "detach"
+      if (v !~ /^(adopt|migrate|prune|link|record|detach)$/) next
+      rest = $0; sub(/^ *[^ ]+ /, "", rest); sub(/ \(.*/, "", rest)
+      print v " " rest
+    }' | LC_ALL=C sort
+}
+
+# parity_fixture NAME SECOND — one checkout ~/projects/NAME (origin owner/NAME)
+# and two legacy store keys for it: projects-NAME (path-keyed, so it migrates)
+# and SECOND. The memory links of two projects dirs point at SECOND, and a third
+# projects dir has the slug and no link yet. This is the aries shape behind #209's
+# follow-up: the project's links named a different legacy key than the one it
+# migrated, so the new key claimed the project in the link pass. The caller
+# gives SECOND its .project-path (path-keyed) or leaves it a basename entry.
+parity_fixture() {
+  local name=$1 slug pd
+  new_home
+  PM="$H/store/projects-memory"; P="$H/projects/$name"
+  git_repo "$P"; git -C "$P" remote add origin "git@github.com:owner/$name.git"
+  RK=$(remote_key_of "github.com/owner/$name"); E="$PM/$RK"
+  L1="$PM/projects-$name"; L2="$PM/$2"
+  mkdir -p "$L1" "$L2"
+  printf 'projects/%s\n' "$name" > "$L1/.project-path"
+  printf 'first key\n' > "$L1/first.md"
+  printf 'second key\n' > "$L2/second.md"
+  slug=$(slug_of "$P")
+  for pd in "$H/.claude/projects" "$H/.claude-profiles/p1/projects"; do
+    mkdir -p "$pd/$slug"; ln -s "$L2" "$pd/$slug/memory"
+  done
+  mkdir -p "$H/.claude-profiles/p2/projects/$slug"
+}
+
+# assert_parity LABEL CONFLICTS — the dry run writes nothing, then the real run on
+# that same unchanged fixture makes exactly the plan the dry run printed. CONFLICTS
+# is how many the real run reports, so the case cannot pass by conflicting nowhere.
+assert_parity() {
+  local before dry real
+  store_commit "$H"
+  before=$(snapshot_with_sums "$H")
+  dry=$(run_slp "$H" --dry-run)
+  assert_eq "$(snapshot_with_sums "$H")" "$before" "$1: the dry run changes no byte, link or git state"
+  real=$(run_slp "$H")
+  assert_eq "$(migration_keys <<< "$dry")" "$(migration_keys <<< "$real")" \
+    "$1: dry and real migrate the same keys"
+  assert_eq "$(grep '^  conflict: ' <<< "$dry" | LC_ALL=C sort)" \
+    "$(grep '^  conflict: ' <<< "$real" | LC_ALL=C sort)" "$1: dry and real report the same conflicts"
+  assert_eq "$(plan_of <<< "$dry")" "$(plan_of <<< "$real")" \
+    "$1: dry and real plan the same prunes, links and records"
+  assert_eq "$(grep -c '^  conflict: ' <<< "$real")" "$2" "$1: the real run reports $2 conflicts"
 }
 
 t_checkouts() {
@@ -307,6 +381,50 @@ REAL=$(run_slp "$H")
 assert_eq "$(migration_keys <<< "$REAL")" "$EXPECTED_KEYS" "the real run also migrates the identical subset"
 check "both identical-subset legacy entries gain markers" \
   test -f "$L1/.migrated-to" -a -f "$L2/.migrated-to"
+
+section "dry-run parity — links at a second legacy key the migration did not retire"
+# The aries run: a basename entry held the links, the path-keyed entry migrated,
+# and the new key then claimed every linked slug. "ink" sorts before repo-...,
+# so the basename entry also links the unlinked profile first.
+parity_fixture ink ink
+assert_parity "basename second key" 3
+assert_eq "$(target_of "$H/.claude-profiles/p2/projects/$(slug_of "$P")/memory")" "$L2" \
+  "the basename entry linked the empty profile before the new key reached it"
+
+section "dry-run parity — two path-keyed entries, the linked one blocked by a clash"
+parity_fixture ink projects-ink2
+printf 'projects/ink\n' > "$L2/.project-path"; printf 'differs\n' > "$L2/first.md"
+assert_parity "clashing second path key" 4
+check "the clashing second key is not migrated" test ! -e "$L2/.migrated-to"
+
+section "dry-run parity — two path-keyed entries that both migrate"
+parity_fixture ink projects-ink2
+printf 'projects/ink\n' > "$L2/.project-path"
+assert_parity "both path keys migrate" 0
+assert_eq "$(target_of "$H/.claude-profiles/p2/projects/$(slug_of "$P")/memory")" "$E" \
+  "the empty profile is linked to the new key exactly once"
+
+section "dry-run parity — a planned key sorting before the other claimant"
+# repo-...-zap sorts before the basename entry zap: the real run links the empty
+# profile to the new key first, and the basename entry then finds it taken.
+parity_fixture zap zap
+assert_parity "planned key first" 2
+assert_eq "$(target_of "$H/.claude-profiles/p2/projects/$(slug_of "$P")/memory")" "$E" \
+  "the new key linked the empty profile before the basename entry reached it"
+
+section "dry-run parity — two recorded checkouts whose paths share one slug"
+# projects/a.b and projects/a-b encode to one slug: the real run links it for the
+# first and finds it already right for the second, so the dry run must too.
+new_home
+PM="$H/store/projects-memory"; RK=$(remote_key_of 'github.com/owner/ab'); E="$PM/$RK"
+for p in projects/a.b projects/a-b; do
+  git_repo "$H/$p"; git -C "$H/$p" remote add origin git@github.com:owner/ab.git
+done
+mkdir -p "$E" "$(dirname "$(memdir "$H" "$H/projects/a.b")")"
+printf 'github.com/owner/ab\n' > "$E/.project-remote"
+printf 'test-host\tprojects/a.b\ntest-host\tprojects/a-b\n' > "$E/.project-paths"
+assert_parity "one slug, two checkouts" 0
+assert_eq "$(target_of "$(memdir "$H" "$H/projects/a-b")")" "$E" "the shared slug is linked once, to the entry"
 }
 
 t_identity() {
@@ -417,6 +535,41 @@ mutation "the record_host_path dry-run guard" "dryrun" \
     say "record' \
   '  if false; then
     say "record'
+mutation "planned destinations in the dry link pass" "dryrun" \
+  'if [[ "$DRY_RUN" -eq 1 && "$DRY_NEW" != $'"'"'\n'"'"' ]]; then' 'if false; then'
+mutation "glob order for planned destinations" "dryrun" \
+  '              done <<< "$DRY_NEW"; } | sort)' '              done <<< "$DRY_NEW"; } | cat)'
+mutation "a planned destination counting as an entry" "dryrun" \
+  '  entry_exists "$key" || continue' '  [[ -d "$entry" ]] || continue'
+mutation "a planned destination's origin" "dryrun" \
+  '    [[ "$DRY_RUN" -eq 1 ]] && dry_lookup "$DRY_NEW" "${1##*/}" && printf '"'"'%s'"'"' "$DRY_VALUE"' \
+  '    :'
+mutation "reading planned checkout paths" "dryrun" \
+  '  [[ "$DRY_RUN" -eq 1 ]] || return 0
+  # A dry run also counts' '  return 0
+  # A dry run also counts'
+mutation "recording planned checkout paths" "dryrun" \
+  '    DRY_PATHS="$DRY_PATHS${entry##*/}"$'"'"'\t'"'"'"$rel"$'"'"'\n'"'"'' '    :'
+mutation "a planned migration's marker" "dryrun" \
+  '    [[ "$DRY_RUN" -eq 1 ]] && dry_lookup "$DRY_MIGRATED" "${1##*/}" && printf '"'"'%s'"'"' "$DRY_VALUE"' \
+  '    :'
+mutation "pruning links into planned migrations" "dryrun" \
+  '    elif [[ -f "$entry/.migrated-to" ]] || planned_migration "$key"; then' \
+  '    elif [[ -f "$entry/.migrated-to" ]]; then'
+mutation "a planned destination as a valid migration target" "dryrun" \
+  '      if [[ -z "$migrated" ]] || ! entry_exists "$migrated"; then' \
+  '      if [[ -z "$migrated" || ! -d "$PROJECTS_MEMORY_DIR/$migrated" ]]; then'
+mutation "recording dry-run prunes" "dryrun" \
+  '      DRY_GONE="$DRY_GONE$mem"$'"'"'\n'"'"'' '      :'
+mutation "a dry-run prune freeing the slug" "dryrun" \
+  '        case "$DRY_GONE" in *$'"'"'\n'"'"'"$mem"$'"'"'\n'"'"'*) dry_link "$where" "$mem" "$key"; continue ;; esac' \
+  '        :'
+mutation "a dry-run link seen by later entries" "dryrun" \
+  '        if dry_lookup "$DRY_LINKS" "$mem"; then' '        if false; then'
+mutation "recording dry-run links" "dryrun" \
+  '  DRY_LINKS="$DRY_LINKS$2"$'"'"'\t'"'"'"$3"$'"'"'\n'"'"'' '  :'
+mutation "a dry-run link to the same entry is already right" "dryrun" \
+  '          [[ "$DRY_VALUE" == "$key" ]] \' '          false \'
 mutation "the link remote/key check" "identity" \
   '    if [[ "$key" != "$(key_of_remote "$remote")" ]]; then
       note "projects-memory/$key: .project-remote does not match its key"' \

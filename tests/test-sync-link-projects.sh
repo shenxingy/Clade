@@ -1317,7 +1317,7 @@ mutation red "excluding remote metadata from private copies" $L "remote" \
 mutation red "the .migrated-to key guard" $L "remote" \
   '  case "$key" in '"'"''"'"'|*[!A-Za-z0-9-]*) return 0 ;; esac' '  :'
 mutation red "the invalid migration-target guard" $L "remote" \
-  '      if [[ -z "$migrated" || ! -d "$PROJECTS_MEMORY_DIR/$migrated" ]]; then' \
+  '      if [[ -z "$migrated" ]] || ! entry_exists "$migrated"; then' \
   '      if false; then'
 mutation red "sync-health.sh's conflict notice" hooks/sync-health.sh "conflict" \
   'if [[ -s "$MEM_CONFLICTS" ]]; then' 'if false; then'
