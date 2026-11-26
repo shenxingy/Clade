@@ -78,6 +78,11 @@ awk '
     print "  sleep \"${COMMIT_ARCH_TEST_REFRESH_START_DELAY:-0}\""
     next
   }
+  /^main\(\) \{/ {
+    print
+    print "  [[ \"${1:-}\" == --refresh ]] && export COMMIT_ARCH_TEST_REFRESHER=1"
+    next
+  }
   /^    lock_is_held \"\$lock\" \"\$pid\" && return 0$/ {
     print
     print "    printf '\''reclaim-ready\\n'\'' >> \"${COMMIT_ARCH_TEST_RECLAIM_LOG:-/dev/null}\""
@@ -764,6 +769,29 @@ hung_refresh_case() {
 hung_refresh_case 'hung git' git 1
 # The jq hang follows every detector, so its bound leaves them time to finish.
 hung_refresh_case 'hung write' jq 4
+# The refresher runs git before the scan too: the repository check, then, with
+# its own PID in the lock, the HEAD check. The caller runs both commands before
+# it launches the refresher, so these shims hang one only where the test copy
+# marks the process as the refresher. (Asking `ps` for the parent's arguments
+# instead reads every process's cmdline, and on a loaded host the shim twice
+# reached its hang only after the suite's 10 s wait.)
+# refresher_hang_shim <name> <args> — a git that hangs `git <args>` in the refresher.
+refresher_hang_shim() {
+  mkdir -p "$HANG_BIN/$1"
+  cat > "$HANG_BIN/$1/git" <<EOF
+#!/usr/bin/env bash
+if [[ "\$*" == '$2' && -n "\${COMMIT_ARCH_TEST_REFRESHER:-}" ]]; then
+  printf '%s\\n' "\$\$" >> "\$COMMIT_ARCH_TEST_HANG_LOG"
+  exec sleep 300
+fi
+exec "$(command -v git)" "\$@"
+EOF
+  chmod +x "$HANG_BIN/$1/git"
+}
+refresher_hang_shim rev-parse-head 'rev-parse HEAD'
+refresher_hang_shim rev-parse-repo 'rev-parse --is-inside-work-tree'
+hung_refresh_case 'hung HEAD check' rev-parse-head 1
+hung_refresh_case 'hung repository check' rev-parse-repo 1
 
 printf '# finished scan: the watchdog does not outlive it\n'
 seed_cache

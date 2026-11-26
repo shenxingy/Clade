@@ -356,24 +356,30 @@ start_refresh() {
   disown %% 2>/dev/null || true
 }
 
+# refresh_scan — the detached refresh's work, every git it runs included.
+refresh_scan() {
+  # A caller that judged the cache stale just before another refresh finished and
+  # released the lock arrives here with nothing left to do.
+  [[ "$(head -1 "$(lessons_path).head" 2>/dev/null)" == "$(git rev-parse HEAD 2>/dev/null)" ]] && return 0
+  scan
+}
+
 run_refresh() {
   local scan_pid watchdog_pid
   REFRESH_LOCK_DIR="${1:-}"
   [[ -n "$REFRESH_LOCK_DIR" && -d "$REFRESH_LOCK_DIR" ]] || return 0
   trap 'rm -f "$REFRESH_LOCK_DIR/pid"; rmdir "$REFRESH_LOCK_DIR" 2>/dev/null' EXIT
   printf '%s\n' "$$" > "$REFRESH_LOCK_DIR/pid"
-  # A caller that judged the cache stale just before another refresh finished and
-  # released the lock arrives here with nothing left to do.
-  [[ "$(head -1 "$(lessons_path).head" 2>/dev/null)" == "$(git rev-parse HEAD 2>/dev/null)" ]] && return 0
-  # A hung git would keep this process, and so its live PID in the lock, alive
-  # for good: no later session could refresh this repository. bash 3.2 has no
-  # `timeout`, so a watchdog ends the scan after SCAN_TIMEOUT_SECONDS. Job control
-  # puts the scan in a process group of its own, which one kill empties of every
-  # git it started, and never touches the group this refresher was launched into
-  # (under nohup that is the caller's). The lock is released on the way out, and
-  # with no new HEAD sidecar the next session retries.
+  # From here this process's live PID holds the lock, so one git that never
+  # returned would hold it for good: no later session could refresh this
+  # repository. Every git the refresh runs is in refresh_scan, and bash 3.2 has
+  # no `timeout`, so a watchdog ends it after SCAN_TIMEOUT_SECONDS. Job control
+  # puts it in a process group of its own, which one kill empties of every git it
+  # started, and never touches the group this refresher was launched into (under
+  # nohup that is the caller's). The lock is released on the way out, and with no
+  # new HEAD sidecar the next session retries.
   set -m
-  scan &
+  refresh_scan &
   scan_pid=$!
   ( sleep "$SCAN_TIMEOUT_SECONDS"; kill -TERM -- "-$scan_pid" 2>/dev/null ) &
   watchdog_pid=$!
@@ -421,6 +427,12 @@ main() {
   for arg in "$@"; do [[ "$arg" == "--force" ]] && force=1; done
 
   cd "${CLAUDE_PROJECT_DIR:-$(pwd)}" 2>/dev/null || exit 0
+  if [[ "$mode" == --refresh ]]; then
+    # The detached refresher runs no git outside its scan bound, so the
+    # repository check is left to scan.
+    run_refresh "${2:-}"
+    return
+  fi
   is_git_repo || exit 0
 
   local lessons_file
@@ -448,9 +460,6 @@ main() {
           fi
         fi
       fi
-      ;;
-    --refresh)
-      run_refresh "${2:-}"
       ;;
     --force)
       scan
