@@ -581,43 +581,47 @@ OUT=$(todo_ctx)
 assert_line "$OUT" "Next TODO: 🔴 Add an owner field to the manifest" \
   "an owner phrase inside the item's own fence is code, not an owner marker"
 
-cat > "$TODO_PROJ/TODO.md" <<'EOF'
-- [ ] 🔴 **Add an owner field to each step**
-  - [ ] Write the manifest
-    ~~~yaml
-    owner: alice
-    ~~~
-- [ ] 🟠 Orange item
-EOF
-OUT=$(todo_ctx)
 # Control: passes on HEAD too; it pins that inside a list item (here a nested one)
 # a fence indented four columns is still a fence, not an indented code line, and
-# that a fence inside an item opens at all. A tilde fence on purpose: read as item
-# text, a ``` fence pairs up like code spans and the span removal would hide it.
-assert_line "$OUT" "Next TODO: 🔴 Add an owner field to each step" \
-  "a nested item's fence indented four columns is code, not an owner marker"
+# that a fence inside an item opens at all. Both fence characters: read as item
+# text, either fence's lines would carry the owner phrase.
+for fence in '```' '~~~'; do
+  printf '%s\n' '- [ ] 🔴 **Add an owner field to each step**' '  - [ ] Write the manifest' \
+    "    ${fence}yaml" '    owner: alice' "    $fence" '- [ ] 🟠 Orange item' > "$TODO_PROJ/TODO.md"
+  OUT=$(todo_ctx)
+  assert_line "$OUT" "Next TODO: 🔴 Add an owner field to each step" \
+    "a nested item's $fence fence indented four columns is code, not an owner marker"
+done
 
-# An inline code span is code too, so a field name in backticks is not an owner
-# phrase. Text outside the span is still read, and so is everything after a lone
-# backtick, which opens no span.
-cat > "$TODO_PROJ/TODO.md" <<'EOF'
-- [ ] 🔴 Red item that adds a field
-  named `metadata.owner: str` to the schema
-- [ ] 🟠 Orange item
-EOF
-OUT=$(todo_ctx)
-assert_line "$OUT" "Next TODO: - [ ] 🔴 Red item that adds a field" \
-  "an owner phrase inside an inline code span does not skip the item"
-
-cat > "$TODO_PROJ/TODO.md" <<'EOF'
-- [ ] 🔴 Rename the `owner` column; one lone ` backtick, and
-  Owner: decide the new name
-- [ ] 🟠 Orange item
-EOF
-OUT=$(todo_ctx)
-# Control: passes on HEAD too; it pins that only a closed span is removed.
-assert_line "$OUT" "Next TODO: - [ ] 🟠 Orange item" \
-  "control: an owner phrase after a lone backtick still skips the item"
+# An owner phrase counts wherever it sits in the item, inside an inline code span
+# too. Removing spans with a regex (a backtick, no backtick, a backtick) printed
+# owner items, because CommonMark pairs backticks in ways a regex does not: a run
+# closes only on a run of the same length, an escaped backtick pairs with nothing,
+# and no span crosses a blank line or a block. markdown-it skips every item below
+# except the first, whose phrase is code there; skipping it as well errs on the
+# safe side. Three removals were tried: over the whole item, the same but not
+# when the item holds `` or \`, and that one line by line. Each fixture after the
+# lone-backtick one printed its 🔴 item under at least one of them.
+owner_span_case() {   # owner_span_case <label> <item line>...: the item is skipped, 🟠 is picked
+  local label="$1"; shift
+  printf '%s\n' "$@" '- [ ] 🟠 Orange item' > "$TODO_PROJ/TODO.md"
+  assert_line "$(todo_ctx)" "Next TODO: - [ ] 🟠 Orange item" \
+    "an owner phrase $label still skips the item"
+}
+owner_span_case 'inside an inline code span' \
+  '- [ ] 🔴 Red item that adds a field' '  named `metadata.owner: str` to the schema'
+owner_span_case 'after a lone backtick' \
+  '- [ ] 🔴 Rename the `owner` column; one lone ` backtick, and' '  Owner: decide the new name'
+owner_span_case 'after a run of three backticks' \
+  '- [ ] 🔴 Handle ``` inline and Owner: x decides `foo`'
+owner_span_case 'after an escaped backtick' \
+  '- [ ] 🔴 **Escape** the \` char; Owner: x picks `y`'
+owner_span_case 'between lone backticks in two paragraphs' \
+  '- [ ] 🔴 Fix the ` key parsing' '' '  Owner: decide the format; also the ` char'
+owner_span_case 'in a sub-bullet between a lone backtick and a span' \
+  '- [ ] 🔴 A lone ` backtick here' '  - sub: Owner: decide' '  - sub: run `make`'
+owner_span_case 'after a span that wraps onto the next line' \
+  '- [ ] 🔴 Parse the `key' '  name` and Owner: x picks `y`'
 
 # A fence opened inside a list item ends when the item does: at the next column-0
 # line, or at a fence line indented less than the item's content (the section

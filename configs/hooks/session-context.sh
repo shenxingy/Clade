@@ -190,8 +190,9 @@ fi
 # ##/### heading that names the owner (until the next heading of that level or
 # higher), and items whose text matches TODO_OWNER_PHRASES case-insensitively.
 # An item is its top-level `- [ ]` line plus the indented and blank lines after
-# it, up to where it ends (below), so a phrase wrapped onto line two counts;
-# inline code spans in it are not read for owner phrases.
+# it, up to where it ends (below), so a phrase wrapped onto line two counts,
+# and so does one inside an inline code span: pairing backticks as CommonMark
+# does takes more than a regex, and a wrong pair would print an owner item.
 # Fenced blocks (``` or ~~~, closed by a run of the same character at least as
 # long) are code: a `#` or `- [ ]` inside one is neither a heading nor an item.
 # A list item (marker -, *, +, 1. or 1)) ends at the next column-0 line, or at a
@@ -211,9 +212,7 @@ NEXT_TODO=$(awk -v markers="$TODO_PRIORITY_MARKERS" -v owner_re="$TODO_OWNER_PHR
   function flush(   text, t) {
     if (!pending) return
     pending = 0
-    text = item
-    gsub(/`[^`]*`/, " ", text)   # an inline code span is code, not an owner phrase
-    text = tolower(text)
+    text = tolower(item)
     gsub(/[[:space:]]+/, " ", text)
     if (text ~ owner_re) return
     if (!fallback) fallback = first
