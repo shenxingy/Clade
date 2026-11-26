@@ -1108,11 +1108,15 @@ assert_eq "$(sed -n '/^\[\[hooks\]\]$/,$p' "$USER_HOME/.kimi-code/config.toml" |
 
 # A whole install from before the anchoring: every Clade table is anchored in
 # place, nothing is appended, and a user's own unanchored entry is not touched.
+# default_permission_mode is set so the root-key insert, which rewrites the
+# file without keeping its mode, does not run; the mode case is about the
+# anchoring rewrite alone.
 UPGRADE_HOME="$TMP_ROOT/unanchored-upgrade-home"
 UPGRADE_CFG="$UPGRADE_HOME/.kimi-code/config.toml"
 mkdir -p "$UPGRADE_HOME/.kimi-code"
 cat > "$UPGRADE_CFG" <<'EOF'
 default_model = "kimi-code/k3"
+default_permission_mode = "manual"
 
 [[hooks]]
 event = "PostToolUse"

@@ -1107,8 +1107,8 @@ PY
 
     # Kimi applies a matcher as an UNANCHORED JavaScript RegExp: matchHooks.ts
     # `matches$1` is `new RegExp(pattern).test(value)` (read in the 2.7.3
-    # binary and the npm 2.0.1 bundle), and a tool event's value is the tool
-    # name. So a bare "Edit|Write" also fires on any tool whose name merely
+    # binary and the 2.0.1 @moonshot-ai/kimi-code bundle), and a tool event's
+    # value is the tool name. So a bare "Edit|Write" also fires on any tool whose name merely
     # contains either word, such as an MCP tool `mcp__notes__Write`. The list
     # below names the alternation; every non-empty one is written as ^(…)$.
     # An entry an earlier install wrote unanchored (same event and command) is
