@@ -1280,7 +1280,8 @@ def main() -> int:
     if args.clean_home:
         _CLEAN_HOME = Path(tempfile.mkdtemp(prefix="ci-local-home-"))
         (_CLEAN_HOME / ".claude").mkdir(parents=True, exist_ok=True)
-        print(f"clean HOME: {_CLEAN_HOME}  (no ~/.claude, no installed skills)")
+        # stderr: under --json, stdout is the record and nothing else.
+        print(f"clean HOME: {_CLEAN_HOME}  (no ~/.claude, no installed skills)", file=sys.stderr)
 
     if args.list:
         print_plan(repo, plan)

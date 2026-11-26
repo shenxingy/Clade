@@ -254,6 +254,15 @@ fi
 SKIPPED=$(python3 -c "import json,sys; d=json.load(sys.stdin); print(len(d['skipped']))" <<< "$JSON" 2>/dev/null || echo -1)
 if [[ "$SKIPPED" -ge 2 ]]; then pass "the JSON lists skipped jobs too ($SKIPPED)"
 else fail "the JSON lists skipped jobs too" "got $SKIPPED"; fi
+# --clean-home names its HOME on stderr. On stdout the banner came before the
+# JSON, so a gate run with it wrote a record no caller could parse.
+CH_OUT="$(python3 "$RUNNER" --repo "$FAKE" --clean-home --json 2>"$SANDBOX/clean-home.err")"
+if python3 -c "import json,sys; json.load(sys.stdin)" <<< "$CH_OUT" 2>/dev/null; then
+  pass "--clean-home --json prints only the JSON on stdout"
+else
+  fail "--clean-home --json prints only the JSON on stdout" "first line: $(head -1 <<< "$CH_OUT")"
+fi
+assert_contains "$(cat "$SANDBOX/clean-home.err")" "clean HOME: " "--clean-home names its HOME on stderr"
 
 # ─── 6. A repository with no workflows is an error, not a pass ───────
 section "no workflows is an error, not a silent success"
@@ -1228,6 +1237,8 @@ PY
 
 mutation green "no-op control (a comment reworded)" \
   '# Report-only for one week, then the default' '# Report-only for one week,  then the default'
+mutation red "the --clean-home banner kept off stdout" \
+  '(no ~/.claude, no installed skills)", file=sys.stderr)' '(no ~/.claude, no installed skills)")'
 mutation red "the dirty flag on the record" \
   'return head.stdout.strip(), bool(status.stdout.strip())' 'return head.stdout.strip(), False'
 mutation red "the reasoned-first order (unmodelled tested before pull_request_target)" \
