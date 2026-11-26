@@ -20,6 +20,15 @@ Kimi facts used by the rules:
   * Claude Code settings/hook configuration is not Kimi's config.toml hook
     contract. A settings-only integration is treated as optional; a procedure
     that generates or depends on the Claude hook lifecycle is core.
+  * features/externalHooks/session/sessionExternalHooksService.ts
+    (triggerSessionStart) discards SessionStart results, so install.sh wires
+    session-context.sh on the first UserPromptSubmit through
+    decision-to-kimi.sh --once-per-session, whose message
+    internal/userPrompt.ts injects. A SessionStart context injection a skill
+    attributes to such a hook is therefore adapted. Any other SessionStart
+    injection stays core lifecycle, and so does a Stop-hook loop:
+    features/externalHooks/agent/agentExternalHooksService.ts (runStop)
+    permits one continuation per turn.
 
 A USE is an instructional or executable occurrence. Routing frontmatter, code
 comments, negated recommendations, and prose explicitly comparing Claude/Kimi
@@ -61,12 +70,22 @@ class Rule(NamedTuple):
     fact: str
     optional_integration: bool = False
     shared_guard: bool = False
+    once_per_session: bool = False
 
 
 def _rule(primitive: str, pattern: str, kimi: str | None, fact: str,
-          optional_integration: bool = False, shared_guard: bool = False) -> Rule:
+          optional_integration: bool = False, shared_guard: bool = False,
+          once_per_session: bool = False) -> Rule:
     return Rule(primitive, re.compile(pattern, re.MULTILINE), kimi, fact,
-                optional_integration, shared_guard)
+                optional_integration, shared_guard, once_per_session)
+
+
+# install.sh §11c's hook rows whose mode is `once`: SessionStart context hooks
+# Kimi gets on the first UserPromptSubmit via decision-to-kimi.sh
+# --once-per-session. test_kimi_skill_compat.py holds this equal to install.sh.
+KIMI_ONCE_PER_SESSION_HOOKS = frozenset({"session-context.sh"})
+ONCE_PER_SESSION_DELIVERY = "first UserPromptSubmit (--once-per-session)"
+_HOOK_NAME = re.compile(r"(?<![\w.-])[\w-]+\.sh\b")
 
 
 _CLAUDE_PROFILES = (
@@ -130,10 +149,15 @@ RULES = (
           "registry.ts has no CLAUDE_EFFORT skill substitution"),
     _rule("claude -p", r"(?<![\w-])claude\s+(?:-p\b|--print\b)", None,
           "The Claude CLI is a separate runtime; Kimi's built-in tools cannot supply claude -p"),
+    _rule("SessionStart context",
+          r"\bSessionStart\b[^\n]{0,100}(?:auto-?load|inject)|"
+          r"(?:auto-?load|inject)[^\n]{0,100}\bSessionStart\b",
+          None,
+          "features/externalHooks/session/sessionExternalHooksService.ts triggerSessionStart discards results; "
+          "only a hook install.sh wires with --once-per-session reaches the first UserPromptSubmit",
+          once_per_session=True),
     _rule("Claude hook lifecycle",
           r"\bStop hook\s+(?:detects|re-?prompts|feeds)|"
-          r"\bSessionStart\b[^\n]{0,100}(?:auto-?load|inject)|"
-          r"(?:auto-?load|inject)[^\n]{0,100}\bSessionStart\b|"
           r"Hook type:\s*\{?(?:PreToolUse|PostToolUse)|"
           r"Produce the JSON snippet to add to\s*`?~/?\.claude/settings\.json",
           None,
@@ -234,6 +258,9 @@ def _scan_skill(directory: Path) -> dict:
                     item["optional"] = bool(
                         rule.optional_integration or optional_heading or _OPTIONAL.search(context)
                     )
+                    if rule.once_per_session:
+                        hooks = set(_HOOK_NAME.findall(line))
+                        item["delivered"] = (hooks <= KIMI_ONCE_PER_SESSION_HOOKS) if hooks else None
                     evidence.append(item)
 
     optional_primitives = {
@@ -243,6 +270,15 @@ def _scan_skill(directory: Path) -> dict:
     for item in evidence:
         if item["primitive"] in optional_primitives:
             item["optional"] = True
+
+    # A line that names its hook decides for itself; one that names none (the
+    # SessionStart hook will inject...) is delivered when the skill attributes
+    # its SessionStart injection to a once-per-session hook elsewhere.
+    once_delivered = any(item.get("delivered") for item in evidence)
+    for item in evidence:
+        delivered = item.pop("delivered", False)
+        if delivered or (delivered is None and once_delivered):
+            item["kimi"] = ONCE_PER_SESSION_DELIVERY
 
     unsupported = {item["primitive"] for item in evidence if item["kimi"] is None}
     required = {item["primitive"] for item in evidence if item["kimi"] is None and not item["optional"]}
@@ -366,6 +402,7 @@ RULE_EXAMPLES = {
     "${CLAUDE_PROJECT_DIR}": "Read ${CLAUDE_PROJECT_DIR}/file.md.",
     "${CLAUDE_EFFORT}": "Record ${CLAUDE_EFFORT}.",
     "claude -p": "Run claude -p for the worker.",
+    "SessionStart context": "The SessionStart hook injects the profile.",
     "Claude hook lifecycle": "The Stop hook detects the sentinel and re-prompts.",
     "Claude settings integration": "Write the optional integration to ~/.claude/settings.json.",
 }
@@ -411,6 +448,15 @@ def _selftest_run() -> None:
         _selftest_skill(root, "conditional", "If credentials are configured, spawn seo-google agent.")
         _selftest_skill(root, "settings-only", "Write the integration to ~/.claude/settings.json.")
         _selftest_skill(root, "claude-only", "Run the Workflow tool for every execution.")
+        once_line = "The session-context.sh hook auto-loads the profile on every SessionStart.\n"
+        _selftest_skill(root, "once-context", once_line + "The SessionStart hook will inject it every time.")
+        _selftest_skill(root, "once-context-unnamed", "The SessionStart hook will inject the profile every time.")
+        _selftest_skill(root, "once-context-other-hook",
+                        once_line + "The sync-health.sh hook injects its findings on SessionStart.")
+        _selftest_skill(root, "once-context-mixed-line",
+                        "The session-context.sh and sync-health.sh hooks inject their output on SessionStart.")
+        _selftest_skill(root, "once-context-stop-loop",
+                        once_line + "The Stop hook detects the sentinel and re-prompts.")
         _selftest_skill(root, "claude-only-not", "Optional: run the Workflow tool if available.")
         _selftest_skill(
             root, "mention-only",
@@ -441,6 +487,9 @@ def _selftest_run() -> None:
             "negation-scope": "claude-only", "positive-after-negation": "adapted",
             "mixed-profiles": "claude-only", "heading-only": "degraded",
             "conditional": "degraded", "settings-only": "degraded", "all-primitives": "claude-only",
+            "once-context": "adapted", "once-context-unnamed": "claude-only",
+            "once-context-other-hook": "claude-only", "once-context-mixed-line": "claude-only",
+            "once-context-stop-loop": "claude-only",
         }
         assert {name: row["classification"] for name, row in rows.items()} == expected
         assert len(rows) == len(expected) == report["totals"]["skills"]
@@ -454,6 +503,12 @@ def _selftest_run() -> None:
         assert rows["negation-scope"]["required_unsupported"] == ["Claude subagent profile"]
         assert rows["mixed-profiles"]["required_unsupported"] == ["Claude subagent profile"]
         assert rows["positive-after-negation"]["adaptations"] == ["TodoWrite→TodoList"]
+        assert rows["once-context"]["adaptations"] == [f"SessionStart context→{ONCE_PER_SESSION_DELIVERY}"]
+        assert [item["kimi"] for item in rows["once-context"]["evidence"]] == [ONCE_PER_SESSION_DELIVERY] * 2
+        for name in ("once-context-unnamed", "once-context-other-hook", "once-context-mixed-line"):
+            assert rows[name]["required_unsupported"] == ["SessionStart context"], name
+        assert rows["once-context-stop-loop"]["required_unsupported"] == ["Claude hook lifecycle"]
+        assert all("delivered" not in item for row in rows.values() for item in row["evidence"])
         assert {item["primitive"] for item in rows["all-primitives"]["evidence"]} == set(RULE_EXAMPLES)
         support_paths = {item["path"] for item in rows["support-files"]["evidence"]}
         assert support_paths == {"references/tools.md", "scripts/fetch.py"}, support_paths
@@ -502,7 +557,8 @@ def self_test() -> int:
         print(f"kimi-skill-compat --self-test: FAILED: {exc}", file=sys.stderr)
         return 1
     print("kimi-skill-compat --self-test: PASSED "
-          "(4 classes with positive/negative controls, mention-only controls, all primitive rules, CLI/error paths)")
+          "(4 classes with positive/negative controls, mention-only controls, all primitive rules, "
+          "once-per-session SessionStart delivery, CLI/error paths)")
     return 0
 
 

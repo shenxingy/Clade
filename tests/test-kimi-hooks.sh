@@ -714,11 +714,17 @@ run_payload Stop stop-check.sh \
 
 section "SessionStart context is delivered once on the first prompt"
 CONTEXT_SID='session_context_once_01'
+# init-profile is listed to the Kimi model (kimi-skill-compat.py: adapted)
+# because the profile it writes arrives through this delivery.
+mkdir -p "$PROJ/.claude"
+printf 'prod = kimi-profile-fixture.invalid (remote)\n' > "$PROJ/.claude/PROJECT_PROFILE.md"
 PAYLOAD=$(prompt_payload "$CONTEXT_SID" "Please continue the current task")
 run_payload UserPromptSubmit session-context.sh "$PAYLOAD" \
   "session context reaches the first Kimi prompt" MESSAGE
 assert_contains "$(jq -r '.message // empty' <<< "$RUN_OUT")" "Recent commits:" \
   "first-prompt message contains the wrapped SessionStart context"
+assert_contains "$(jq -r '.message // empty' <<< "$RUN_OUT")" "kimi-profile-fixture.invalid" \
+  "first-prompt message carries .claude/PROJECT_PROFILE.md, the file init-profile writes"
 SENTINEL="$RUNTIME/kimi-session-context/$CONTEXT_SID.session-context.sh.once"
 assert_file "$SENTINEL" "once-per-session sentinel lives under the private runtime dir"
 run_payload UserPromptSubmit session-context.sh "$PAYLOAD" \

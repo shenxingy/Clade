@@ -308,7 +308,7 @@ throwaway directory. Results:
 | Write an ordinary file | allowed |
 | Agent tool lists `clade-explorer` and `clade-implementer` | yes, beside `plan`, `coder`, `explore` and the two bridges |
 | An Agent call to `clade-explorer` runs | **no**: "Agent timed out after 0 hours" |
-| After the skill view is deployed (#234), claude-only skills (`loop`, `batch-tasks`, `orchestrate`, `init-profile`, `iloop`, `blog`, `seo`) are absent from the model's skill list | yes; `commit`, `review` and `delivery` are listed |
+| After the skill view is deployed (#234), claude-only skills (`loop`, `batch-tasks`, `orchestrate`, `init-profile`, `iloop`, `blog`, `seo`) are absent from the model's skill list | yes; `commit`, `review` and `delivery` are listed. `init-profile` has been classified adapted, and so listed, since this run; that is not re-measured live |
 | `Skill(skill="loop")` from the model | refused: "can only be triggered by the user (model invocation is disabled)" |
 | `Skill(skill="commit")` from the model | loaded |
 | After #235 is deployed (2026-11-13), asked without tools, the model maps `TodoWrite`, `WebFetch` and `${CLAUDE_SKILL_DIR}` | `TodoList`, `FetchURL`, `${KIMI_SKILL_DIR}`, citing "Clade Skills Written for Claude Code" (the map is in context; following it in a skill run is not measured) |
@@ -356,9 +356,15 @@ builds a view instead:
    Kimi equivalent, used only behind an "if available", optional or fallback
    guard), or **claude-only** (such a primitive used without a guard: Workflow,
    Monitor, `claude -p`, the Claude hook lifecycle). Mentions in front matter,
-   comments or prose comparing the runtimes are not uses. On this tree: 114
-   native, 14 adapted, 6 degraded, 15 claude-only of 149. The scan is static
-   triage, not proof that a skill runs.
+   comments or prose comparing the runtimes are not uses. A SessionStart
+   context injection counts as adapted when the skill attributes it to a hook
+   that `install.sh` wires with `--once-per-session` (today only
+   `session-context.sh`, row 2 above), so `init-profile` is listed. Any other
+   SessionStart injection stays claude-only, and so does `iloop`: its Stop-hook
+   loop needs a continuation per iteration, Kimi allows one per turn, and
+   `iloop-hook.sh` is not wired (row 28). On this tree: 114 native, 15
+   adapted, 6 degraded, 14 claude-only of 149. The scan is static triage, not
+   proof that a skill runs.
 2. `configs/scripts/kimi-skill-view.py` writes `~/.kimi-code/clade-skills/`,
    owned through a `.clade-managed` marker; a directory there without the
    marker is left alone, and so is the config. Every non-claude-only skill,
