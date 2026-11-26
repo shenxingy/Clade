@@ -735,14 +735,20 @@ mkdir -p "$PREFIX_SENTINEL"
 assert_file "$OTHER_SENTINEL" "a parallel session holds its own sentinel"
 # Each id below must release nothing: a dotted id the shadow sanitizer would
 # fold onto session_context_once_02, a traversal that resolves to its sentinel,
-# and a glob character.
+# and two ids that begin with a valid id and only fail the regex at its $
+# anchor, one running into the other session's sentinel name and one passing
+# through the first session's sentinel and back out with "..". Both sentinels
+# are put back after each id, so a release is reported by the id that caused
+# it and does not cascade into the cases after it.
 for HOSTILE in 'session.context_once_02' '../kimi-session-context/session_context_once_02' \
-  'session_context_once_0*'; do
+  'session_context_once_02.session-context' \
+  "$CONTEXT_SID.session-context.sh.once/../session_context_once_02"; do
   run_payload SessionEnd session-end-cleanup.sh \
     "$(tool_payload SessionEnd "$HOSTILE" Bash '{"command":""}')" \
     "SessionEnd for id '$HOSTILE' has no protocol output" ALLOW
   assert_file "$OTHER_SENTINEL" "id '$HOSTILE' cannot release another session's sentinel"
   assert_file "$SENTINEL" "id '$HOSTILE' leaves the first session's sentinel"
+  mkdir -p "$OTHER_SENTINEL" "$SENTINEL"
 done
 # Names the ending id's glob does match, but that are not an empty sentinel
 # directory: a regular file, a directory with contents, and a symlink to an
