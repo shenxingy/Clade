@@ -179,11 +179,15 @@ t_backoff() {
   assert_eq "$?" "0" "no backoff file leaves the hook successful"
   assert_not_contains "$OUT" "sync-push backoff" "no backoff file produces no backoff line"
 
+  # Expected local times are literals under fixed zones, never the hook's own
+  # formula: a rendering bug copied into the test cannot agree with a literal,
+  # and a zone east and one west of UTC tell local time from UTC on a UTC host.
+  # POSIX TZ strings need no tzdata, so every platform renders them alike.
   new_store
   printf '1000 1 unmerged-paths\n' > "$H/.claude/.sync-push-backoff"
   now=1001
-  expected=$(python3 -c 'from datetime import datetime; import sys; print(datetime.fromtimestamp(int(sys.argv[1])).astimezone().strftime("%Y-%m-%d %H:%M:%S %Z"))' 2800)
-  OUT=$(run_health "$H" CLADE_SYNC_PUSH_BACKOFF_NOW="$now" \
+  expected="1970-01-01 00:46:40 UTC"
+  OUT=$(run_health "$H" TZ=UTC CLADE_SYNC_PUSH_BACKOFF_NOW="$now" \
     CLADE_SYNC_PUSH_BACKOFF_BASE_SECONDS=1800 CLADE_SYNC_PUSH_BACKOFF_MAX_SECONDS=86400)
   rc=$?
   assert_eq "$rc" "0" "an active backoff leaves the hook successful"
@@ -197,22 +201,37 @@ t_backoff() {
 
   new_store
   printf '2000 2 conflict-markers\n' > "$H/.claude/.sync-push-backoff"
-  expected=$(python3 -c 'from datetime import datetime; import sys; print(datetime.fromtimestamp(int(sys.argv[1])).astimezone().strftime("%Y-%m-%d %H:%M:%S %Z"))' 5600)
-  OUT=$(run_health "$H" CLADE_SYNC_PUSH_BACKOFF_NOW=2001 \
+  expected="1970-01-01 09:33:20 XYZ"
+  OUT=$(run_health "$H" TZ=XYZ-8 CLADE_SYNC_PUSH_BACKOFF_NOW=2001 \
     CLADE_SYNC_PUSH_BACKOFF_BASE_SECONDS=1800 CLADE_SYNC_PUSH_BACKOFF_MAX_SECONDS=86400)
   assert_contains "$OUT" "reason=conflict-markers consecutive-failures=2" "the second failure keeps its reason and count"
-  assert_contains "$OUT" "pushes paused until $expected" "count two pauses for a doubled 3600-second window"
+  assert_contains "$OUT" "pushes paused until $expected" "count two pauses for a doubled 3600-second window, in a zone east of UTC"
   assert_contains "$OUT" "resolve conflict-markers in $STORE" "the conflict-marker hint names the store to repair"
 
   new_store
   printf '3000 7 push-failed\n' > "$H/.claude/.sync-push-backoff"
-  expected=$(python3 -c 'from datetime import datetime; import sys; print(datetime.fromtimestamp(int(sys.argv[1])).astimezone().strftime("%Y-%m-%d %H:%M:%S %Z"))' 89400)
-  OUT=$(run_health "$H" CLADE_SYNC_PUSH_BACKOFF_NOW=3001 \
+  expected="1970-01-01 19:50:00 ABC"
+  OUT=$(run_health "$H" TZ=ABC+5 CLADE_SYNC_PUSH_BACKOFF_NOW=3001 \
     CLADE_SYNC_PUSH_BACKOFF_BASE_SECONDS=1800 CLADE_SYNC_PUSH_BACKOFF_MAX_SECONDS=86400)
   assert_contains "$OUT" "reason=push-failed consecutive-failures=7" "the capped line retains the full consecutive-failure count"
-  assert_contains "$OUT" "pushes paused until $expected" "count seven uses the 86400-second cap, not 115200 seconds"
+  assert_contains "$OUT" "pushes paused until $expected" "count seven uses the 86400-second cap, not 115200 seconds, in a zone west of UTC"
   assert_contains "$OUT" "run ~/.claude/scripts/sync-push.sh by hand" "other failure reasons still get the manual recovery hint"
   assert_contains "$OUT" "inspect $H/.claude/.sync-conflicts.log and $STORE" "the generic hint names the real conflict log and store paths"
+
+  # A leading zero is decimal. Octal arithmetic rejected 0800 mid-parse, so a
+  # valid paused state was reported as an unreadable file, with a bash error on
+  # stderr. The unmerged store checks that the rest of the hook still runs.
+  new_store
+  make_unmerged "$STORE" leading-zero.txt
+  printf '0800 01 conflict-markers\n' > "$H/.claude/.sync-push-backoff"
+  OUT=$(run_health "$H" TZ=UTC CLADE_SYNC_PUSH_BACKOFF_NOW=801 \
+    CLADE_SYNC_PUSH_BACKOFF_BASE_SECONDS=1800 CLADE_SYNC_PUSH_BACKOFF_MAX_SECONDS=86400)
+  rc=$?
+  assert_eq "$rc" "0" "a leading-zero backoff timestamp leaves the hook successful"
+  assert_contains "$OUT" "reason=conflict-markers consecutive-failures=1;" "a leading-zero count is printed in decimal"
+  assert_contains "$OUT" "pushes paused until 1970-01-01 00:43:20 UTC" "0800 is 800 seconds, so the window ends at 2600"
+  assert_contains "$OUT" "1 unmerged paths" "a leading-zero backoff state cannot hide the later store checks"
+  assert_empty "$(cat "$H/.claude/stderr")" "a leading-zero backoff state writes nothing to stderr"
 
   new_store
   printf '1000 1 push-failed\n' > "$H/.claude/.sync-push-backoff"
@@ -767,6 +786,11 @@ fi' 'sync_push_backoff_active || true'
     '  expired)' '  not-expired)'
   mutation red "the unreadable-backoff notice" backoff \
     '  unreadable)' '  not-unreadable)'
+  # Green against the old test on a UTC host: it computed the expected string
+  # with this same formula in the host's zone, where local time is UTC.
+  mutation red "rendering the until-time in local time, not UTC" backoff \
+    'print(datetime.fromtimestamp(int(sys.argv[1])).astimezone()' \
+    'print(datetime.fromtimestamp(int(sys.argv[1]), __import__("datetime").timezone.utc)'
   mutation red "the BSD local-time fallback" backoff \
     "    date -r \"\$1\" '+%Y-%m-%d %H:%M:%S %Z' 2>/dev/null ||" \
     "    false ||"
