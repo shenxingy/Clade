@@ -246,7 +246,7 @@ ci_local_flaky_mutations() {
                 break
             continue'
   mutation red "a failure after a rerun reporting the rerun's output" \
-    'rc, again, tail, timed_out = _attempt(' 'rc, again, _, timed_out = _attempt('
+    'rc, again, out, timed_out = runner.attempt(' 'rc, again, _, timed_out = runner.attempt('
   mutation red "a failure after a rerun naming the first exit code" \
     'again = (f" on rerun (first attempt exit {step.first_exit})"' 'again = (""'
   mutation red "a flaky step keeping its first attempt's output" \

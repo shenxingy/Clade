@@ -44,10 +44,16 @@ caller's in any spelling, with its bins first on `PATH`), so
 writers. Four things still change this machine's npm state: a prefix the
 workflow names itself, which wins as on a runner; `sudo npm install -g`, since
 sudo resets the environment; `npm config set prefix`, which writes
-`~/.npmrc` (the job's prefix still outranks it); and a step that uses nvm (it
-sources `nvm.sh` or runs `nvm`), because nvm refuses `NPM_CONFIG_PREFIX` and
-the step would exit 11. That step runs without the prefix, and its output
-names it. Runner labels
+`~/.npmrc` (the job's prefix still outranks it); and a step that uses nvm.
+nvm refuses `NPM_CONFIG_PREFIX` and deactivates itself, so the step would exit
+11, or, in a script without `-e`, pass on another node. A step whose text shows
+nvm (it sources `nvm.sh` or runs `nvm`) runs without the prefix from the start.
+One whose output shows nvm's refusal of the job's prefix (a script it runs
+loads nvm, or an `eval`) runs once more without it, and that attempt is its
+result; this is not a flake rerun, so `--no-rerun` leaves it on, but a step
+that timed out is not run again. Either way its output names it, and `--json` lists it under
+`no_npm_prefix`. Not caught: a step that hides nvm's stderr and has no `-e`; it
+runs on whatever node is left. Runner labels
 compare case-insensitively, so `[self-hosted, macOS]` or an `ARM64` label is a
 platform skip on another machine, and a workflow whose push trigger filters on
 `tags:` alone is a tag tier, skipped with its reason on a head that carries no

@@ -83,7 +83,12 @@ host's global packages, and two gates at once do not race there; npm's cache
 stays shared. Four things still change this host's npm state: a prefix the
 workflow names itself, `sudo npm install -g` (sudo resets the environment),
 `npm config set prefix` (it writes ~/.npmrc), and a step that uses nvm, which
-refuses the variable: that step runs without it, and its output says so.
+refuses the variable. Such a step runs without it: from the start when its
+text shows nvm, and once more when its output shows nvm's refusal of the job's
+prefix. That is not a flake rerun, so --no-rerun leaves it on, but a step that
+timed out is not run again. Its output says so, and the JSON lists each such
+step under `no_npm_prefix`. Not caught: a step that hides nvm's stderr and has
+no -e; it runs on whatever node is left.
 
 Exit 1 when a job that ran failed. Otherwise any unproven lane makes the
 summary read PARTIAL, a step that passed only on rerun makes it read FLAKY,
@@ -119,8 +124,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 # What a runner gives a job beyond the workflow text (runner labels, tag-only
-# push tiers, the files every step gets) lives in ci_local_runner.py beside
-# this file, which sits at the 1500-line cap. No bytecode is written there.
+# push tiers, the files every step gets, an npm prefix, the shell a step runs
+# in) lives in ci_local_runner.py beside this file, which sits near the
+# 1500-line cap. No bytecode is written there.
 sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import ci_local_runner as runner  # noqa: E402
@@ -903,6 +909,8 @@ class StepResult:
     # attempt. On a flaky step that output is the only evidence of the flake.
     first_exit: int | None = None
     first_output_tail: str = ""
+    # Why it ran without the job's npm prefix (it uses nvm); "" when it had it.
+    npm_note: str = ""
 
 
 @dataclass
@@ -956,33 +964,6 @@ def _host_load() -> tuple[float | None, int | None]:
     except (AttributeError, OSError):
         load1 = None
     return load1, os.cpu_count()
-
-
-def _attempt(script: str, cwd: Path, env: dict[str, str], timeout: int,
-             tail_lines: int) -> tuple[int, float, str, bool]:
-    """Run one step once: (exit code, seconds, output tail, timed out). A
-    timeout reports exit 124, like coreutils `timeout`; only the flag tells
-    it apart from a step that exits 124 itself."""
-    t0 = time.time()
-    try:
-        proc = subprocess.run(
-            ["bash", "-eo", "pipefail", "-c", script],
-            cwd=cwd, env=env, capture_output=True, text=True,
-            # A hosted runner gives a step no interactive stdin. Inheriting
-            # the terminal's instead means one `read` anywhere in a suite
-            # hangs the whole run with no output and no clue why — measured
-            # at 13 minutes and 9% CPU before this was added.
-            stdin=subprocess.DEVNULL,
-            timeout=timeout,
-        )
-    except subprocess.TimeoutExpired as exc:
-        # text=True is not applied to the partial output a timeout carries.
-        parts = [p.decode("utf-8", "replace") if isinstance(p, bytes) else (p or "")
-                 for p in (exc.stdout, exc.stderr)]
-        return 124, time.time() - t0, "\n".join("".join(parts).splitlines()[-tail_lines:]), True
-    combined = (proc.stdout or "") + (proc.stderr or "")
-    return (proc.returncode, time.time() - t0,
-            "\n".join(combined.splitlines()[-tail_lines:]), False)
 
 
 def run_job(job: Job, repo: Path, tail_lines: int, echo: bool, timeout: int,
@@ -1041,9 +1022,8 @@ def run_job(job: Job, repo: Path, tail_lines: int, echo: bool, timeout: int,
         # or the step uses nvm, which refuses one: its output then says so.
         why = runner.isolate_npm_global(env, files.npm_prefix, [
             *files.env, *(k for k, v in step.env.items() if not _EXPR.search(v))], step.run)
-        note = f'ci-local: step "{step.display}" {why}' if why else ""
-        if note and echo:
-            print(f"    {note}")
+        if why and echo:
+            print(f'    ci-local: step "{step.display}" {why}')
         if extra_path:
             env["PATH"] = extra_path + os.pathsep + env.get("PATH", "")
             env["VIRTUAL_ENV"] = str(Path(extra_path).parent)
@@ -1055,9 +1035,24 @@ def run_job(job: Job, repo: Path, tail_lines: int, echo: bool, timeout: int,
 
         if echo:
             print(f"    · {step.display} … ", end="", flush=True)
-        rc, elapsed, tail, timed_out = _attempt(step.run, cwd, {**env, **files.begin_step()},
-                                                timeout, tail_lines)
-        tail = "\n".join(filter(None, [note, tail]))
+        rc, elapsed, out, timed_out = runner.attempt(step.run, cwd, {**env, **files.begin_step()},
+                                                     timeout)
+        # nvm, loaded where the step's text does not show it (a script, an
+        # eval), refused the job's prefix and deactivated itself: the attempt
+        # failed, or passed on another node. Its result is discarded and the
+        # step runs once more without the prefix. Not after a timeout, like
+        # the rerun below, and not a rerun: --no-rerun leaves it alone.
+        if not timed_out and runner.nvm_refused(out, files.npm_prefix):
+            env.pop("NPM_CONFIG_PREFIX", None)
+            why = runner.NVM_REFUSED.format(rc)
+            if echo:
+                print(f"nvm refused the job's npm prefix (exit {rc}), running it again "
+                      "without it … ", end="", flush=True)
+            rc, redo, out, timed_out = runner.attempt(step.run, cwd, {**env, **files.begin_step()},
+                                                      timeout)
+            elapsed += redo
+        note = f'ci-local: step "{step.display}" {why}' if why else ""
+        tail = runner.step_tail(note, out, tail_lines)
         first_exit: int | None = None
         first_tail = ""
         # One rerun of a failed step, same command, env and cwd: green the
@@ -1068,9 +1063,9 @@ def run_job(job: Job, repo: Path, tail_lines: int, echo: bool, timeout: int,
             if echo:
                 print(f"FAILED ({elapsed:.0f}s, exit {rc}), rerunning once … ", end="", flush=True)
             first_exit, first_tail = rc, tail
-            rc, again, tail, timed_out = _attempt(step.run, cwd, {**env, **files.begin_step()},
-                                                  timeout, tail_lines)
-            tail = "\n".join(filter(None, [note, tail]))
+            rc, again, out, timed_out = runner.attempt(step.run, cwd, {**env, **files.begin_step()},
+                                                       timeout)
+            tail = runner.step_tail(note, out, tail_lines)
             elapsed += again
         # A $GITHUB_ENV the runner cannot read fails the step that wrote it.
         bad_files = files.end_step() if rc == 0 and not timed_out else ""
@@ -1086,7 +1081,7 @@ def run_job(job: Job, repo: Path, tail_lines: int, echo: bool, timeout: int,
                     reason="; ".join(filter(None, [f"exceeded the {timeout}s step timeout "
                                                    "(--timeout N raises it)",
                                                    plan.reason])),
-                    command=step.run, output_tail=tail, first_exit=first_exit,
+                    command=step.run, output_tail=tail, first_exit=first_exit, npm_note=why,
                 )
             )
             result.status = "fail"
@@ -1099,7 +1094,7 @@ def run_job(job: Job, repo: Path, tail_lines: int, echo: bool, timeout: int,
             result.steps.append(
                 StepResult(step.display, "flaky" if flaky else "pass", elapsed,
                            command=step.run, reason=plan.reason, unproven=plan.unproven,
-                           first_exit=first_exit, first_output_tail=first_tail)
+                           first_exit=first_exit, first_output_tail=first_tail, npm_note=why)
             )
             # A flaky step does not end its job: the steps after it run, as after a pass.
             continue
@@ -1114,7 +1109,7 @@ def run_job(job: Job, repo: Path, tail_lines: int, echo: bool, timeout: int,
                 reason="; ".join(filter(None, [plan.reason, bad_files])),
                 command=step.run,
                 # After a rerun, the rerun's output: that is the failure reported.
-                output_tail=tail, first_exit=first_exit,
+                output_tail=tail, first_exit=first_exit, npm_note=why,
             )
         )
         result.status = "fail"
@@ -1389,6 +1384,10 @@ def main() -> int:
                      "first_exit": s.first_exit, "first_output_tail": s.first_output_tail}
                     for r, s in flaky
                 ],
+                # Steps that ran without the job's npm prefix: they use nvm.
+                "no_npm_prefix": [{"job": r.job.display, "workflow": r.job.workflow,
+                                   "step": s.name, "why": s.npm_note}
+                                  for r in ran for s in r.steps if s.npm_note],
                 "failed": [
                     {
                         "job": r.job.display,

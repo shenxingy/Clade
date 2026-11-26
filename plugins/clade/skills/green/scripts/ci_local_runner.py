@@ -1,9 +1,9 @@
 """
 ci_local_runner.py — what a GitHub runner gives a job that the workflow text
-does not spell out. Imported by ci-local.py, which sits at this repository's
+does not spell out. Imported by ci-local.py, which sits near this repository's
 1500-line cap; installed and bundled beside it.
 
-Four things. The first three were found by running ci-local.py against real
+Five things. The first three were found by running ci-local.py against real
 repositories that moved their CI to owned hardware (scamai, 2026-11-21):
 
 1. **Which machine a `runs-on:` can land on.** GitHub matches runner labels
@@ -28,6 +28,10 @@ repositories that moved their CI to owned hardware (scamai, 2026-11-21):
    into the developer's (2026-11-17, the first gate of #251): two gates at
    once raced there and one failed with npm `ENOTEMPTY`, and a gate replaced
    the user's own installed CLI. A step that uses nvm is the exception (4).
+5. **The shell a step runs in.** `bash -eo pipefail -c`, with no stdin and a
+   timeout, all its output kept: the tail is what a report shows, and nvm's
+   refusal of the prefix (4) can sit anywhere in it. Moved here from
+   ci-local.py, at its line cap, on 2026-11-25.
 
 Stdlib only, like ci-local.py.
 """
@@ -38,6 +42,7 @@ import os
 import re
 import subprocess
 import tempfile
+import time
 from pathlib import Path
 
 # ─── YAML fragments ──────────────────────────────────────────────────────────
@@ -345,25 +350,44 @@ class JobFiles:
 # itself (as on a runner, it wins); `sudo npm install -g`, since sudo resets
 # the environment; `npm config set prefix`, which writes ~/.npmrc; and a step
 # that uses nvm. nvm refuses NPM_CONFIG_PREFIX in any spelling outside
-# $NVM_DIR (nvm_die_on_prefix): `nvm use` returns 11, and sourcing nvm.sh
-# with a default alias set fails the step under `bash -e`, where it passes on
-# main and on a runner (found in review, 2026-11-25). Such a step gets no
-# prefix variable, and its output says so. It is read from the step's own text,
-# comments dropped: `nvm.sh` by any path, or `nvm` where a command starts, so
-# `$HOME/.nvm/bin`, `NVM_DIR` or a variable named nvm_x leave a step isolated.
-# A miss fails the step with exit 11, which names the variable; a false match
-# costs that one step its isolation, and its note names it.
+# $NVM_DIR (nvm_die_on_prefix) and deactivates itself: `nvm use` returns 11,
+# so sourcing nvm.sh with a default alias fails a step under `bash -e`, and a
+# script without -e goes on with another node and passes, where main and a
+# runner use nvm's (both found in review, 2026-11-25). Such a step gets no
+# prefix variable, and its output and the JSON say so. It is found two ways.
+# First from its own text, comments dropped: `nvm.sh` by any path, or `nvm`
+# where a command starts, so `$HOME/.nvm/bin`, `NVM_DIR` or a variable named
+# nvm_x leave a step isolated; a false match costs that one step its
+# isolation. Then from nvm's own refusal in its output, which names the job's
+# prefix: nvm was loaded where the text does not show it (a script the step
+# runs, an eval), so that attempt is discarded, failed or passed, and the step
+# runs again without the variable. Not found: a step that hides nvm's stderr
+# (`2>/dev/null`) and has no -e. It runs on whatever node is left, and passes
+# or fails on it.
 _SH_COMMENT = re.compile(r"(^|\s)#.*$", re.M)
 _NVM_USE = re.compile(
     r"nvm\.sh|(?:^|[;&|(`{!]|\b(?:then|do|else|elif|if|while|until|time|command)\s)\s*nvm(?![\w./=-])",
     re.M)
 NVM_NOTE = ("runs without the job's npm prefix: it uses nvm, which refuses NPM_CONFIG_PREFIX, "
             "so its global installs go wherever nvm puts them, on this host")
+NVM_REFUSED = ("ran again without the job's npm prefix: nvm refused NPM_CONFIG_PREFIX in its "
+               "output (exit {}), so its global installs go wherever nvm puts them, on this host")
 
 
 def uses_nvm(script: str) -> bool:
     """Whether a step's run text sources nvm.sh or runs `nvm`, comments aside."""
     return bool(_NVM_USE.search(_SH_COMMENT.sub(r"\1", script)))
+
+
+def nvm_refused(output: str, prefix: Path) -> bool:
+    """Whether a step's `output` holds nvm's refusal of the job's `prefix`.
+    nvm_die_on_prefix names the variable it found and its value, and the
+    job's is NPM_CONFIG_PREFIX, the one spelling isolate_npm_global leaves.
+    Only the job's own value counts: a prefix the workflow names, or one the
+    step's own script exports, is refused on a runner too."""
+    said = ('nvm is not compatible with the "NPM_CONFIG_PREFIX" environment variable: '
+            f'currently set to "{prefix}"')
+    return said in output
 
 
 def isolate_npm_global(env: dict[str, str], prefix: Path, workflow_keys: list[str],
@@ -393,3 +417,34 @@ def isolate_npm_global(env: dict[str, str], prefix: Path, workflow_keys: list[st
     # the rest is exec's default, os.defpath: the prefix alone has no bash.
     env["PATH"] = os.pathsep.join([str(prefix / "bin"), str(prefix), env.get("PATH") or os.defpath])
     return why
+
+
+# ─── 5. The shell a step runs in ─────────────────────────────────────────────
+def attempt(script: str, cwd: Path, env: dict[str, str],
+            timeout: int) -> tuple[int, float, str, bool]:
+    """Run one step once: (exit code, seconds, all its output, timed out). A
+    timeout reports exit 124, like coreutils `timeout`; only the flag tells
+    it apart from a step that exits 124 itself."""
+    t0 = time.time()
+    try:
+        proc = subprocess.run(
+            ["bash", "-eo", "pipefail", "-c", script],
+            cwd=cwd, env=env, capture_output=True, text=True,
+            # A hosted runner gives a step no interactive stdin. Inheriting
+            # the terminal's instead means one `read` anywhere in a suite
+            # hangs the whole run with no output and no clue why — measured
+            # at 13 minutes and 9% CPU before this was added.
+            stdin=subprocess.DEVNULL,
+            timeout=timeout,
+        )
+    except subprocess.TimeoutExpired as exc:
+        # text=True is not applied to the partial output a timeout carries.
+        parts = [p.decode("utf-8", "replace") if isinstance(p, bytes) else (p or "")
+                 for p in (exc.stdout, exc.stderr)]
+        return 124, time.time() - t0, "".join(parts), True
+    return proc.returncode, time.time() - t0, (proc.stdout or "") + (proc.stderr or ""), False
+
+
+def step_tail(note: str, output: str, lines: int) -> str:
+    """A step's last `lines` lines of output, under its npm note if it has one."""
+    return "\n".join(filter(None, [note, "\n".join(output.splitlines()[-lines:])]))
