@@ -23,7 +23,7 @@ needs_work_items:
   - "context-policy.json verified_through_cc_version is still 2.1.283; the trigger formula and precedence were not re-read in the 2.1.331 binary"
 reference_items:
   - "Watch: a guardian timeout now refuses the call. At the old 5 s limit that was 7 of the 283 Bash calls of one Workflow run whose builds starved its cgroup scope, and 0 of the 858 other Bash calls on the host in the same 15 minutes (2026-11-26 19:04-19:19Z); the limit is now 15 s"
-  - "Not run live: no Claude Code session was started to watch onFailure block a call; the evidence is the official hooks reference, the 2.1.295 changelog line and the 2.1.331 binary's strings"
+  - "Run live once on 2.1.331 (aries, 2026-11-26): a PreToolUse Bash hook that sleeps 4 s under a 1 s timeout blocked `touch marker` with onFailure block (no file, message `timed out; blocking because onFailure is \"block\"`), and without the key the same command ran"
 ---
 
 # Claude Code 2.1.331: the re-checks queued for the upgrade
@@ -150,6 +150,15 @@ other than 0 or 2, a timeout, and output that does not parse or fails schema
 validation. It has no effect on Stop, SubagentStop, TaskCompleted, TeammateIdle,
 or `async`/`asyncRewake` hooks. The 2.1.331 binary carries the runtime message
 `blocking because onFailure is "block"`.
+
+**Run live once**, on aries with 2.1.331 (2026-11-26, `claude -p` with
+`--settings` adding one PreToolUse Bash hook that sleeps 4 s under a `timeout`
+of 1). Asked to run `touch marker-block`, the session was refused with
+`PreToolUse:Bash hook error: [...slow.sh]: timed out; blocking because
+onFailure is "block"`, and no file was made. The same settings without
+`onFailure` let `touch marker-none` run, and the file was made. One run of each,
+so it shows the field is honoured on a timeout, not that every failure class
+listed above blocks.
 
 **Why it matters on this host.** On 2.1.331 the guardian still failed open, and
 every timeout came from one Workflow run. In the 15 minutes from 2026-11-26
