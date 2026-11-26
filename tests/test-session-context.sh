@@ -463,12 +463,14 @@ assert_line "$OUT" "Next TODO: Old style title" \
 # A column-0 `#` inside a fence was read as a heading, so a shell comment in a
 # code sample ended an owner section and its items became eligible. Each spec is
 # open|inner|close; the inner line must not close the fence (another fence
-# character, a shorter run, or a run with an info string after it).
+# character, a shorter run, a run with an info string after it, or a run indented
+# four columns, which outside a list item is an indented code line).
 for spec in \
   '```bash||```' \
   '~~~|```|~~~' \
   '````markdown|```|````' \
-  '```|```bash|```'
+  '```|```bash|```' \
+  '```markdown|    ```|```'
 do
   IFS='|' read -r f_open f_inner f_close <<< "$spec"
   {
@@ -571,6 +573,20 @@ OUT=$(todo_ctx)
 assert_line "$OUT" "Next TODO: 🔴 Add an owner field to the manifest" \
   "an owner phrase inside the item's own fence is code, not an owner marker"
 
+cat > "$TODO_PROJ/TODO.md" <<'EOF'
+- [ ] 🔴 **Add an owner field to each step**
+  - [ ] Write the manifest
+    ```yaml
+    owner: alice
+    ```
+- [ ] 🟠 Orange item
+EOF
+OUT=$(todo_ctx)
+# Control: passes on HEAD too; it pins that inside a list item (here a nested one)
+# a fence indented four columns is still a fence, not an indented code line.
+assert_line "$OUT" "Next TODO: 🔴 Add an owner field to each step" \
+  "a nested item's fence indented four columns is code, not an owner marker"
+
 # A fence opened inside a list item ends when the item does, at the next column-0
 # line (CommonMark; markdown-it agrees on every fixture below). Kept open, one
 # unclosed sample hid every later item and heading until EOF.
@@ -613,6 +629,19 @@ OUT=$(todo_ctx)
 # The column-0 run ends the item, so it opens a top-level fence, not closes this one.
 assert_line "$OUT" "Next TODO: - [ ] 🟡 Yellow item" \
   "a column-0 fence run after an item's fence ends the item and opens a new fence"
+
+# Once the item has ended, a run indented four columns (four spaces or a tab) is
+# an indented code line, not a fence: it opens nothing that could hide the rest.
+fence_run='```'
+for indent in '    ' $'\t'; do
+  label='four spaces'; [[ "$indent" == $'\t' ]] && label='a tab'
+  printf '%s\n' '- [ ] 🟡 Yellow item with an indented sample' "$indent${fence_run}bash" \
+    '# a column-0 comment ends the item and its fence' "$indent$fence_run" \
+    '- [ ] 🔴 Red item after an indented code line' > "$TODO_PROJ/TODO.md"
+  OUT=$(todo_ctx)
+  assert_line "$OUT" "Next TODO: - [ ] 🔴 Red item after an indented code line" \
+    "a fence run indented by $label in no list item opens no fence"
+done
 
 cat > "$TODO_PROJ/TODO.md" <<'EOF'
 ## Needs the owner

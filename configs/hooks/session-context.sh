@@ -195,7 +195,8 @@ fi
 # long) are code: a `#` or `- [ ]` inside one is neither a heading nor an item.
 # A fence opened inside any list item ends with that item, at the next column-0
 # line, as in CommonMark, so an unclosed sample in one item cannot hide the items
-# after it. A top-level fence (in no list item) runs to its closer or EOF.
+# after it. A top-level fence (in no list item) runs to its closer or EOF, and
+# there a run indented four columns or more opens or closes nothing.
 # Each list is written once; the tiers and the title trim both read the markers.
 TODO_PRIORITY_MARKERS='🔴 🟠 🟡 🔵'   # highest first, space-separated
 TODO_OWNER_PHRASES='needs the owner|owner decision|owner:'   # lowercase ERE
@@ -221,6 +222,7 @@ NEXT_TODO=$(awk -v markers="$TODO_PRIORITY_MARKERS" -v owner_re="$TODO_OWNER_PHR
       match(rest, /^(`+|~+)/)
       run = substr(rest, 1, RLENGTH)
       rest = substr(rest, RLENGTH + 1)
+      if (!in_list && $0 ~ /^(    | *\t)/) run = ""   # 4+ columns in no list item: indented code
     }
     top = ($0 ~ /^[^[:space:]]/)
     if (fence != "") {
