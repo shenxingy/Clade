@@ -1138,7 +1138,7 @@ kimi_uninstalled() {  # kimi_uninstalled HOME CONFIG — empty when only Clade's
 
 # Each probe is also an oracle for the mutation controls below.
 probe_kimi_uninstall() {
-  local script="$1" probe="$2" d rc errors="" config
+  local script="$1" probe="$2" d rc errors="" config leftover
   d=$(mktemp -d "$TMP_ROOT/probe-uninstall.XXXXXX") || return 1
   seed_kimi_home "$d"
   config="$d/.kimi-code/config.toml"
@@ -1195,8 +1195,28 @@ probe_kimi_uninstall() {
       grep -qF 'WARNING: Kimi hooks unchanged (cannot create a temporary file' "$d/log" || errors="$errors; no warning line"
       grep -qF 'Uninstall complete.' "$d/log" || errors="$errors; uninstall stopped before its end"
       ;;
+    readonly-file)
+      # The edited copy cannot be written back: the uninstall must say so,
+      # keep the adapter config.toml still runs and carry on to its end.
+      chmod 400 "$config"
+      cp "$config" "$d/before"
+      uninstall_home "$d" "$d/log" "$script"
+      rc=$?
+      chmod 640 "$config"
+      cmp -s "$config" "$d/before" || errors="a read-only config.toml changed"
+      [[ -f "$d/.kimi-code/hooks/decision-to-kimi.sh" ]] || errors="$errors; the adapter was deleted while config.toml still runs it"
+      grep -qF 'WARNING: Kimi hooks unchanged (cannot write' "$d/log" || errors="$errors; no warning line"
+      grep -qF 'Uninstall complete.' "$d/log" || errors="$errors; uninstall stopped before its end"
+      ;;
     *) errors="unknown uninstall probe" ;;
   esac
+  # Every probe: the candidate is a full copy of config.toml, provider keys
+  # included, so none may outlive the uninstall.
+  for leftover in "$d/.kimi-code/.config.toml."*; do
+    [[ -e "$leftover" ]] || continue
+    errors="$errors; a temporary copy of config.toml was left in ~/.kimi-code"
+    break
+  done
   [[ "${rc:-1}" == 0 ]] || errors="uninstall exited ${rc:-?} $errors"
   rm -rf "$d"
   [[ -z "$errors" ]] || { printf '%s\n' "$errors"; return 1; }
@@ -1218,11 +1238,19 @@ uninstall_home "$UN_T" "$TMP_ROOT/un-uninstall-2.log"
 UN_RC=$?
 cmp -s "$UN_CONFIG" "$TMP_ROOT/un-after.toml"
 assert_eq "$UN_RC|$?" "0|0" "a second uninstall leaves config.toml byte-identical"
-UN_PROBES="roundtrip no-python symlink untouched multiline unparseable readonly-dir"
+UN_PROBES="roundtrip no-python symlink untouched"
+if python3 -c 'import tomllib' >/dev/null 2>&1; then
+  UN_PROBES="$UN_PROBES multiline unparseable"
+else
+  # Without tomllib the uninstaller has no parse check, so it makes the line
+  # edit; these probes, and the mutations they judge, would fail either way.
+  printf '  - uninstall probes multiline, unparseable and their mutations (tomllib unavailable; not run)\n'
+fi
 if [[ "$(id -u)" == 0 ]]; then
-  # root writes into a mode-555 directory, so the probe cannot fail there.
-  UN_PROBES="${UN_PROBES% readonly-dir}"
-  printf '  SKIPPED (running as root): uninstall probe readonly-dir and its mutation\n'
+  # root writes through mode 555 and 400, so these probes cannot fail there.
+  printf '  SKIPPED (running as root): uninstall probes readonly-dir, readonly-file and their mutations\n'
+else
+  UN_PROBES="$UN_PROBES readonly-dir readonly-file"
 fi
 for probe in $UN_PROBES; do
   assert_probe probe_kimi_uninstall "$UNINSTALL_SH" "$probe" "uninstall probe: $probe"
@@ -1258,6 +1286,9 @@ UNINSTALL_MUTATIONS=(
   $'keep-link\tcat "$_kimi_candidate" > "$KIMI_CONFIG"\tmv "$_kimi_candidate" "$KIMI_CONFIG"\tsymlink'
   $'adapter-kept\tif [[ -f "$KIMI_CONFIG" ]] && grep -qF \'hooks/decision-to-kimi.sh\' "$KIMI_CONFIG"; then\tif false; then\tunparseable'
   $'temp-guard\tif ! _kimi_candidate=$(mktemp "$KIMI_DIR/.config.toml.XXXXXX" 2>/dev/null); then\t_kimi_candidate=$(mktemp "$KIMI_DIR/.config.toml.XXXXXX"); if false; then\treadonly-dir'
+  $'write-guard\tif { cat "$_kimi_candidate" > "$KIMI_CONFIG"; } 2>/dev/null; then\tcat "$_kimi_candidate" > "$KIMI_CONFIG"; if true; then\treadonly-file'
+  $'adapter-kept-readonly\tif [[ -f "$KIMI_CONFIG" ]] && grep -qF \'hooks/decision-to-kimi.sh\' "$KIMI_CONFIG"; then\tif false; then\treadonly-file'
+  $'temp-cleanup\t[[ -z "$_kimi_candidate" ]] || rm -f "$_kimi_candidate"\t:\troundtrip'
 )
 for mutation in "${UNINSTALL_MUTATIONS[@]}"; do
   IFS=$'\t' read -r name old new probe <<< "$mutation"

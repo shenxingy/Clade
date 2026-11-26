@@ -274,8 +274,9 @@ KIMI_CONFIG="$KIMI_DIR/config.toml"
 KIMI_ADAPTER="$KIMI_DIR/hooks/decision-to-kimi.sh"
 if [[ -f "$KIMI_CONFIG" ]] && grep -qF "\"$KIMI_ADAPTER " "$KIMI_CONFIG"; then
   echo "Unwiring Kimi hooks..."
-  # Guarded, not bare: under `set -e` a failed mktemp or awk would end the
-  # whole uninstall here, with the shell aliases below still in place.
+  # Guarded, not bare: under `set -e` a failed mktemp, awk or write-back
+  # would end the whole uninstall here, with the shell aliases below still in
+  # place and the candidate, a full copy of config.toml, left beside it.
   _kimi_problem=""
   _kimi_removed=0
   if ! _kimi_candidate=$(mktemp "$KIMI_DIR/.config.toml.XXXXXX" 2>/dev/null); then
@@ -349,8 +350,11 @@ PY
   if [[ -n "$_kimi_problem" ]]; then
     echo "  WARNING: Kimi hooks unchanged ($_kimi_problem)"
   elif [[ "$_kimi_removed" -gt 0 ]]; then
-    cat "$_kimi_candidate" > "$KIMI_CONFIG"
-    echo "  Kimi hooks: $_kimi_removed removed from $KIMI_CONFIG"
+    if { cat "$_kimi_candidate" > "$KIMI_CONFIG"; } 2>/dev/null; then
+      echo "  Kimi hooks: $_kimi_removed removed from $KIMI_CONFIG"
+    else
+      echo "  WARNING: Kimi hooks unchanged (cannot write $KIMI_CONFIG)"
+    fi
   fi
   [[ -z "$_kimi_candidate" ]] || rm -f "$_kimi_candidate"
   unset _kimi_candidate _kimi_removed _kimi_problem

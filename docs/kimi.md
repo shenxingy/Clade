@@ -160,9 +160,12 @@ header through its last key line, plus the one blank line install.sh wrote
 before it. Comments, blank lines and tables after it stay, so on a config where
 install.sh appended nothing else, install then uninstall gives back the same
 bytes. Where `tomllib` exists the result must parse to the original minus
-exactly those entries, or the file is left alone with a warning; the file keeps
-its mode, and a symlink stays a symlink. An entry the user wrote that runs
-Clade's adapter is removed with the rest, since the two cannot be told apart.
+exactly those entries, or the file is left alone with a warning, as it is when
+the edited copy cannot be written back (a read-only `config.toml`); the
+uninstall then carries on, and the adapter stays while the file names it. The
+file keeps its mode, and a symlink stays a symlink. An entry the user wrote
+that runs Clade's adapter is removed with the rest, since the two cannot be
+told apart.
 `decision-to-kimi.sh` is deleted once `config.toml` no longer names it;
 `statusline.sh` stays, because `tui.toml` may still run it. The agents, the
 `AGENTS.md` block, the skill view and the other `config.toml` settings
