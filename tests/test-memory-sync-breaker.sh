@@ -103,16 +103,43 @@ run_push() {
   PUSH_RC=$?
 }
 
+# poll TRIES CMD... — run CMD every 0.05 s until it succeeds, at most TRIES times.
+# The bound turns a hung background job into a failed case instead of a hang.
+poll() {
+  local tries="$1" i; shift
+  for i in $(seq 1 "$tries"); do
+    "$@" && return 0
+    sleep 0.05
+  done
+  return 1
+}
+
+# The hook detaches sync-push and exits, so its exit says nothing about the
+# push. Every process it starts inherits fd 7, the write end of a pipe; the
+# reader marks hook.done at EOF, i.e. once the hook AND everything it detached
+# have exited. Waiting on that event replaced a fixed 0.3 s sleep, which a slow
+# push outlasts: a "spawned nothing" check then passed with the spawn still due.
+# Empty HOOK_BASE/HOOK_MAX/now pass empty overrides, so the hook's defaults apply.
 run_hook() {
   local now="$1" input="$2"
-  printf '%s' "$input" | HOME="$H" \
-    CLADE_SYNC_PUSH_LOCK="$H/.claude/push.lock" \
-    CLADE_SYNC_PUSH_BACKOFF_FILE="${HOOK_BACKOFF_FILE:-}" \
-    CLADE_SYNC_PUSH_BACKOFF_NOW="$now" \
-    CLADE_SYNC_PUSH_BACKOFF_BASE_SECONDS="${HOOK_BASE:-60}" \
-    CLADE_SYNC_PUSH_BACKOFF_MAX_SECONDS="${HOOK_MAX:-240}" \
-    bash "$HOOK" > "$H/hook.out" 2> "$H/hook.err"
-  HOOK_RC=$?
+  rm -f "$H/hook.rc" "$H/hook.done"
+  {
+    printf '%s' "$input" | HOME="$H" \
+      CLADE_SYNC_PUSH_LOCK="$H/.claude/push.lock" \
+      CLADE_SYNC_PUSH_BACKOFF_FILE="${HOOK_BACKOFF_FILE:-}" \
+      CLADE_SYNC_PUSH_BACKOFF_NOW="$now" \
+      CLADE_SYNC_PUSH_BACKOFF_BASE_SECONDS="${HOOK_BASE-60}" \
+      CLADE_SYNC_PUSH_BACKOFF_MAX_SECONDS="${HOOK_MAX-240}" \
+      bash "$HOOK" 7>&1 > "$H/hook.out" 2> "$H/hook.err"
+    printf '%s\n' "$?" > "$H/hook.rc"
+  } | { cat > /dev/null; : > "$H/hook.done"; } &
+  if poll 200 test -e "$H/hook.done"; then
+    wait "$!" 2>/dev/null
+    HOOK_RC=$(cat "$H/hook.rc")
+  else
+    HOOK_RC=unfinished
+    fail "the hook and the push it detached exit within 10 s"
+  fi
 }
 
 fire_write() {
@@ -122,11 +149,7 @@ fire_write() {
 }
 
 fire_write_real_time() {
-  local path="$1" input
-  input=$(jq -n --arg path "$path" '{tool_name:"Write",tool_input:{file_path:$path}}')
-  printf '%s' "$input" | HOME="$H" CLADE_SYNC_PUSH_LOCK="$H/.claude/push.lock" \
-    bash "$HOOK" > "$H/hook.out" 2> "$H/hook.err"
-  HOOK_RC=$?
+  HOOK_BASE="" HOOK_MAX="" fire_write "" "$1"
 }
 
 backoff_line() {
@@ -153,39 +176,18 @@ network_count() {
   fi
 }
 
-wait_count() {
-  local want="$1" i
-  for i in $(seq 1 60); do
-    [[ "$(spawn_count)" -ge "$want" ]] && return 0
-    sleep 0.05
-  done
-  return 1
-}
+spawned_at_least() { [[ "$(spawn_count)" -ge "$1" ]]; }
+backoff_is() { [[ "$(backoff_line)" == "$1" ]]; }
+wait_count() { poll 60 spawned_at_least "$1"; }
+wait_backoff() { poll 60 backoff_is "$1"; }
+wait_absent() { poll 60 test ! -e "$H/.claude/.sync-push-backoff"; }
 
-wait_backoff() {
-  local want="$1" i
-  for i in $(seq 1 60); do
-    [[ "$(backoff_line)" == "$want" ]] && return 0
-    sleep 0.05
-  done
-  return 1
-}
-
-wait_absent() {
-  local i
-  for i in $(seq 1 60); do
-    [[ ! -e "$H/.claude/.sync-push-backoff" ]] && return 0
-    sleep 0.05
-  done
-  return 1
-}
-
-quiesce() { sleep 0.3; }
-
+# install_stub [DELAY] — a counting sync-push; DELAY seconds before it counts.
 install_stub() {
   : > "$H/spawns"
   cat > "$H/.claude/scripts/sync-push.sh" <<EOF
 #!/usr/bin/env bash
+${1:+sleep $1}
 printf 'spawn\n' >> '$H/spawns'
 EOF
   chmod +x "$H/.claude/scripts/sync-push.sh"
@@ -446,7 +448,9 @@ t_gate() {
   printf -- '<<<<<<< Updated upstream\n=======\n>>>>>>> Stashed changes\n' \
     >> "$STORE/corrections/rules.md"
   run_push 5000
-  install_stub
+  # A push slower than the 0.3 s sleep these checks once relied on: a "spawned
+  # nothing" check is only evidence when run_hook waits for the detached push.
+  install_stub 0.5
   mkdir -p "$H/.claude/memory/topic" "$H/.claude/corrections" \
     "$H/.claude/hooks" "$H/.claude/skills/demo"
   printf 'A concrete memory fact with enough detail to pass the specificity gate and its reason.\n' \
@@ -461,7 +465,6 @@ t_gate() {
   fire_write 5001 "$H/.claude/skills/demo/SKILL.md"
   fire_write 5001 "$H/.claude/scripts/other.sh"
   run_hook 5001 '{"tool_name":"Bash","tool_input":{"command":"rm ~/.claude/corrections/old.md"}}'
-  quiesce
   assert_eq "$HOOK_RC" "0" "blocked memory-sync calls still exit successfully"
   assert_eq "$(spawn_count)" "0" \
     "after a REFUSED, memory/corrections/hooks/skills/scripts and Bash spawn nothing"
@@ -469,11 +472,10 @@ t_gate() {
     test ! -e "$H/.claude/memory/.sync-cooldown.json"
 
   fire_write 5059 "$H/.claude/skills/demo/SKILL.md"
-  quiesce
   assert_eq "$(spawn_count)" "0" "the first 30-minute window stays closed before its boundary"
   fire_write 5060 "$H/.claude/corrections/rules.md"
-  wait_count 1
-  assert_eq "$(spawn_count)" "1" "the window boundary allows one half-open push"
+  assert_eq "$(spawn_count)" "1" \
+    "the window boundary allows one half-open push, counted before run_hook returns"
 }
 
 t_claim() {
@@ -488,14 +490,12 @@ t_claim() {
     "the claim records probe time without changing the failure count"
   fire_write 1061 "$H/.claude/corrections/rules.md"
   fire_write 1062 "$H/.claude/corrections/rules.md"
-  quiesce
   assert_eq "$(spawn_count)" "1" "two later fires cannot spawn while the claimed probe is pending"
   assert_eq "$(backoff_line)" "1060 1 push-failed" "a stub that never reports leaves one claim intact"
 
   new_store claim-no-executable
   printf '1000 1 push-failed\n' > "$H/.claude/.sync-push-backoff"
   fire_write 1060 "$H/.claude/corrections/rules.md"
-  quiesce
   assert_eq "$(spawn_count)" "0" "an expired window without an executable push spawns nothing"
   assert_eq "$(backoff_line)" "1000 1 push-failed" "no claim is written before the executable check"
 
@@ -529,7 +529,6 @@ t_half_open() {
   install_real_wrapper
   printf -- '- rule one\n- rule two\n' > "$STORE/corrections/rules.md"
   fire_write 6000 "$H/.claude/corrections/rules.md"
-  quiesce
   assert_eq "$(spawn_count)" "0" "an active breaker blocks the automatic recovery attempt"
   fire_write 6060 "$H/.claude/corrections/rules.md"
   check "the half-open success probe spawns" wait_count 1
@@ -552,19 +551,16 @@ t_half_open() {
   assert_eq "$(backoff_line)" "7060 2 conflict-markers" \
     "a failed half-open probe records the second consecutive failure"
   fire_write 7119 "$H/.claude/corrections/rules.md"
-  quiesce
   assert_eq "$(spawn_count)" "1" "119 seconds into the second window stays closed"
   fire_write 7180 "$H/.claude/corrections/rules.md"
   check "the second failure backs off for 120 seconds" wait_count 2
   check "the second failed probe records its result" wait_backoff "7180 3 conflict-markers"
   fire_write 7419 "$H/.claude/corrections/rules.md"
-  quiesce
   assert_eq "$(spawn_count)" "2" "239 seconds into the third window stays closed"
   fire_write 7420 "$H/.claude/corrections/rules.md"
   check "the third failure backs off for 240 seconds" wait_count 3
   check "the third failed probe records its result" wait_backoff "7420 4 conflict-markers"
   fire_write 7659 "$H/.claude/corrections/rules.md"
-  quiesce
   assert_eq "$(spawn_count)" "3" "239 seconds into the capped fourth window stays closed"
   fire_write 7660 "$H/.claude/corrections/rules.md"
   check "the capped fourth window permits its probe" wait_count 4
@@ -593,7 +589,6 @@ t_robustness() {
   install_stub
   printf '8000 1 push-failed' > "$H/.claude/.sync-push-backoff"
   fire_write 8001 "$H/.claude/skills/demo/SKILL.md"
-  quiesce
   assert_eq "$HOOK_RC" "0" "a final line without a newline is still parsed"
   assert_eq "$(spawn_count)" "0" "a newline-less active state stays closed"
 
@@ -638,7 +633,6 @@ t_robustness() {
   install_stub
   printf '8000 1 push-failed\n' > "$H/.claude/.sync-push-backoff"
   HOOK_BASE=nope fire_write 8001 "$H/.claude/skills/demo/SKILL.md"
-  quiesce
   assert_eq "$HOOK_RC" "0" "an invalid base override falls back without aborting"
   assert_eq "$(spawn_count)" "0" "an invalid base override uses the default closed window"
 
@@ -646,14 +640,12 @@ t_robustness() {
   install_stub
   printf '8000 1 push-failed\n' > "$H/.claude/.sync-push-backoff"
   HOOK_BASE=0 fire_write 8001 "$H/.claude/skills/demo/SKILL.md"
-  quiesce
   assert_eq "$(spawn_count)" "0" "a zero base cannot bypass the default window"
 
   new_store invalid-max
   install_stub
   printf '8000 1 push-failed\n' > "$H/.claude/.sync-push-backoff"
   HOOK_MAX=nope fire_write 8001 "$H/.claude/skills/demo/SKILL.md"
-  quiesce
   assert_eq "$HOOK_RC" "0" "an invalid maximum override falls back without aborting"
   assert_eq "$(spawn_count)" "0" "an invalid maximum override uses the default closed window"
 
@@ -661,7 +653,6 @@ t_robustness() {
   install_stub
   printf '%s 1 push-failed\n' "$(date +%s)" > "$H/.claude/.sync-push-backoff"
   fire_write nope "$H/.claude/skills/demo/SKILL.md"
-  quiesce
   assert_eq "$HOOK_RC" "0" "an invalid clock override falls back without aborting"
   assert_eq "$(spawn_count)" "0" "an invalid clock override uses the real clock"
 
@@ -669,7 +660,6 @@ t_robustness() {
   install_stub
   printf '8000 3 push-failed\n' > "$H/.claude/.sync-push-backoff"
   HOOK_BASE=100 HOOK_MAX=240 fire_write 8239 "$H/.claude/skills/demo/SKILL.md"
-  quiesce
   assert_eq "$(spawn_count)" "0" "a 100-second base doubled twice stays capped at 240 seconds"
   HOOK_BASE=100 HOOK_MAX=240 fire_write 8240 "$H/.claude/skills/demo/SKILL.md"
   wait_count 1
@@ -715,7 +705,6 @@ t_defaults() {
   install_stub
   printf '%s 1 push-failed\n' "$(( $(date +%s) - 1740 ))" > "$H/.claude/.sync-push-backoff"
   fire_write_real_time "$H/.claude/skills/demo/SKILL.md"
-  quiesce
   assert_eq "$(spawn_count)" "0" "the default first window is still closed at 29 minutes"
   printf '%s 1 push-failed\n' "$(( $(date +%s) - 1860 ))" > "$H/.claude/.sync-push-backoff"
   fire_write_real_time "$H/.claude/skills/demo/SKILL.md"
@@ -726,7 +715,6 @@ t_defaults() {
   install_stub
   printf '%s 10 push-failed\n' "$(( $(date +%s) - 86340 ))" > "$H/.claude/.sync-push-backoff"
   fire_write_real_time "$H/.claude/skills/demo/SKILL.md"
-  quiesce
   assert_eq "$(spawn_count)" "0" "the default cap is still closed just before 24 hours"
   printf '%s 10 push-failed\n' "$(( $(date +%s) - 86460 ))" > "$H/.claude/.sync-push-backoff"
   fire_write_real_time "$H/.claude/skills/demo/SKILL.md"
@@ -747,16 +735,18 @@ if [[ -z "$MSB_MUTANT" && -z "${MSB_SKIP_MUTATIONS:-}" ]]; then
 
   mutation() {
     local expect="$1" target="$2" name="$3" only="$4" dir="$MUT_DIR/m$NMUT" src
-    mkdir -p "$dir/scripts" "$dir/hooks/lib"
+    mkdir -p "$dir/scripts" "$dir/hooks/lib" "$dir/tests"
     cp "$REPO_ROOT/configs/scripts/sync-push.sh" "$dir/scripts/sync-push.sh"
     cp "$REPO_ROOT/configs/scripts/sync-store-heal.sh" "$dir/scripts/sync-store-heal.sh"
     cp "$REPO_ROOT/configs/hooks/memory-sync.sh" "$dir/hooks/memory-sync.sh"
     cp "$REPO_ROOT/configs/hooks/lib/runtime-dir.sh" "$dir/hooks/lib/runtime-dir.sh"
     cp "$REPO_ROOT/configs/hooks/lib/sync-push-backoff.sh" "$dir/hooks/lib/sync-push-backoff.sh"
+    cp "$REPO_ROOT/tests/test-memory-sync-breaker.sh" "$dir/tests/test-memory-sync-breaker.sh"
     case "$target" in
       push) src="$dir/scripts/sync-push.sh" ;;
       hook) src="$dir/hooks/memory-sync.sh" ;;
       lib) src="$dir/hooks/lib/sync-push-backoff.sh" ;;
+      self) src="$dir/tests/test-memory-sync-breaker.sh" ;;   # this suite's own harness
     esac
     shift 4
     while [[ "$#" -ge 2 ]]; do
@@ -797,6 +787,10 @@ if [[ -z "$MSB_MUTANT" && -z "${MSB_SKIP_MUTATIONS:-}" ]]; then
     '_merge_reason=merge-abort-failed' ':'
   mutation red push "naming a failed abort on stderr" merge_abort \
     'echo "sync-push: could not abort the failed merge; run git merge --abort in $SYNC_DIR." >&2' ':'
+  # A self mutation edits this file, so its anchor is split ('7>&''1') to keep
+  # the line below from matching it.
+  mutation red self "run_hook waiting for the push it detached" gate \
+    'bash "$HOOK" 7>&''1 >' 'bash "$HOOK" >'
   mutation red push "rejected-push failure recording" failures \
     'sync_push_record_failure push-failed' ':'
   mutation red push "success clearing the breaker" failures \
@@ -877,10 +871,11 @@ exit 0'
     'local _max="${CLADE_SYNC_PUSH_BACKOFF_MAX_SECONDS:-86400}"' \
     'local _max="${CLADE_SYNC_PUSH_BACKOFF_MAX_SECONDS:-240}"'
 
-  MSB_SELF="$REPO_ROOT/tests/test-memory-sync-breaker.sh"
   local_i=0
   while [[ "$local_i" -lt "$NMUT" ]]; do
     dir="${MUT_DIRS[$local_i]}"
+    MSB_SELF="$REPO_ROOT/tests/test-memory-sync-breaker.sh"
+    [[ "${MUT_TARGETS[$local_i]}" == self ]] && MSB_SELF="$dir/tests/test-memory-sync-breaker.sh"
     MSB_MUTANT=1 MSB_SKIP_MUTATIONS=1 MSB_ONLY="${MUT_ONLY[$local_i]}" \
       MSB_HOOK="$dir/hooks/memory-sync.sh" MSB_PUSH="$dir/scripts/sync-push.sh" \
       bash "$MSB_SELF" > "$MUT_DIR/m$local_i.log" 2>&1
