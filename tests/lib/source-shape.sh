@@ -20,7 +20,8 @@
 # or `|` is joined to the next first, and LINE is where the joined line
 # starts. Comment lines are skipped. Prints nothing when clean.
 # It reads syntax, not calls: `f() { source lib; }; f || true` also exits
-# under bash 3.2 and is NOT flagged, nor is an if condition split over lines.
+# under bash 3.2 and is NOT flagged, nor is a condition whose `if` and
+# `source` sit on lines not joined by a trailing `\` or operator.
 # `( source lib ) || true` survives bash 3.2 and IS flagged (it loads nothing),
 # as is a jq `then . …` or `else . …` on a line a shell `||` follows: both are
 # false positives, which fail a suite loudly rather than pass a bug silently.
