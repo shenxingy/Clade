@@ -185,7 +185,7 @@ def remove(target: Path, adapter: str) -> str:
     removed = 0
     moved = []
     for event in list(document["hooks"]):
-        kept_groups = []
+        kept_groups: list[dict[str, Any]] = []
         event_removed = 0
         for group_index, group in enumerate(document["hooks"][event]):
             handlers = [
