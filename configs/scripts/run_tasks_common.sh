@@ -24,6 +24,9 @@
 #   TASK_FILE       — task file path (is_new_format, get_task_field, prompts)
 #   CLAUDE_FLAGS    — flags handed to `claude -p` (run_claude_task)
 #   DEFAULT_RETRIES — fallback for get_task_retries
+#   TIMESTAMP       — run stamp in the default worker id (export_worker_task_id)
+# The source line must also come before anything exports CLADE_WORKER_TASK_ID:
+# the caller's own value is captured when this file is sourced.
 # Optional:
 #   STALL_THRESHOLD — consecutive stale heartbeat checks before kill (default 10)
 #
@@ -288,6 +291,25 @@ PROMPT
   echo ""
 
   { echo ""; echo "=== Timeout Analysis ==="; [[ -n "$analysis" ]] && echo "$analysis"; echo ""; echo "$diag"; } >> "$log_file"
+}
+
+# ─── Worker identity ─────────────────────────────────────────────────
+# CLADE_WORKER_TASK_ID marks a spawned `claude -p` as an autonomous worker:
+# committer.sh adds the X-Clade-Task trailer and never pushes, and
+# correction-detector.sh and revert-detector.sh record nothing, since no human
+# is in the session. run-tasks.sh used to export none, and it commits in the
+# caller's checkout, so under /batch-tasks every worker commit went out to the
+# current branch's upstream like an interactive one.
+#
+# A caller's own id (loop-runner.sh passes loop-iter<N>) is kept for every task.
+# It is read once, here at source time: re-reading CLADE_WORKER_TASK_ID per task
+# would find the id this function exported for the previous task, which is how
+# the second task of a run-tasks-parallel.sh group came to carry the first's.
+_INHERITED_WORKER_TASK_ID="${CLADE_WORKER_TASK_ID:-}"
+
+# Usage: export_worker_task_id <task index>. Reads TIMESTAMP from the caller.
+export_worker_task_id() {
+  export CLADE_WORKER_TASK_ID="${_INHERITED_WORKER_TASK_ID:-batch-${TIMESTAMP}-$1}"
 }
 
 # ─── Worker runner ───────────────────────────────────────────────────

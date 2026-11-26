@@ -460,8 +460,11 @@ upstream). A branch tracking another name — `git worktree add -b X <path>
 origin/main` makes origin/main the upstream — is committed and not pushed, exit 0;
 a detached HEAD likewise. An autonomous worker (`CLADE_WORKER_TASK_ID` set) never
 pushes: its runner owns delivery — `run-tasks-parallel.sh` merges each
-`batch/task-*` branch locally, and `worker.py` gates its own `auto_push` — so the
-`-u` path would otherwise publish every unreviewed task branch. `--no-push` skips
+`batch/task-*` branch locally, `run-tasks.sh` leaves its commits on the current
+branch for the caller to push, and `worker.py` gates its own `auto_push` — so the
+`-u` path would otherwise publish every unreviewed task branch. Both runners give
+each task its own id (`batch-<ts>-<n>`) unless the caller passed one
+(`loop-runner.sh`: `loop-iter<N>`). `--no-push` skips
 the push; a push git rejects exits 3, never forced. `tests/test-checks.sh` pins
 each case against a bare remote.
 

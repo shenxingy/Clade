@@ -368,7 +368,7 @@ run_task_in_worktree() {
   # unrecoverable because the worktree is force-removed below. The shadow repo
   # lives OUTSIDE the worktree so its index never contends with the worker's own
   # commits, and it survives cleanup_worktree.
-  export CLADE_WORKER_TASK_ID="${CLADE_WORKER_TASK_ID:-batch-${TIMESTAMP}-${task_idx}}"
+  export_worker_task_id "$task_idx"
   export CLADE_WORKER_WORKTREE="$wt_dir"
   export CLADE_WORKER_SHADOW_DIR="${CLADE_WORKER_SHADOW_DIR_BASE:-$REPO_ROOT/$LOG_DIR/shadow}/task-${task_idx}.git"
 
@@ -581,6 +581,9 @@ if [[ ${#MERGE_FAILURES[@]} -gt 0 ]]; then
     log_file="$LOG_DIR/${TIMESTAMP}-task-${task_idx}-serial.log"
 
     echo "Running task $task_idx serially: $task_name"
+    # Runs in the main checkout, outside every group subshell that exported
+    # the id: without this the re-run committed as an interactive session.
+    export_worker_task_id "$task_idx"
     record_task_start_state
     fingerprint_before=$(tree_fingerprint)
     exit_code=0

@@ -20,14 +20,15 @@ if [[ "$PROMPT" == \<* ]]; then
   exit 0
 fi
 
-# A dispatched worker has no human in it. run-tasks-parallel.sh, loop-runner.sh
-# and orchestrator/worker.py export CLADE_WORKER_TASK_ID and pipe the task brief
-# into `claude -p`, and that brief fires UserPromptSubmit like any prompt. A
-# brief reads like a correction — "fix any clear …", "instead of", "不要" — so
-# it was being persisted as an EXPLICIT correction, once per attempt: measured
-# 2026-09-21, 13 of the fortnight's 72 explicit records were `/loop` briefs
-# under .worktrees-*/task-N, three of them the same brief on three retries, and
-# each one charged a rule miss to whichever rule shared the most words with it.
+# A dispatched worker has no human in it. run-tasks.sh, run-tasks-parallel.sh,
+# loop-runner.sh and orchestrator/worker.py export CLADE_WORKER_TASK_ID and pipe
+# the task brief into `claude -p`, and that brief fires UserPromptSubmit like any
+# prompt. A brief reads like a correction — "fix any clear …", "instead of",
+# "不要" — so it was being persisted as an EXPLICIT correction, once per
+# attempt: measured 2026-09-21, 13 of the fortnight's 72 explicit records were
+# `/loop` briefs under .worktrees-*/task-N, three of them the same brief on
+# three retries, and each one charged a rule miss to whichever rule shared the
+# most words with it.
 # Same marker mailbox-drain.sh and context-warning-drain.sh already gate on.
 if [[ -n "${CLADE_WORKER_TASK_ID:-}" ]]; then
   exit 0

@@ -43,9 +43,10 @@ fi
 # revert the owner asked for and the lead delegated. The owner's request is
 # then the explicit record, which correction-detector.sh writes itself.
 #
-# A dispatched worker (`claude -p` under run-tasks-parallel.sh / loop-runner.sh,
-# CLADE_WORKER_TASK_ID set) is the same case with no agent_id: there is no human
-# in it, which is why correction-detector.sh already goes silent on that marker.
+# A dispatched worker (`claude -p` under run-tasks.sh / run-tasks-parallel.sh /
+# loop-runner.sh, CLADE_WORKER_TASK_ID set) is the same case with no agent_id:
+# there is no human in it, which is why correction-detector.sh already goes
+# silent on that marker.
 if [[ -n "${CLADE_WORKER_TASK_ID:-}" ]]; then
   exit 0
 fi

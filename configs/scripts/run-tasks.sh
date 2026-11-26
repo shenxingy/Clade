@@ -15,6 +15,8 @@
 #   - Writes a progress file so other sessions can monitor status
 #   - Re-reads task file each iteration — new tasks appended during execution are picked up
 #   - Per-task model assignment (haiku/sonnet/opus) via new format
+#   - Each worker runs with its own CLADE_WORKER_TASK_ID (batch-<ts>-<n>, or the
+#     caller's id): committer adds X-Clade-Task and does not push its commits
 #
 # Task file format:
 #   ===TASK===
@@ -365,6 +367,9 @@ while true; do
 
   task_succeeded=false
   last_error=""
+  # The worker commits on the caller's current branch: as a marked worker its
+  # commits stay local, for the caller to review and push (run_tasks_common.sh).
+  export_worker_task_id "$idx"
   # Before any attempt: rollback_to_checkpoint restores this state between
   # attempts, so one baseline serves the whole task (see record_task_outcome).
   fingerprint_before=$(tree_fingerprint)
