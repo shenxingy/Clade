@@ -647,9 +647,9 @@ unset _failure
 # need the sources' shape: there `if source …` and `source … || …` still exit
 # under set -e, before any fallback runs.
 assert_eq "$(guarded_source_lines "$SYNC_PUSH")" "" \
-  "sync-push recovers from no failed source with || or if (bash 3.2 exits there)"
+  "sync-push has no source that recovers through ||, && or a test (bash 3.2 exits there)"
 assert_eq "$(guarded_source_lines "$SYNC_SETUP")" "" \
-  "sync-setup recovers from no failed source with || or if (bash 3.2 exits there)"
+  "sync-setup has no source that recovers through ||, && or a test (bash 3.2 exits there)"
 
 section "sync-setup — ignore write failure is explicit and makes no commit"
 SETUP_FAIL_ROOT="$TMP_ROOT/setup-write-failure"

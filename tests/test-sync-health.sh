@@ -332,7 +332,7 @@ EOF
   # The case above runs under this host's bash. Under bash 3.2 (macOS) it also
   # needs the source's shape: there `source … || true` still exits under set -e.
   assert_empty "$(guarded_source_lines "$HOOK")" \
-    "sync-health recovers from no failed source with || or if (bash 3.2 exits there)"
+    "sync-health has no source that recovers through ||, && or a test (bash 3.2 exits there)"
 }
 
 t_unmerged() {
@@ -769,6 +769,19 @@ set -e' 'source "$HOOK_LIBDIR/sync-push-backoff.sh" 2>/dev/null'
 # shellcheck source=/dev/null
 source "$HOOK_LIBDIR/sync-push-backoff.sh" 2>/dev/null
 set -e' 'source "$HOOK_LIBDIR/sync-push-backoff.sh" 2>/dev/null || true'
+  # The two forms the shape check missed before it joined lines and read
+  # { … } groups; both pass every behavioural case here under bash 5.
+  mutation red "the bash 3.2-safe source shape (back to a continued || true)" backoff \
+    'set +e
+# shellcheck source=/dev/null
+source "$HOOK_LIBDIR/sync-push-backoff.sh" 2>/dev/null
+set -e' 'source "$HOOK_LIBDIR/sync-push-backoff.sh" 2>/dev/null \
+  || true'
+  mutation red "the bash 3.2-safe source shape (back to { source; } || true)" backoff \
+    'set +e
+# shellcheck source=/dev/null
+source "$HOOK_LIBDIR/sync-push-backoff.sh" 2>/dev/null
+set -e' '{ source "$HOOK_LIBDIR/sync-push-backoff.sh"; } 2>/dev/null || true'
   mutation red "the missing backoff library function guard" backoff \
     'if declare -F sync_push_backoff_active >/dev/null 2>&1; then
   sync_push_backoff_active || true
