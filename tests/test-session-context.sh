@@ -776,6 +776,102 @@ OUT=$(todo_ctx)
 assert_line "$OUT" "Next TODO: - [ ] 🔴 Red item after it" \
   "a run four columns in, left of a '100.' step's content, opens no fence"
 
+# ─── Next TODO: a list marker 1-3 columns in starts an item too ──────
+# CommonMark starts a list item at a marker indented up to three columns, unless
+# the marker is at or past the open item's content column, which nests it in that
+# item. Read as no item, a fence three columns in under " - Run:" was top-level,
+# and left unclosed it hid every later item. Read as part of the open item, a new
+# item's line kept that item's column. markdown-it agrees on every fixture below.
+for bullet in '-' '*' '+'; do
+  printf '%s\n' '## Setup' " $bullet Run the installer:" '   ```bash' '   ./install.sh' \
+    '- [ ] 🔴 Red item after the setup note' > "$TODO_PROJ/TODO.md"
+  OUT=$(todo_ctx)
+  assert_line "$OUT" "Next TODO: - [ ] 🔴 Red item after the setup note" \
+    "an unclosed fence under a '$bullet' bullet one column in ends with that item"
+done
+
+cat > "$TODO_PROJ/TODO.md" <<'EOF'
+ - [ ] 🟡 Indented yellow item, for lines that open with
+   ``` three backticks and never close them
+- [ ] 🔴 Red item later in the file
+EOF
+OUT=$(todo_ctx)
+assert_line "$OUT" "Next TODO: - [ ] 🔴 Red item later in the file" \
+  "an unclosed fence under an item one column in, at the top of the file, ends with it"
+
+cat > "$TODO_PROJ/TODO.md" <<'EOF'
+Notes for the next session:
+ * Rebuild with
+   ```
+   make
+
+## Agent work
+- [ ] 🟠 Agent orange item
+EOF
+OUT=$(todo_ctx)
+assert_line "$OUT" "Next TODO: - [ ] 🟠 Agent orange item" \
+  "a bullet one column in after a paragraph starts an item, so the next heading ends its fence"
+
+cat > "$TODO_PROJ/TODO.md" <<'EOF'
+## Needs the owner
+- [ ] 🔴 Owner red item
+ - Steps:
+  ```bash
+# column-0 comment
+  ```
+## Agent work
+- [ ] 🟠 Agent orange item
+EOF
+OUT=$(todo_ctx)
+assert_line "$OUT" "Next TODO: - [ ] 🟠 Agent orange item" \
+  "a bullet one column in, left of an item's content, starts a new item, so a fence two columns in is top-level"
+
+# Controls: pass on HEAD too, which tracks no indented marker. Each pins a part of
+# the rule above: a new item left of the open one's content (in "1.", "1)" and a
+# bullet two columns in), the new item's own content column, and a nested marker.
+for sibling in ' 1. Then a numbered sibling' ' 1) Then a numbered sibling' '  - Then a bullet two columns in'; do
+  printf '%s\n' '## Needs the owner' ' - Steps:' "$sibling" '   ```bash' '# column-0 comment' '   ```' \
+    '- [ ] 🔴 Owner red item' '## Agent work' '- [ ] 🟠 Agent orange item' > "$TODO_PROJ/TODO.md"
+  OUT=$(todo_ctx)
+  assert_line "$OUT" "Next TODO: - [ ] 🟠 Agent orange item" \
+    "a new item '${sibling#"${sibling%%[! ]*}"}' after a bullet one column in moves the content column past a fence three columns in"
+done
+
+for gap in '  ' $'\t'; do
+  label='two spaces'; [[ "$gap" == $'\t' ]] && label='a tab'
+  printf '%s\n' '## Needs the owner' " -${gap}Wide gap after the marker" '   ```bash' '# column-0 comment' \
+    '   ```' '- [ ] 🔴 Owner red item' '## Agent work' '- [ ] 🟠 Agent orange item' > "$TODO_PROJ/TODO.md"
+  OUT=$(todo_ctx)
+  assert_line "$OUT" "Next TODO: - [ ] 🟠 Agent orange item" \
+    "$label after a bullet one column in puts its content at column 4, so a fence three columns in is top-level"
+done
+
+cat > "$TODO_PROJ/TODO.md" <<'EOF'
+- [ ] 🟡 Yellow item with nested steps
+  - Step one:
+  ```bash
+  make
+- [ ] 🔴 Red item after it
+EOF
+OUT=$(todo_ctx)
+assert_line "$OUT" "Next TODO: - [ ] 🔴 Red item after it" \
+  "a marker at the open item's content column is nested, so the item keeps its column for the fence"
+
+cat > "$TODO_PROJ/TODO.md" <<'EOF'
+## Needs the owner
+Run it with
+ -v for verbose output
+   ```bash
+# column-0 comment
+   ```
+- [ ] 🔴 Owner red item
+## Agent work
+- [ ] 🟠 Agent orange item
+EOF
+OUT=$(todo_ctx)
+assert_line "$OUT" "Next TODO: - [ ] 🟠 Agent orange item" \
+  "a dash one column in with no space after it starts no item"
+
 cat > "$TODO_PROJ/TODO.md" <<'EOF'
 - [ ] 🔴 Agent red item is eligible
 - [ ] 🟠 Owner: the next item's phrase is not this item's

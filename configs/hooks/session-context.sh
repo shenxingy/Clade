@@ -195,9 +195,11 @@ fi
 # does takes more than a regex, and a wrong pair would print an owner item.
 # Fenced blocks (``` or ~~~, closed by a run of the same character at least as
 # long) are code: a `#` or `- [ ]` inside one is neither a heading nor an item.
-# A list item (marker -, *, +, 1. or 1)) ends at the next column-0 line, or at a
-# fence line indented less than the item's content column (the marker plus the
-# whitespace after it, a tab reaching the next multiple of 4), as in CommonMark.
+# A list item starts at a marker (-, *, +, 1. or 1)) at column 0, or 1-3 columns
+# in unless that is at or past the open item's content column, which nests it in
+# that item. It ends at the next column-0 line, or at a fence line indented less
+# than its content column (its indent, the marker and the whitespace after it, a
+# tab reaching the next multiple of 4), as in CommonMark.
 # A fence opened inside the item ends with it, so an unclosed sample in one item
 # cannot hide the items after it, and that line is then read as usual: a fence
 # run there opens a top-level fence. A top-level fence (in no list item) runs to
@@ -250,6 +252,9 @@ NEXT_TODO=$(awk -v markers="$TODO_PRIORITY_MARKERS" -v owner_re="$TODO_OWNER_PHR
     if (ends) {   # a list item starts on this line, or none is open
       in_list = match($0, /^([-*+]|[0-9]+[.)])[[:space:]]+/)
       if (in_list) offset = width(substr($0, 1, RLENGTH))   # the column its text starts at
+    } else if (match($0, /^ ( |  )?([-*+]|[0-9]+[.)])[[:space:]]+/)) {   # a marker 1-3 columns in
+      col = width(substr($0, 1, RLENGTH)); match($0, /[^ ]/)
+      if (!in_list || RSTART - 1 < offset) { in_list = 1; offset = col }   # else nested in the open item
     }
     if (pending) {
       if (ends) flush()
