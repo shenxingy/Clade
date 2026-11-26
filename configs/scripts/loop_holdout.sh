@@ -636,7 +636,7 @@ _holdout_index_put_back() {
 
 # _holdout_changes FILTER BEFORE NOW → NUL-separated paths that git's
 # --diff-filter FILTER selects between two worktree trees, minus the loop's
-# own bookkeeping — the same exclusions node_commit_changes makes.
+# own bookkeeping, which node_commit_changes never sweeps either.
 _holdout_changes() {
   local log state p
   log=$(_holdout_relpath "${LOG_DIR%/}")

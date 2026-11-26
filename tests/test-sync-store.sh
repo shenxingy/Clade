@@ -14,6 +14,8 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SYNC_SETUP="${CLADE_TEST_SYNC_SETUP:-$REPO_ROOT/configs/scripts/sync-setup.sh}"
 SYNC_PUSH="${CLADE_TEST_SYNC_PUSH:-$REPO_ROOT/configs/scripts/sync-push.sh}"
 SYNC_HEAL="${CLADE_TEST_SYNC_HEAL:-$REPO_ROOT/configs/scripts/sync-store-heal.sh}"
+# shellcheck source=lib/source-shape.sh
+source "$REPO_ROOT/tests/lib/source-shape.sh"
 
 TESTS_RUN=0; TESTS_PASSED=0; TESTS_FAILED=0
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[0;33m'; NC='\033[0m'
@@ -53,7 +55,12 @@ assert_same_file() {
   fi
 }
 
-TMP_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/clade-sync-store.XXXXXX")"
+# macOS sets TMPDIR with a trailing slash. Left in, TMP_ROOT holds `T//clade-…`
+# while sync-setup names its helper by `cd … && pwd`, which drops the extra
+# slash, so the missing-helper message case failed on every Mac.
+_tmp_base="${TMPDIR:-/tmp}"
+TMP_ROOT="$(mktemp -d "${_tmp_base%/}/clade-sync-store.XXXXXX")"
+unset _tmp_base
 trap 'rm -rf "$TMP_ROOT"' EXIT
 export HOME="$TMP_ROOT/home"
 mkdir -p "$HOME"
@@ -636,6 +643,13 @@ for _failure in directory invalid; do
     "a $_failure helper source still permits the clean commit"
 done
 unset _failure
+# The cases above run under this host's bash. Under bash 3.2 (macOS) they also
+# need the sources' shape: there `if source …` and `source … || …` still exit
+# under set -e, before any fallback runs.
+assert_eq "$(guarded_source_lines "$SYNC_PUSH")" "" \
+  "sync-push has no source that recovers through ||, && or a test (bash 3.2 exits there)"
+assert_eq "$(guarded_source_lines "$SYNC_SETUP")" "" \
+  "sync-setup has no source that recovers through ||, && or a test (bash 3.2 exits there)"
 
 section "sync-setup — ignore write failure is explicit and makes no commit"
 SETUP_FAIL_ROOT="$TMP_ROOT/setup-write-failure"

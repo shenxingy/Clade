@@ -14,6 +14,8 @@
 set -uo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=lib/source-shape.sh
+source "$REPO_ROOT/tests/lib/source-shape.sh"
 HOOK="${MSB_HOOK:-$REPO_ROOT/configs/hooks/memory-sync.sh}"
 PUSH="${MSB_PUSH:-$REPO_ROOT/configs/scripts/sync-push.sh}"
 BASE_PATH="$PATH"
@@ -186,6 +188,17 @@ network_count() {
     wc -l < "$H/network" | tr -d ' '
   else
     printf '0\n'
+  fi
+}
+
+# hook_stderr_clean MSG — the last run_hook wrote no shell error from the
+# backoff parser. Failing open is not enough: a guard that a bash error skips
+# fails open too, so each malformed state must be rejected before arithmetic.
+hook_stderr_clean() {
+  if grep -qE 'sync-push-backoff|value too great|syntax error|unbound variable' "$H/hook.err"; then
+    fail "$1" "$(cat "$H/hook.err")"
+  else
+    pass "$1"
   fi
 }
 
@@ -592,11 +605,7 @@ t_robustness() {
   wait_count 1
   assert_eq "$HOOK_RC" "0" "no backoff file leaves the normal path successful"
   assert_eq "$(spawn_count)" "1" "no backoff file fails open"
-  if grep -q 'sync-push-backoff' "$H/hook.err"; then
-    fail "the no-state fast path avoids a missing-file read error" "$(cat "$H/hook.err")"
-  else
-    pass "the no-state fast path avoids a missing-file read error"
-  fi
+  hook_stderr_clean "the no-state fast path avoids a missing-file read error"
 
   new_store no-newline
   install_stub
@@ -612,6 +621,7 @@ t_robustness() {
   wait_count 1
   assert_eq "$HOOK_RC" "0" "a malformed timestamp does not abort the hook"
   assert_eq "$(spawn_count)" "1" "a malformed timestamp fails open"
+  hook_stderr_clean "a malformed timestamp is rejected before any arithmetic"
 
   new_store malformed-count
   install_stub
@@ -620,6 +630,41 @@ t_robustness() {
   wait_count 1
   assert_eq "$HOOK_RC" "0" "a malformed count does not abort the hook"
   assert_eq "$(spawn_count)" "1" "a malformed count fails open"
+  hook_stderr_clean "a malformed count is rejected before any arithmetic"
+
+  # A leading zero is decimal. Bash arithmetic read 07000 as octal 3584, which
+  # opened the window early, and rejected 08000 and 09 outright: bash dropped
+  # the breaker check mid-parse and the hook went on to push, failing open.
+  new_store leading-zero-octal-time
+  install_stub
+  printf '07000 1 push-failed\n' > "$H/.claude/.sync-push-backoff"
+  fire_write 7001 "$H/.claude/skills/demo/SKILL.md"
+  assert_eq "$HOOK_RC" "0" "a leading-zero timestamp leaves the hook successful"
+  assert_eq "$(spawn_count)" "0" "07000 is 7000, an active window, not octal 3584"
+  assert_eq "$(backoff_line)" "07000 1 push-failed" "an active leading-zero state claims no probe"
+
+  new_store leading-zero-invalid-octal-time
+  install_stub
+  printf '08000 1 push-failed\n' > "$H/.claude/.sync-push-backoff"
+  fire_write 8001 "$H/.claude/skills/demo/SKILL.md"
+  assert_eq "$HOOK_RC" "0" "a timestamp octal rejects (08000) leaves the hook successful"
+  assert_eq "$(spawn_count)" "0" "08000 is 8000, an active window"
+
+  new_store leading-zero-count
+  install_stub
+  printf '8000 09 push-failed\n' > "$H/.claude/.sync-push-backoff"
+  fire_write 8100 "$H/.claude/skills/demo/SKILL.md"
+  assert_eq "$(spawn_count)" "0" "a count of 09 is nine failures, a capped active window"
+  hook_stderr_clean "a leading-zero count reaches no arithmetic error"
+
+  new_store leading-zero-claim
+  install_stub
+  printf '07000 010 push-failed\n' > "$H/.claude/.sync-push-backoff"
+  fire_write 7239 "$H/.claude/skills/demo/SKILL.md"
+  assert_eq "$(spawn_count)" "0" "07000 with ten failures stays closed until its 240-second cap"
+  fire_write 7240 "$H/.claude/skills/demo/SKILL.md"
+  check "the leading-zero state opens exactly at its decimal boundary" wait_count 1
+  assert_eq "$(backoff_line)" "7240 10 push-failed" "the claim rewrites the count in decimal"
 
   new_store malformed-reason
   install_stub
@@ -686,6 +731,27 @@ t_robustness() {
   assert_eq "$(backoff_line)" "8001 1 conflict-markers" \
     "a malformed prior count restarts at one instead of aborting the recording"
 
+  new_store leading-zero-previous
+  printf '8000 010 push-failed\n' > "$H/.claude/.sync-push-backoff"
+  printf -- '<<<<<<< Updated upstream\n=======\n>>>>>>> Stashed changes\n' \
+    >> "$STORE/corrections/rules.md"
+  run_push 8001
+  assert_eq "$(backoff_line)" "8001 11 conflict-markers" \
+    "a leading-zero prior count is decimal: 010 + 1 is 11, not octal 9"
+
+  new_store invalid-octal-previous
+  printf '8000 09 push-failed\n' > "$H/.claude/.sync-push-backoff"
+  printf -- '<<<<<<< Updated upstream\n=======\n>>>>>>> Stashed changes\n' \
+    >> "$STORE/corrections/rules.md"
+  run_push 8001
+  # Before, the arithmetic error left the refusal block ahead of its `exit 1`:
+  # the run went on to commit the markers, clear the breaker and exit 0.
+  assert_eq "$PUSH_RC" "1" "a REFUSED push over a 09 prior count still exits nonzero"
+  assert_eq "$(backoff_line)" "8001 10 conflict-markers" \
+    "a prior count octal rejects (09) is still recorded as the tenth failure"
+  assert_eq "$(git -C "$STORE" rev-list --count HEAD)" "1" \
+    "a REFUSED push over a 09 prior count commits no conflict markers"
+
   new_store previous-no-newline
   printf '7000 1 push-failed' > "$H/.claude/.sync-push-backoff"
   printf -- '<<<<<<< Updated upstream\n=======\n>>>>>>> Stashed changes\n' \
@@ -719,6 +785,27 @@ t_robustness() {
     fail "a missing backoff library stays silent" "$(cat "$H/hook.err")"
   else
     pass "a missing backoff library stays silent"
+  fi
+  # The case above runs under this host's bash. Under bash 3.2 (macOS) it also
+  # needs the source's shape: there `source … || true` still exits under set -e.
+  assert_eq "$(guarded_source_lines "$HOOK")" "" \
+    "memory-sync has no source that recovers through ||, && or a test (bash 3.2 exits there)"
+}
+
+t_shape() {
+  section "the source-shape check sees each form bash 3.2 exits on"
+  # CI's bash 5 survives every fatal form in tests/lib/source-shape.sh, so this
+  # check is all that stops a reformatted `source … || true` (continued onto a
+  # second line, in a { … } group, after builtin, followed by &&) coming back.
+  assert_eq "$(source_shape_self_check "$SANDBOX/source-shape")" "" \
+    "the source-shape check flags every bash 3.2-fatal fixture form and no safe one"
+  local bash32
+  bash32=$(source_shape_bash32)
+  if [[ -n "$bash32" ]]; then
+    assert_eq "$(source_shape_fixture_check "$bash32")" "" \
+      "under $bash32 ($("$bash32" -c 'echo "$BASH_VERSION"')), each fixture form exits or survives as listed"
+  else
+    echo "  - NOT MEASURED: no bash 3.x (CLADE_TEST_BASH32 or /bin/bash) to re-run the fixture forms under"
   fi
 }
 
@@ -796,7 +883,7 @@ EOF
     test "$HUNG_TOOK" -lt 8
 }
 
-ALL_SECTIONS="failures merge_abort delivery gate claim half_open robustness defaults harness"
+ALL_SECTIONS="failures merge_abort delivery gate claim half_open robustness shape defaults harness"
 for _section in ${MSB_ONLY:-$ALL_SECTIONS}; do
   "t_$_section"
 done
@@ -809,18 +896,20 @@ if [[ -z "$MSB_MUTANT" && -z "${MSB_SKIP_MUTATIONS:-}" ]]; then
 
   mutation() {
     local expect="$1" target="$2" name="$3" only="$4" dir="$MUT_DIR/m$NMUT" src
-    mkdir -p "$dir/scripts" "$dir/hooks/lib" "$dir/tests"
+    mkdir -p "$dir/scripts" "$dir/hooks/lib" "$dir/tests/lib"
     cp "$REPO_ROOT/configs/scripts/sync-push.sh" "$dir/scripts/sync-push.sh"
     cp "$REPO_ROOT/configs/scripts/sync-store-heal.sh" "$dir/scripts/sync-store-heal.sh"
     cp "$REPO_ROOT/configs/hooks/memory-sync.sh" "$dir/hooks/memory-sync.sh"
     cp "$REPO_ROOT/configs/hooks/lib/runtime-dir.sh" "$dir/hooks/lib/runtime-dir.sh"
     cp "$REPO_ROOT/configs/hooks/lib/sync-push-backoff.sh" "$dir/hooks/lib/sync-push-backoff.sh"
     cp "$REPO_ROOT/tests/test-memory-sync-breaker.sh" "$dir/tests/test-memory-sync-breaker.sh"
+    cp "$REPO_ROOT/tests/lib/source-shape.sh" "$dir/tests/lib/source-shape.sh"
     case "$target" in
       push) src="$dir/scripts/sync-push.sh" ;;
       hook) src="$dir/hooks/memory-sync.sh" ;;
       lib) src="$dir/hooks/lib/sync-push-backoff.sh" ;;
       self) src="$dir/tests/test-memory-sync-breaker.sh" ;;   # this suite's own harness
+      shape) src="$dir/tests/lib/source-shape.sh" ;;          # the shape check it sources
     esac
     shift 4
     while [[ "$#" -ge 2 ]]; do
@@ -913,8 +1002,52 @@ exit 0'
   mutation red push "the consecutive-failure increment" failures \
     '"$((previous + 1))"' '"1"'
   mutation red hook "the missing backoff library source guard" robustness \
-    'source "$HOOK_LIBDIR/sync-push-backoff.sh" 2>/dev/null || true' \
-    'source "$HOOK_LIBDIR/sync-push-backoff.sh"'
+    'set +e
+# shellcheck source=/dev/null
+source "$HOOK_LIBDIR/sync-push-backoff.sh" 2>/dev/null
+set -e' 'source "$HOOK_LIBDIR/sync-push-backoff.sh" 2>/dev/null'
+  mutation red hook "the bash 3.2-safe source shape (back to || true)" robustness \
+    'set +e
+# shellcheck source=/dev/null
+source "$HOOK_LIBDIR/sync-push-backoff.sh" 2>/dev/null
+set -e' 'source "$HOOK_LIBDIR/sync-push-backoff.sh" 2>/dev/null || true'
+  # The two forms the shape check missed before it joined lines and read
+  # { … } groups; both pass every behavioural case here under bash 5.
+  mutation red hook "the bash 3.2-safe source shape (back to a continued || true)" robustness \
+    'set +e
+# shellcheck source=/dev/null
+source "$HOOK_LIBDIR/sync-push-backoff.sh" 2>/dev/null
+set -e' 'source "$HOOK_LIBDIR/sync-push-backoff.sh" 2>/dev/null \
+  || true'
+  mutation red hook "the bash 3.2-safe source shape (back to { source; } || true)" robustness \
+    'set +e
+# shellcheck source=/dev/null
+source "$HOOK_LIBDIR/sync-push-backoff.sh" 2>/dev/null
+set -e' '{ source "$HOOK_LIBDIR/sync-push-backoff.sh"; } 2>/dev/null || true'
+  mutation red shape "joining a backslash-continued line" shape \
+    'if ($0 ~ /\\$/) { buf = buf substr($0, 1, length($0) - 1) " "; next }' ''
+  mutation red shape "joining a line that ends in an operator" shape \
+    'if ($0 ~ /(\|\||&&|\|)[[:space:]]*$/) { buf = buf $0 " "; next }' ''
+  mutation red shape "printing a comment line on its own" shape \
+    '/^[[:space:]]*#/ && buf == "" { print NR ":" $0; next }' ''
+  mutation red shape "dropping comment lines" shape \
+    "| grep -vE '^[0-9]+:[[:space:]]*#' " ''
+  mutation red shape "reading a { … } group" shape \
+    '|\{[[:space:]]*${src}.*\}[^;#]*(\|\||&&)' ''
+  mutation red shape "builtin, command and assignment prefixes" shape \
+    'local src="${pre}(source' 'local src="(source'
+  mutation red shape "the command prefix" shape \
+    '(builtin|command)' '(builtin)'
+  mutation red shape "an assignment value stopping at a parenthesis" shape \
+    '=[^[:space:]()`]*[[:space:]]+)*' '=[^[:space:]]*[[:space:]]+)*'
+  mutation red shape "a source followed by &&" shape \
+    '${at}${src}[^;#]*(\|\||&&)|' '${at}${src}[^;#]*(\|\|)|'
+  mutation red shape "a source after !" shape \
+    '|${at}![[:space:]]+${src}' ''
+  mutation red shape "a source later in an if condition" shape \
+    '[[:space:]]+([^#;]*(&&|\|\||!|\{))?[[:space:]]*' '[[:space:]]+(![[:space:]]*)?'
+  mutation red shape "the first-argument check (jq's . ==)" shape \
+    '[^[:space:]=|)]"' '[^[:space:]|)]"'
   mutation red hook "the missing backoff library function guard" robustness \
     'if declare -F sync_push_backoff_active >/dev/null 2>&1 && sync_push_backoff_active; then' \
     'if sync_push_backoff_active; then'
@@ -939,8 +1072,14 @@ exit 0'
   mutation red push "prior-count validation" robustness \
     "case \"\$count\" in
       ''|*[!0-9]*) ;;
-      *) previous=\$count ;;
+      *) previous=\$((10#\$count)) ;;
     esac" 'previous=$count'
+  mutation red push "reading the prior count as decimal" robustness \
+    'previous=$((10#$count))' 'previous=$count'
+  mutation red lib "reading the timestamp as decimal" robustness \
+    '_failed_at=$((10#$_failed_at))' ':'
+  mutation red lib "reading the failure count as decimal" robustness \
+    '_failures=$((10#$_failures))' ':'
   mutation red lib "the missing-file fast path" robustness \
     '[[ -f "$_file" ]] || return 1' ':'
   mutation red lib "the complete-state shape check" robustness \
@@ -964,7 +1103,9 @@ exit 0'
   while [[ "$local_i" -lt "$NMUT" ]]; do
     dir="${MUT_DIRS[$local_i]}"
     MSB_SELF="$REPO_ROOT/tests/test-memory-sync-breaker.sh"
-    [[ "${MUT_TARGETS[$local_i]}" == self ]] && MSB_SELF="$dir/tests/test-memory-sync-breaker.sh"
+    case "${MUT_TARGETS[$local_i]}" in
+      self|shape) MSB_SELF="$dir/tests/test-memory-sync-breaker.sh" ;;
+    esac
     MSB_MUTANT=1 MSB_SKIP_MUTATIONS=1 MSB_ONLY="${MUT_ONLY[$local_i]}" \
       MSB_HOOK="$dir/hooks/memory-sync.sh" MSB_PUSH="$dir/scripts/sync-push.sh" \
       bash "$MSB_SELF" > "$MUT_DIR/m$local_i.log" 2>&1

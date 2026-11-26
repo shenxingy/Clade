@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import os
 import re
+import shutil
 import subprocess
 import tempfile
 from concurrent.futures import ThreadPoolExecutor
@@ -26,7 +27,12 @@ REPO = Path(__file__).resolve().parents[2]
 # The same question for a guard that lives in a shell hook and is tested by a
 # shell suite rather than a --self-test. The hook is mutated in a COPY and the
 # suite pointed at it through its override variable, so the tree is never
-# written. A mutation can take several (old, new) edits: a gate that two
+# written. The copy sits beside a copy of the lib/ directory next to the hook,
+# and a guard that lives in one of those libs is mutated there: "libs" names
+# the files a table's anchors may be in besides the hook. Until the guardian's
+# rm and force-push rules moved into its lib/, the copy ran alone. An
+# unmutated copy, built the same way, must pass, or a mutation's red could be
+# the copy's. A mutation can take several (old, new) edits: a gate that two
 # checks implement together is removed by removing both.
 #
 # pre-tool-guardian's subagent-wait rule, run as GUARDIAN_WAITS_ONLY=1. Its
@@ -42,9 +48,11 @@ REPO = Path(__file__).resolve().parents[2]
 # 6 nested scripts (a guard against runaway recursion, not a verdict).
 #
 # Its force-push walk, run as GUARDIAN_PUSH_ONLY=1 under a second key (the
-# "hook" field names the file), and the same walk in the Codex mirror, mutated
-# through GUARDIAN_PY_HOOK. GUARDIAN_SIDE asserts only the guardian a table
-# mutates (the full suite asserts both), which halves its time. The two tables
+# "hook" field names the file; the walk is in lib/force-push-walk.sh, the test
+# that decides whether it runs in the hook), and the same walk in the Codex
+# mirror, mutated through GUARDIAN_PY_HOOK. GUARDIAN_SIDE asserts only the
+# guardian a table mutates (the full suite asserts both), which halves its
+# time. The two tables
 # name the same guards in the same order, so a guard added to one walk and not
 # the other shows as a missing name. Not mutated, on purpose: the depth cap of
 # 6 queued walks (a guard against runaway recursion, not a verdict); the
@@ -54,9 +62,14 @@ REPO = Path(__file__).resolve().parents[2]
 # around it, which changes no verdict since a ref holding a substitution is
 # read as the session branch.
 #
-# Every anchor must occur exactly once: the edit replaces the first match, and
-# the hook carries two awk programs whose option-parsing lines are alike, so a
-# duplicated anchor would mutate whichever comes first and test nothing.
+# Its libs failing closed, run as GUARDIAN_LIBS_ONLY=1 under a third key: a
+# lib that is missing or defines no check refuses what its rule reads, and
+# rm-guard.sh finds rm-targets.sh, or exempts nothing without it.
+#
+# Every anchor must occur exactly once across the hook and its libs: the edit
+# replaces the first match, and the hook and lib/force-push-walk.sh carry two
+# awk programs whose option-parsing lines are alike, so a duplicated anchor
+# would mutate whichever comes first and test nothing.
 HOOK_SUITES: dict[str, dict] = {
     # wf-reader-guard: the deny-by-default Bash allowlist of the wf-reader
     # agent. Absent on purpose, each because removing it alone changes no
@@ -425,6 +438,7 @@ HOOK_SUITES: dict[str, dict] = {
     },
     "configs/hooks/pre-tool-guardian.sh (force-push walk)": {
         "hook": "configs/hooks/pre-tool-guardian.sh",
+        "libs": ["configs/hooks/lib/force-push-walk.sh"],
         "suite": "tests/test-pre-tool-guardian.sh",
         "hook_var": "GUARDIAN_HOOK",
         "env": {"GUARDIAN_PUSH_ONLY": "1", "GUARDIAN_SIDE": "sh"},
@@ -673,6 +687,32 @@ HOOK_SUITES: dict[str, dict] = {
             ("or on a $'…' string",
              [('if [[ "$_gd_plain" == *push* || "$COMMAND" == *"\\$\'"* ]]; then',
               'if [[ "$_gd_plain" == *push* ]]; then')]),
+        ],
+    },
+    "configs/hooks/pre-tool-guardian.sh (libs fail closed)": {
+        "hook": "configs/hooks/pre-tool-guardian.sh",
+        "libs": ["configs/hooks/lib/rm-guard.sh"],
+        "suite": "tests/test-pre-tool-guardian.sh",
+        "hook_var": "GUARDIAN_HOOK",
+        "env": {"GUARDIAN_LIBS_ONLY": "1"},
+        "fail_fast_env": {"GUARDIAN_FAIL_FAST": "1"},
+        "mutations": [
+            ("a hook without lib/rm-guard.sh refuses a command with an rm word",
+             [("elif printf '%s\\n' \"$COMMAND\" | grep -qE '\\brm\\b'; then", "elif false; then")]),
+            ("an rm lib that defines no gd_rm_check is a missing one",
+             [("if declare -F gd_rm_check >/dev/null; then", 'if [[ -f "$GD_LIB/rm-guard.sh" ]]; then')]),
+            ("a hook without lib/force-push-walk.sh refuses a command that may push",
+             [('    || gd_deny "pre-tool-guardian cannot check this push:',
+               '    || : "pre-tool-guardian cannot check this push:')]),
+            ("a push lib that defines no gd_push_check is a missing one",
+             [("  declare -F gd_push_check >/dev/null \\", '  [[ -f "$GD_LIB/force-push-walk.sh" ]] \\')]),
+            ("the libs are found beside the hook, not in the working directory",
+             [('GD_LIB="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib"', 'GD_LIB="$PWD/lib"')]),
+            ("rm-guard.sh finds rm-targets.sh beside itself",
+             [('source "$(dirname "${BASH_SOURCE[0]}")/rm-targets.sh"',
+               'source "$(dirname "${BASH_SOURCE[0]}")/../rm-targets.sh"')]),
+            ("without rm-targets.sh no operand is exempt",
+             [("  || rm_all_operands_deep() { return 1; }", "  || rm_all_operands_deep() { return 0; }")]),
         ],
     },
     "plugins/clade/hooks/pre_tool_guardian.py": {
@@ -947,34 +987,50 @@ def test_removing_a_hook_guard_turns_its_suite_red(hook):
     minutes to the pytest job."""
     spec = HOOK_SUITES[hook]
     path = spec.get("hook", hook)
-    source = (REPO / path).read_text(encoding="utf-8")
+    files = [path, *spec.get("libs", [])]
+    sources = {f: (REPO / f).read_text(encoding="utf-8") for f in files}
     unanchored = [name for name, edits in spec["mutations"]
-                  for old, _ in edits if old not in source]
+                  for old, _ in edits if not any(old in s for s in sources.values())]
     assert not unanchored, (
-        f"mutation anchors no longer appear in {hook}: {unanchored}. The code "
+        f"mutation anchors no longer appear in {files}: {unanchored}. The code "
         f"moved; update the anchor, do not delete the case — an unanchored "
         f"mutation silently stops testing.")
     ambiguous = [name for name, edits in spec["mutations"]
-                 for old, _ in edits if source.count(old) > 1]
+                 for old, _ in edits if sum(s.count(old) for s in sources.values()) > 1]
     assert not ambiguous, (
-        f"mutation anchors occur more than once in {hook}: {ambiguous}. The "
+        f"mutation anchors occur more than once in {files}: {ambiguous}. The "
         f"edit hits the first match, which may not be the guard named; widen "
         f"the anchor until it is unique.")
+    hook_dir = (REPO / path).parent
 
     with tempfile.TemporaryDirectory() as tmp:
+        def copy(tag, texts):
+            root = Path(tmp) / tag
+            if (hook_dir / "lib").is_dir():
+                shutil.copytree(hook_dir / "lib", root / "lib")
+            root.mkdir(exist_ok=True)
+            for f, text in texts.items():
+                (root / (REPO / f).relative_to(hook_dir)).write_text(text, encoding="utf-8")
+            return root / Path(path).name
+
         def one(i_mut):
             i, (name, edits) = i_mut
-            mutated = source
+            mutated = dict(sources)
             for old, new in edits:
-                mutated = mutated.replace(old, new, 1)
-            assert mutated != source, name
-            copy = Path(tmp) / f"m{i}-{Path(path).name}"
-            copy.write_text(mutated, encoding="utf-8")
-            return name, _run_suite(spec, copy, fail_fast=True)
+                f = next(f for f, s in mutated.items() if old in s)
+                mutated[f] = mutated[f].replace(old, new, 1)
+            assert mutated != sources, name
+            return name, _run_suite(spec, copy(f"m{i}", mutated), fail_fast=True)
 
         with ThreadPoolExecutor(max_workers=8) as pool:
+            control = pool.submit(lambda: _run_suite(spec, copy("control", sources), fail_fast=True))
             results = list(pool.map(one, enumerate(spec["mutations"])))
 
+    # The copy, unmutated, must pass: a copy that is not the hook as installed
+    # (a lib left behind) fails every mutation for that reason instead.
+    assert control.result().returncode == 0, (
+        f"an unmutated copy of {hook} fails {spec['suite']}, so no mutation "
+        f"below can be read:\n{control.result().stdout[-2000:]}")
     stayed_green = [name for name, res in results if res.returncode == 0]
     assert not stayed_green, (
         f"{spec['suite']} still PASSES with these removed from {hook}: {stayed_green}.\n"

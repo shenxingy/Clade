@@ -92,10 +92,11 @@
         "hooks": [
           {
             "id": "pre-tool-guardian",
-            "description": "Block dangerous Bash commands (force push, rm -rf, drop table, etc.); warn a subagent whose wait would outlive its prompt cache (5 minutes by default)",
+            "description": "Block dangerous Bash commands (force push, rm -rf, drop table, etc.); warn a subagent whose wait would outlive its prompt cache (5 minutes by default). onFailure block: a guardian that crashes, times out or prints unparseable output refuses the call instead of letting it run unchecked (Claude Code 2.1.295+; older versions ignore the key). Timeout 15 s: a normal run takes about 0.05 s, and since a timeout now refuses the call, the limit leaves room for a guardian starved of CPU by its own session's builds",
             "type": "command",
             "command": "~/.claude/hooks/pre-tool-guardian.sh",
-            "timeout": 5
+            "timeout": 15,
+            "onFailure": "block"
           },
           {
             "id": "revert-detector",

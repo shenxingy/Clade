@@ -26,8 +26,14 @@ INPUT=$(cat)
 TOOL_NAME=$(echo "$INPUT" | jq -r '.tool_name // empty' 2>/dev/null)
 
 HOOK_LIBDIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib"
+# A missing or broken library must not abort the hook: the declare -F checks
+# below fail open. errexit is off for the source itself because
+# `source … || true` is not enough — bash 3.2 (macOS /bin/bash) exits under
+# set -e when source fails, inside || or if too; bash 5 does not.
+set +e
 # shellcheck source=/dev/null
-source "$HOOK_LIBDIR/sync-push-backoff.sh" 2>/dev/null || true
+source "$HOOK_LIBDIR/sync-push-backoff.sh" 2>/dev/null
+set -e
 
 # A project memory under any projects directory sync-link-projects.sh scans:
 # ~/.claude/projects, $CLAUDE_CONFIG_DIR/projects and
