@@ -378,6 +378,22 @@ def mainline_nothing_ran_is_red(tmp: Path, script: Path) -> None:
            f"no green record: {red.get('reason')}")
 
 
+def mainline_ci_local_exit_2_follows_the_verdict(tmp: Path, script: Path) -> None:
+    # ci-local exits 2, not 0, on partial and flaky since its default turned
+    # strict. Read as red, a partial main was rerun and bisected on every tick.
+    w = World(tmp)
+    runner = w.clone("runner")
+    out = _tick(w, script, runner, "echo '{\"verdict\": \"partial\", \"passed\": [\"Lint\"]}'; exit 2")
+    expect(out.returncode == 0, f"a ci-local 'partial' verdict with exit 2 is green: {out.returncode} {out.stdout}")
+    expect(_history(w)[-1].get("status") == "green" and "rerun" not in _history(w)[-1],
+           f"recorded green, with no rerun: {_history(w)[-1]}")
+    head = w.merge_pr(1, {"a.txt": "1\n"})
+    out = _tick(w, script, runner, "echo '{\"verdict\": \"flaky\", \"passed\": [\"Lint\"]}'; exit 2")
+    expect(out.returncode == 3, f"a ci-local 'flaky' verdict with exit 2 is flaky: {out.returncode} {out.stdout}")
+    expect(_history(w)[-1].get("status") == "flaky", f"recorded flaky: {_history(w)[-1]}")
+    expect(not (w.root / "state" / "red" / f"{head[:8]}.json").exists(), "a flake is never bisected")
+
+
 def mainline_rewritten_history_is_unbisected(tmp: Path, script: Path) -> None:
     w = World(tmp)
     runner = w.clone("runner")
@@ -439,6 +455,7 @@ MAINLINE_CASES: list[tuple[str, Case]] = [
     ("--max-probes bounds the bisect", mainline_bounds_the_probes),
     ("a flaky red is not bisected", mainline_flaky_is_not_bisected),
     ("nothing ran is red", mainline_nothing_ran_is_red),
+    ("ci-local's exit 2 is classed by its verdict", mainline_ci_local_exit_2_follows_the_verdict),
     ("rewritten history is unbisected", mainline_rewritten_history_is_unbisected),
     ("a held lock exits 75", mainline_lock_held_exits_75),
     ("status falls back through history", mainline_status_falls_back),
