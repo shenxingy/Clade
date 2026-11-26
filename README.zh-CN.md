@@ -128,6 +128,7 @@ python3 configs/scripts/check-layers.py
 | 运行仓库真实的本地 CI 闸门 | `/green` |
 | 检查任务的行为锚点 | `/verify` |
 | 保持工作隔离且易审阅 | `/worktree`、`/commit`、`/create-pr` |
+| 端到端做完一个 Linear issue | `/linear ABC-123` |
 | 审阅 PR 或安全边界 | `/review-pr`、`/cso`、`/incident` |
 | 上下文用尽后继续 | `/handoff`，然后 `/pickup` |
 | 研究陌生方案 | `/research` |
