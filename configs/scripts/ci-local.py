@@ -87,8 +87,12 @@ refuses the variable. Such a step runs without it: from the start when its
 text shows nvm, and once more when its output shows nvm's refusal of the job's
 prefix. That is not a flake rerun, so --no-rerun leaves it on, but a step that
 timed out is not run again. Its output says so, and the JSON lists each such
-step under `no_npm_prefix`. Not caught: a step that hides nvm's stderr and has
-no -e; it runs on whatever node is left.
+step under `no_npm_prefix`. Two shapes still go wrong. A step that hides nvm's
+stderr and has no -e is not caught: it runs on whatever node is left. A step
+that loads nvm where its text does not show it (`run: ./ci/build.sh`, which
+sources nvm.sh) and is not safe to run twice fails here and passes on a
+runner: what its first attempt did before nvm refused (a `mkdir out`) is still
+there, so the second run fails on it, and so does the flake rerun.
 
 Exit 1 when a job that ran failed. Otherwise any unproven lane makes the
 summary read PARTIAL, a step that passed only on rerun makes it read FLAKY,
@@ -1040,7 +1044,9 @@ def run_job(job: Job, repo: Path, tail_lines: int, echo: bool, timeout: int,
         # nvm, loaded where the step's text does not show it (a script, an
         # eval), refused the job's prefix and deactivated itself: the attempt
         # failed, or passed on another node. Its result is discarded and the
-        # step runs once more without the prefix. Not after a timeout, like
+        # step runs once more without the prefix, on fresh runner files, so
+        # the discarded attempt's $GITHUB_ENV and $GITHUB_PATH writes are
+        # dropped; nothing else it did is undone. Not after a timeout, like
         # the rerun below, and not a rerun: --no-rerun leaves it alone.
         if not timed_out and runner.nvm_refused(out, files.npm_prefix):
             env.pop("NPM_CONFIG_PREFIX", None)

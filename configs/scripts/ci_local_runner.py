@@ -361,9 +361,15 @@ class JobFiles:
 # isolation. Then from nvm's own refusal in its output, which names the job's
 # prefix: nvm was loaded where the text does not show it (a script the step
 # runs, an eval), so that attempt is discarded, failed or passed, and the step
-# runs again without the variable. Not found: a step that hides nvm's stderr
-# (`2>/dev/null`) and has no -e. It runs on whatever node is left, and passes
-# or fails on it.
+# runs again without the variable, on fresh runner files: the discarded
+# attempt's $GITHUB_ENV and $GITHUB_PATH writes are dropped. Two shapes still
+# go wrong. Not found: a step that hides nvm's stderr (`2>/dev/null`) and has
+# no -e. It runs on whatever node is left, and passes or fails on it. Found,
+# and still failed: a step that loads nvm out of sight (`run: ./ci/build.sh`,
+# which sources nvm.sh) and is not safe to run twice. Nothing but its runner
+# files is undone, so what its first attempt did before nvm refused (a
+# `mkdir out`) fails the second run, and the flake rerun after it. A runner
+# runs the step once, and passes it.
 _SH_COMMENT = re.compile(r"(^|\s)#.*$", re.M)
 _NVM_USE = re.compile(
     r"nvm\.sh|(?:^|[;&|(`{!]|\b(?:then|do|else|elif|if|while|until|time|command)\s)\s*nvm(?![\w./=-])",

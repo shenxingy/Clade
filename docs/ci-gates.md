@@ -50,11 +50,16 @@ nvm refuses `NPM_CONFIG_PREFIX` and deactivates itself, so the step would exit
 nvm (it sources `nvm.sh` or runs `nvm`) runs without the prefix from the start.
 One whose output shows nvm's refusal of the job's prefix (a script it runs
 loads nvm, or an `eval`) runs once more without it, and that attempt is its
-result; this is not a flake rerun, so `--no-rerun` leaves it on, but a step
-that timed out is not run again. Either way its output names it, and `--json` lists it under
-`no_npm_prefix`. Not caught: a step that hides nvm's stderr and has no `-e`; it
-runs on whatever node is left. Runner labels
-compare case-insensitively, so `[self-hosted, macOS]` or an `ARM64` label is a
+result; it gets fresh runner files, so the first attempt's `$GITHUB_ENV` and
+`$GITHUB_PATH` writes are dropped. This is not a flake rerun, so `--no-rerun`
+leaves it on, but a step that timed out is not run again. Either way its
+output names it, and `--json` lists it under `no_npm_prefix`. Two shapes still
+go wrong. A step that hides nvm's stderr and has no `-e` is not caught; it
+runs on whatever node is left. A step that loads nvm where its text does not
+show it (`run: ./ci/build.sh`, which sources `nvm.sh`) and is not safe to run
+twice fails here and passes on a runner: what its first attempt did before
+nvm refused (`mkdir out`) is still there, so the second run fails on it, and
+so does the flake rerun. Runner labels compare case-insensitively, so `[self-hosted, macOS]` or an `ARM64` label is a
 platform skip on another machine, and a workflow whose push trigger filters on
 `tags:` alone is a tag tier, skipped with its reason on a head that carries no
 tag (`--all` runs it). `/green` drives it to green without weakening a gate.

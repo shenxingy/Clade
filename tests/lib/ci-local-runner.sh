@@ -317,7 +317,9 @@ PY
 # variable, so only their `nvm` commands say nvm; "Nvm Mentions Only" says nvm
 # every way that is not using it, and must keep the job's prefix. "Nvm
 # Indirect" loads it where the text does not show it: in scripts, one with no
-# -e (the review's shape, green on the wrong node), and in an eval.
+# -e (the review's shape, green on the wrong node), and in an eval. That
+# script writes $GITHUB_ENV and $GITHUB_PATH entries named for the node it
+# ran on, and a later step records which reached it: only the run again's.
 NVMW="$SANDBOX/npm-nvm"; mkdir -p "$NVMW/.github/workflows" "$NVMW/nvm-stub/alias" "$NVMW/nvm-bare" "$NVMW/tools"
 touch "$NVMW/nvm-stub/alias/default"
 cat > "$NVMW/nvm-stub/nvm.sh" <<'SH'
@@ -345,6 +347,9 @@ export NVM_DIR="$PWD/nvm-stub"
 . "$NVM_DIR/nvm.sh"
 nvm use 22 >/dev/null
 echo "script node=${CI_LOCAL_T_NODE:-host}"
+# What it leaves for the job's later steps names the node it ran on.
+echo "NODE_SEEN_${CI_LOCAL_T_NODE:-host}=1" >> "$GITHUB_ENV"
+echo "$PWD/seen-${CI_LOCAL_T_NODE:-host}" >> "$GITHUB_PATH"
 SH
 cat > "$NVMW/tools/use-node-e.sh" <<'SH'
 #!/usr/bin/env bash
@@ -437,6 +442,10 @@ jobs:
           . "$CI_LOCAL_T_NVM_LOAD"
           eval "nvm use 22" > /dev/null
           echo "eval node=${CI_LOCAL_T_NODE:-host}" >> .nvm-indirect
+      - name: Reads what the script with no -e left for it
+        run: |
+          p=""; for n in host stub; do case ":$PATH:" in *":$PWD/seen-$n:"*) p="$p $n" ;; esac; done
+          echo "env host=${NODE_SEEN_host:-unset} stub=${NODE_SEEN_stub:-unset}, path:${p:- none}" > .nvm-indirect-left
   own:
     name: Nvm Own Prefix
     runs-on: ubuntu-latest
@@ -767,13 +776,15 @@ if fs[0].get("exit_code") != 3 or tail[:1] != [os.environ["CL_NVM_WANT"]] or "nv
 done
 # nvm loaded where the text does not show it (the review's shapes, 2026-11-25):
 # with no -e the step passed on another node, with -e or eval it exited 11.
-rm -f "$NVMW/.nvm-indirect"
+rm -f "$NVMW/.nvm-indirect" "$NVMW/.nvm-indirect-left"
 OUT="$(nvm_caller python3 "$RUNNER" --repo "$NVMW" --job "Nvm Indirect" 2>&1)"; RC=$?
 assert_eq "$RC" "0" "steps that load nvm out of sight pass: nvm's refusal of the job's prefix ran each again without it"
 assert_lacks "$OUT" "FLAKY" "running again after nvm's refusal is not a flake rerun"
 assert_eq "$(tr '\n' ' ' < "$NVMW/.nvm-indirect" 2>/dev/null)" \
   "script node=host script node=stub script-e node=stub eval node=stub " \
   "each ends on nvm's node, run once more; the one with no -e had passed on another"
+assert_eq "$(cat "$NVMW/.nvm-indirect-left" 2>/dev/null)" "env host=unset stub=1, path: stub" \
+  "the discarded attempt's \$GITHUB_ENV and \$GITHUB_PATH writes are dropped: a later step sees only the run again's"
 for x in "Runs a script that loads nvm, with no -e~0" "Runs a script that loads nvm, with -e~11" \
          "Evals its nvm command~11"; do
   s="${x%~*}"; n="${x##*~}"
@@ -1054,6 +1065,9 @@ ci_local_runner_mutations() {
   # nvm loaded where the step's text does not show it.
   mutation red "a step nvm refused the job's prefix running again (call site)" \
     'if not timed_out and runner.nvm_refused(out, files.npm_prefix):' 'if False:'
+  mutation red "the run again on fresh runner files, the discarded attempt's writes dropped" \
+    'rc, redo, out, timed_out = runner.attempt(step.run, cwd, {**env, **files.begin_step()},' \
+    'rc, redo, out, timed_out = runner.attempt(step.run, cwd, {**env, **files._current, "RUNNER_TEMP": str(files.temp), "GITHUB_WORKSPACE": str(files.workspace)},'
   mutation red "the job's prefix leaving the step before it runs again" \
     '            env.pop("NPM_CONFIG_PREFIX", None)
 ' ''
