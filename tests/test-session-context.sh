@@ -826,7 +826,7 @@ OUT=$(todo_ctx)
 assert_line "$OUT" "Next TODO: - [ ] 🟠 Agent orange item" \
   "a bullet one column in, left of an item's content, starts a new item, so a fence two columns in is top-level"
 
-# Controls: pass on HEAD too, which tracks no indented marker. Each pins a part of
+# Controls: pass on 5914775 too, which tracks no indented marker. Each pins a part of
 # the rule above: a new item left of the open one's content (in "1.", "1)" and a
 # bullet two columns in), the new item's own content column, and a nested marker.
 for sibling in ' 1. Then a numbered sibling' ' 1) Then a numbered sibling' '  - Then a bullet two columns in'; do
