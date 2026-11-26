@@ -119,9 +119,13 @@ poll() {
 # reader marks hook.done at EOF, i.e. once the hook AND everything it detached
 # have exited. Waiting on that event replaced a fixed 0.3 s sleep, which a slow
 # push outlasts: a "spawned nothing" check then passed with the spawn still due.
+# Neither side of that pipe keeps the suite's stdout or stderr: a hung process
+# holding them would keep a caller that reads the suite through a pipe (ci-local,
+# `| tail`) waiting long after the bound below failed the case. HOOK_WAIT_TRIES
+# (default 200, 10 s) is that bound; t_harness lowers it.
 # Empty HOOK_BASE/HOOK_MAX/now pass empty overrides, so the hook's defaults apply.
 run_hook() {
-  local now="$1" input="$2"
+  local now="$1" input="$2" tries="${HOOK_WAIT_TRIES:-200}"
   rm -f "$H/hook.rc" "$H/hook.done"
   {
     printf '%s' "$input" | HOME="$H" BASH_ENV="${HOOK_BASH_ENV:-}" \
@@ -132,13 +136,13 @@ run_hook() {
       CLADE_SYNC_PUSH_BACKOFF_MAX_SECONDS="${HOOK_MAX-240}" \
       bash "$HOOK" 7>&1 > "$H/hook.out" 2> "$H/hook.err"
     printf '%s\n' "$?" > "$H/hook.rc"
-  } | { cat > /dev/null; : > "$H/hook.done"; } &
-  if poll 200 test -e "$H/hook.done"; then
+  } 2>/dev/null | { cat > /dev/null; : > "$H/hook.done"; } >/dev/null 2>&1 &
+  if poll "$tries" test -e "$H/hook.done"; then
     wait "$!" 2>/dev/null
     HOOK_RC=$(cat "$H/hook.rc")
   else
     HOOK_RC=unfinished
-    fail "the hook and the push it detached exit within 10 s"
+    fail "the hook and the push it detached exit within $((tries / 20)) s"
   fi
 }
 
@@ -733,7 +737,47 @@ t_defaults() {
   assert_eq "$(spawn_count)" "1" "the default cap is open just after 24 hours"
 }
 
-ALL_SECTIONS="failures merge_abort delivery gate claim half_open robustness defaults"
+# hung_fire — fire a skills write inside a command substitution that captures
+# stdout and stderr, as ci-local does, with run_hook's bound lowered to 1 s,
+# while something under the hook sleeps for 16 s and records its pid in
+# $H/sleeper.pid. Sets HUNG_RC (run_hook's HOOK_RC) and HUNG_TOOK (seconds
+# until the substitution saw EOF), then kills the sleeper.
+hung_fire() {
+  local t0=$SECONDS out
+  out=$(exec 2>&1; MSB_MUTANT=''; HOOK_WAIT_TRIES=20
+    fire_write 9000 "$H/.claude/skills/demo/SKILL.md"; printf 'rc=%s\n' "$HOOK_RC")
+  HUNG_TOOK=$((SECONDS - t0))
+  HUNG_RC=$(printf '%s\n' "$out" | sed -n 's/^rc=//p')
+  kill "$(cat "$H/sleeper.pid" 2>/dev/null)" 2>/dev/null || true
+}
+
+t_harness() {
+  section "run_hook's bound fails a hung run without holding the suite's output"
+
+  # The detached push hangs: only the reader is left on the pipe.
+  new_store harness-push
+  cat > "$H/.claude/scripts/sync-push.sh" <<EOF
+#!/usr/bin/env bash
+printf '%s\n' "\$\$" > '$H/sleeper.pid'
+exec sleep 16
+EOF
+  chmod +x "$H/.claude/scripts/sync-push.sh"
+  hung_fire
+  assert_eq "$HUNG_RC" "unfinished" "a push that outlives the bound fails the case"
+  check "a hung push does not hold a caller reading the suite's output (took ${HUNG_TOOK} s)" \
+    test "$HUNG_TOOK" -lt 8
+
+  # The hook itself hangs, so the writer side of the pipe is still running too.
+  new_store harness-hook
+  install_stub
+  printf 'printf "%%s\\n" "$$" > "%s/sleeper.pid"; exec sleep 16\n' "$H" > "$H/hang.env"
+  HOOK_BASH_ENV="$H/hang.env" hung_fire
+  assert_eq "$HUNG_RC" "unfinished" "a hook that outlives the bound fails the case"
+  check "a hung hook does not hold a caller reading the suite's output (took ${HUNG_TOOK} s)" \
+    test "$HUNG_TOOK" -lt 8
+}
+
+ALL_SECTIONS="failures merge_abort delivery gate claim half_open robustness defaults harness"
 for _section in ${MSB_ONLY:-$ALL_SECTIONS}; do
   "t_$_section"
 done
@@ -798,10 +842,14 @@ if [[ -z "$MSB_MUTANT" && -z "${MSB_SKIP_MUTATIONS:-}" ]]; then
     '_merge_reason=merge-abort-failed' ':'
   mutation red push "naming a failed abort on stderr" merge_abort \
     'echo "sync-push: could not abort the failed merge; run git merge --abort in $SYNC_DIR." >&2' ':'
-  # A self mutation edits this file, so its anchor is split ('7>&''1') to keep
-  # the line below from matching it.
+  # A self mutation edits this file, so each anchor is split ('7>&''1') to keep
+  # its own line below from matching it.
   mutation red self "run_hook waiting for the push it detached" gate \
     'bash "$HOOK" 7>&''1 >' 'bash "$HOOK" >'
+  mutation red self "the reader's /dev/null redirect" harness \
+    '"$H/hook.done"; } >/dev/null 2>&''1 &' '"$H/hook.done"; } &'
+  mutation red self "the writer's stderr redirect" harness \
+    '} 2>/dev/''null | {' '} | {'
   mutation red push "rejected-push failure recording" failures \
     'sync_push_record_failure push-failed' ':'
   mutation red push "success clearing the breaker" failures \
