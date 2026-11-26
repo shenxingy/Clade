@@ -15,10 +15,13 @@ Usage:
   doc-align.py --facts <path> <mode>  # Use non-default facts file
   doc-align.py --self-test            # Run the built-in fixtures (can the dated-row report fire?)
 
-apply and sync never change a date. A value they rewrite on a line that
-carries a YYYY-MM-DD (a dated VERIFY.md row) is reported after the fixes as
-"re-verify, then update its date": the row records a check made that day, and
-the tool did not run it. Report-only; the exit code is unchanged.
+apply and sync rewrite only what a fact's pattern captures, and never bump a
+row's date to match a fix. A value they rewrite on a line that carries a
+YYYY-MM-DD (a dated VERIFY.md row) is reported after the fixes as "re-verify,
+then update its date": the row records a check made that day, and the tool did
+not run it. Report-only; the exit code is unchanged. A fact whose value is
+itself a date is still rewritten like any other value, and is not reported
+unless its line carries another date.
 
 Schema (docs/facts.json):
   {
@@ -304,6 +307,8 @@ def self_test() -> int:
             problems.append(f"sync exited {code}; the dated-row report is report-only\n{out}")
         if lines[0] != "| H6 | hooks pass `bash -n` | ok | 2026-07-13 | all 3 hooks pass |":
             problems.append(f"sync did not rewrite the count under an unchanged date: {lines[0]!r}")
+        if lines[4] != "We released 2026-11-20 to users.":
+            problems.append(f"sync did not rewrite a date-valued fact like any other value: {lines[4]!r}")
         if "re-verify, then update its date" not in out:
             problems.append(f"sync rewrote dated rows and did not say re-verify, then update its date\n{out}")
         if _listed(out) != [1, 4, 7, 9]:
@@ -342,8 +347,8 @@ def self_test() -> int:
         return 1
     print("SELF-TEST PASSED: sync and apply rewrite a count under an unchanged date and name each dated row "
           "they rewrote, once, on the line holding the value; an undated row, an untouched dated row and a "
-          "date that is itself the value are not named, a run with no dated rewrite prints no report, and a "
-          "run with no mode exits 2.")
+          "date that is itself the value are not named (that date is still rewritten), a run with no dated "
+          "rewrite prints no report, and a run with no mode exits 2.")
     return 0
 
 

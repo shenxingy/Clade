@@ -1,7 +1,7 @@
 """doc-align.py's mutations, loaded into test_self_tests_can_fire.py's MUTATIONS.
 
 Each one removes one guard of the dated-row report (apply/sync name a row they
-rewrote when it carries a YYYY-MM-DD, and never change the date), or of the
+rewrote when it carries a YYYY-MM-DD, and never bump that row's date), or of the
 no-mode refusal, and the script's --self-test must turn red. The self-test
 drives main() on fixture repositories built in a temporary directory; nothing
 reads the real docs.
@@ -12,7 +12,10 @@ nothing. Without the check a bare run exits 0 having checked nothing.
 
 Not mutated, and why: the drift search and the rewrite itself (older than the
 self-test, and exercised by every case, so a broken rewrite fails all of them
-at once rather than one guard).
+at once rather than one guard). One exception: a rewrite that skips a value
+which is itself a date, which is what the docs claimed until review ("a date
+is never rewritten"). The docs now say such a fact is rewritten like any other,
+and that mutation is what holds them to it.
 """
 
 from __future__ import annotations
@@ -50,6 +53,10 @@ MUTATIONS: dict[str, list[tuple[str, str, str]]] = {S: [
     ("every rewritten row is named, dated or not",
      'if not d["dated"] or d["row_line"] in seen:',
      'if d["row_line"] in seen:'),
+    ("a fact whose value is a date is left alone",
+     '                content = content[: d["group_start"]] + str(d["expected"]) + content[d["group_end"]:]\n',
+     '                if not DATE_RE.fullmatch(d["found"]):\n'
+     '                    content = content[: d["group_start"]] + str(d["expected"]) + content[d["group_end"]:]\n'),
     ("a run with no mode is not refused",
      '    if args.mode is None:\n        ap.error("a mode is required")\n',
      ""),

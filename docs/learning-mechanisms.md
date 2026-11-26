@@ -96,7 +96,7 @@ Every project has shared facts that drift: skill counts in README, version numbe
 - `doc-align.py sync` — refresh + apply (one-shot)
 - `doc-align.py --self-test` — run the built-in fixtures; its mutations are in `orchestrator/tests/can_fire/doc_align.py`
 
-**A date is never rewritten.** When `apply` or `sync` rewrites a value on a line that carries a `YYYY-MM-DD` (a dated `VERIFY.md` row, a dated claim in prose), it lists that row after the fixes under "re-verify, then update its date". The row records a check made that day and the tool did not run it: on 2026-10-23 a sync set the hook count in VERIFY.md H6/SH1 to 35 under a 2026-07-13 date, a day the 33rd hook did not exist. Report-only; the exit code is unchanged.
+**A row's date is never bumped to match a fix.** When `apply` or `sync` rewrites a value on a line that carries a `YYYY-MM-DD` (a dated `VERIFY.md` row, a dated claim in prose), it lists that row after the fixes under "re-verify, then update its date". The row records a check made that day and the tool did not run it: on 2026-10-23 a sync set the hook count in VERIFY.md H6/SH1 to 35 under a 2026-07-13 date, a day the 33rd hook did not exist. Report-only; the exit code is unchanged. The tool rewrites only what a fact's pattern captures, so a fact whose value is itself a date (a release date) is rewritten like any other value, and is not listed unless its line carries another date.
 
 **`derive` types (V1):** `count_glob` (count files/dirs matching glob). More to come (`http_get_json`, `count_lines`, etc.) when needed. No shell-injection surface — safe primitives only.
 
