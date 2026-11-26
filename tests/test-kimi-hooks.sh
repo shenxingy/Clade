@@ -972,21 +972,13 @@ assert_contains "$(jq -r '.hookSpecificOutput.permissionDecisionReason // empty'
   "event key present" "adapter supplies hook_event_name even for a hand-piped payload"
 
 section "installer migration, idempotency and user entries"
-check_config() {
-  python3 - "$1" "$2" "$3" <<'PY'
+# One parser and one spec list for every config.toml check below. Specs name
+# the alternation the way install.sh's list does; written() is what lands in
+# config.toml, anchored as ^(…)$ because Kimi applies a matcher unanchored.
+KIMI_CFG_PY="$TMP_ROOT/kimi_cfg.py"
+cat > "$KIMI_CFG_PY" <<'PY'
 import re, sys
-home, expected_total, user_mode = sys.argv[1], int(sys.argv[2]), sys.argv[3]
-path = home + "/.kimi-code/config.toml"
-text = open(path, encoding="utf-8").read()
-raw = re.split(r"(?m)^\[\[hooks\]\]\s*$", text)[1:]
-entries = []
-for chunk in raw:
-    chunk = re.split(r"(?m)^\[(?!\[hooks\]\])", chunk, maxsplit=1)[0]
-    def field(name):
-        m = re.search(r"(?m)^" + name + r"\s*=\s*(.+?)\s*$", chunk)
-        return m.group(1).strip() if m else None
-    entries.append({k: field(k) for k in ("event", "matcher", "command", "timeout")})
-specs = [
+SPECS = [
     ("PreToolUse", "Bash", "pre-tool-guardian.sh", "5", ""),
     ("PreToolUse", "Edit|Write", "linter-config-guard.sh", "5", ""),
     ("UserPromptSubmit", "", "secret-scanner.sh", "5", ""),
@@ -1000,23 +992,84 @@ specs = [
     ("PostToolUse", "Edit|Write", "memory-sync.sh", "10", ""),
     ("PostToolUse", "Bash", "memory-sync.sh", "10", ""),
 ]
-errors = []
-if len(entries) != expected_total:
-    errors.append(f"entry count {len(entries)} != {expected_total}")
-for event, matcher, hook, timeout, mode in specs:
-    command = f'"{home}/.kimi-code/hooks/decision-to-kimi.sh {mode}{home}/.claude/hooks/{hook}"'
-    matches = [e for e in entries if e == {"event": f'"{event}"', "matcher": f'"{matcher}"', "command": command, "timeout": timeout}]
-    if len(matches) != 1:
-        errors.append(f"{event}/{matcher}/{hook}: exact entry count {len(matches)}")
-if user_mode == "user":
-    user = '"custom-user-hook"'
-    if sum(e["command"] == user for e in entries) != 1:
+def written(matcher):
+    return f"^({matcher})$" if matcher else ""
+def command(home, hook, mode):
+    return f"{home}/.kimi-code/hooks/decision-to-kimi.sh {mode}{home}/.claude/hooks/{hook}"
+def entries(path):
+    text = open(path, encoding="utf-8").read()
+    found = []
+    for chunk in re.split(r"(?m)^\[\[hooks\]\]\s*$", text)[1:]:
+        chunk = re.split(r"(?m)^\[(?!\[hooks\]\])", chunk, maxsplit=1)[0]
+        def field(name):
+            m = re.search(r"(?m)^" + name + r"\s*=\s*(.+?)\s*$", chunk)
+            return m.group(1).strip() if m else None
+        found.append({k: field(k) for k in ("event", "matcher", "command", "timeout")})
+    return found
+def check(home, expected_total, user_mode):
+    found = entries(home + "/.kimi-code/config.toml")
+    errors = []
+    if len(found) != int(expected_total):
+        errors.append(f"entry count {len(found)} != {expected_total}")
+    for event, matcher, hook, timeout, mode in SPECS:
+        want = {"event": f'"{event}"', "matcher": f'"{written(matcher)}"',
+                "command": f'"{command(home, hook, mode)}"', "timeout": timeout}
+        count = sum(e == want for e in found)
+        if count != 1:
+            errors.append(f"{event}/{written(matcher)}/{hook}: exact entry count {count}")
+    if user_mode == "user" and sum(e["command"] == '"custom-user-hook"' for e in found) != 1:
         errors.append("user-written entry missing or duplicated")
-if errors:
-    print("; ".join(errors))
-    sys.exit(1)
+    if errors:
+        print("; ".join(errors))
+        sys.exit(1)
+def legacy(home):
+    # The twelve tables exactly as install.sh wrote them before matchers were
+    # anchored: same events, commands and timeouts, bare alternations.
+    with open(home + "/.kimi-code/config.toml", "a", encoding="utf-8") as out:
+        for event, matcher, hook, timeout, mode in SPECS:
+            out.write(f'\n[[hooks]]\nevent = "{event}"\nmatcher = "{matcher}"\n'
+                      f'command = "{command(home, hook, mode)}"\ntimeout = {timeout}\n')
+def select(path, probes):
+    # matchHooks.ts matches$1: an empty matcher matches every value, any other
+    # is new RegExp(pattern).test(value), a search rather than a full match;
+    # re.search is the same operation for these patterns.
+    found = entries(path)
+    for probe in probes:
+        event, value = probe.split(" ", 1)
+        hooks = sorted(e["command"].strip('"').rsplit("/", 1)[1] for e in found
+                       if e["event"] == f'"{event}"'
+                       and (e["matcher"] in (None, '""') or re.search(e["matcher"][1:-1], value)))
+        print(f"{probe}: {' '.join(hooks) or '-'}")
+action, args = sys.argv[1], sys.argv[2:]
+if action == "check":
+    check(*args)
+elif action == "legacy":
+    legacy(*args)
+elif action == "select":
+    select(args[0], args[1:])
+else:
+    sys.exit(f"unknown action {action}")
 PY
-}
+check_config() { python3 "$KIMI_CFG_PY" check "$@"; }
+
+# What Kimi would run for a tool or source with the installed config. The MCP
+# names contain a matcher's word without being that tool; unanchored, each of
+# them selected the hook wired for the real one.
+SELECT_OUT=$(python3 "$KIMI_CFG_PY" select "$RUN_HOME/.kimi-code/config.toml" \
+  "PreToolUse Bash" "PreToolUse mcp__shell__Bash" "PreToolUse Edit" "PreToolUse mcp__notes__Write" \
+  "PostToolUse Write" "PostToolUse mcp__fs__EditFile" "PostToolUse Bash" "PostToolUse BashOutput" \
+  "SessionStart startup" "SessionStart clear" "SessionStart resume" 2>&1)
+assert_eq "$SELECT_OUT" "PreToolUse Bash: pre-tool-guardian.sh
+PreToolUse mcp__shell__Bash: -
+PreToolUse Edit: linter-config-guard.sh
+PreToolUse mcp__notes__Write: -
+PostToolUse Write: edit-shadow-detector.sh memory-sync.sh
+PostToolUse mcp__fs__EditFile: -
+PostToolUse Bash: memory-sync.sh revert-detector.sh
+PostToolUse BashOutput: -
+SessionStart startup: session-baseline.sh
+SessionStart clear: session-baseline.sh
+SessionStart resume: -" "installed matchers select only the named tools and sources, applied as Kimi applies them"
 
 OLD_HOME="$TMP_ROOT/old-guardian-home"
 mkdir -p "$OLD_HOME/.kimi-code"
@@ -1058,6 +1111,167 @@ USER_CHECK=$(check_config "$USER_HOME" 13 user 2>&1)
 assert_eq "$USER_CHECK" "" "reinstall preserves the user entry exactly once"
 assert_eq "$(sed -n '/^\[\[hooks\]\]$/,$p' "$USER_HOME/.kimi-code/config.toml" | head -5)" "$USER_BLOCK" \
   "the user-written TOML block is byte-for-byte untouched"
+
+# A whole install from before the anchoring: every Clade table is anchored in
+# place, nothing is appended, and a user's own unanchored entry is not touched.
+# default_permission_mode is set so the root-key insert, which rewrites the
+# file without keeping its mode, does not run; the mode case is about the
+# anchoring rewrite alone.
+UPGRADE_HOME="$TMP_ROOT/unanchored-upgrade-home"
+UPGRADE_CFG="$UPGRADE_HOME/.kimi-code/config.toml"
+mkdir -p "$UPGRADE_HOME/.kimi-code"
+cat > "$UPGRADE_CFG" <<'EOF'
+default_model = "kimi-code/k3"
+default_permission_mode = "manual"
+
+[[hooks]]
+event = "PostToolUse"
+matcher = "Edit|Write"
+command = "custom-user-hook"
+timeout = 17
+EOF
+python3 "$KIMI_CFG_PY" legacy "$UPGRADE_HOME"
+chmod 600 "$UPGRADE_CFG"
+first_hooks_block() { sed -n '/^\[\[hooks\]\]$/,/^timeout/p' "$1" | head -5; }
+UPGRADE_USER_BLOCK=$(first_hooks_block "$UPGRADE_CFG")
+install_home "$UPGRADE_HOME" "$TMP_ROOT/upgrade-install-1.log"
+assert_eq "$(check_config "$UPGRADE_HOME" 13 user 2>&1)" "" \
+  "an unanchored install is anchored in place: 12 Clade entries and the user's, none appended"
+assert_eq "$(grep -c '^  Anchored: ' "$TMP_ROOT/upgrade-install-1.log")" "7" \
+  "install names each of the seven entries it anchored"
+assert_eq "$(first_hooks_block "$UPGRADE_CFG")" "$UPGRADE_USER_BLOCK" \
+  "a user's own unanchored entry is left exactly as written"
+assert_eq "$(stat -c %a "$UPGRADE_CFG" 2>/dev/null || stat -f %Lp "$UPGRADE_CFG")" "600" \
+  "anchoring keeps config.toml's 0600 mode"
+UPGRADE_SUM=$(cksum < "$UPGRADE_CFG")
+install_home "$UPGRADE_HOME" "$TMP_ROOT/upgrade-install-2.log"
+assert_eq "$(cksum < "$UPGRADE_CFG")" "$UPGRADE_SUM" "reinstall after the upgrade leaves config.toml byte-identical"
+
+# Stale copies: an anchored entry beside its unanchored twin (an older
+# install.sh run after a newer one), and the same unanchored entry twice. Each
+# ends as one anchored entry; no unanchored copy is left firing. Clade's own
+# guardian command wired by hand on ANOTHER event is not Clade's table, and is
+# kept exactly as written.
+PAIR_HOME="$TMP_ROOT/stale-copies-home"
+mkdir -p "$PAIR_HOME/.kimi-code"
+PAIR_GUARD="$PAIR_HOME/.kimi-code/hooks/decision-to-kimi.sh $PAIR_HOME/.claude/hooks/pre-tool-guardian.sh"
+PAIR_REVERT="$PAIR_HOME/.kimi-code/hooks/decision-to-kimi.sh $PAIR_HOME/.claude/hooks/revert-detector.sh"
+{
+  printf 'default_model = "kimi-code/k3"\n'
+  printf '\n[[hooks]]\nevent = "PreToolUse"\nmatcher = "^(Bash)$"\ncommand = "%s"\ntimeout = 5\n' "$PAIR_GUARD"
+  printf '\n[[hooks]]\nevent = "PreToolUse"\nmatcher = "Bash"\ncommand = "%s"\ntimeout = 5\n' "$PAIR_GUARD"
+  printf '\n[[hooks]]\nevent = "PostToolUse"\nmatcher = "Bash"\ncommand = "%s"\ntimeout = 5\n' "$PAIR_REVERT"
+  printf '\n[[hooks]]\nevent = "PostToolUse"\nmatcher = "Bash"\ncommand = "%s"\ntimeout = 5\n' "$PAIR_REVERT"
+  printf '\n[[hooks]]\nevent = "Stop"\nmatcher = "Bash"\ncommand = "%s"\ntimeout = 7\n' "$PAIR_GUARD"
+} > "$PAIR_HOME/.kimi-code/config.toml"
+install_home "$PAIR_HOME" "$TMP_ROOT/stale-copies-install.log"
+assert_eq "$(check_config "$PAIR_HOME" 13 legacy 2>&1)" "" \
+  "stale unanchored copies collapse to one anchored entry each"
+assert_eq "$(grep -A2 '^event = "Stop"$' "$PAIR_HOME/.kimi-code/config.toml" | sed -n 2p)" 'matcher = "Bash"' \
+  "the guardian command wired on another event keeps its own matcher"
+
+# A dropped copy loses only the lines Clade writes for an entry: the header,
+# its four keys and blank lines. A comment above the next table stays, and an
+# indented table header ends the copy, so the keys under it stay too, even one
+# named like a hook key. A copy holding any other line is refused whole. Each
+# case also runs with no usable python, so with no tomllib check, as on a stock
+# macOS python3: the line rewrite has to be safe on its own.
+KIMI_ENTRY='\n[[hooks]]\nevent = "%s"\nmatcher = "%s"\ncommand = "%s"\ntimeout = 5\n'
+kimi_cmd() { printf '%s' "$1/.kimi-code/hooks/decision-to-kimi.sh $1/.claude/hooks/$2"; }
+stale_neighbours() {  # home before|after
+  local guard revert
+  guard=$(kimi_cmd "$1" pre-tool-guardian.sh)
+  revert=$(kimi_cmd "$1" revert-detector.sh)
+  printf 'default_model = "kimi-code/k3"\ndefault_permission_mode = "manual"\n'
+  printf "$KIMI_ENTRY" PreToolUse '^(Bash)$' "$guard"
+  [[ "$2" == after ]] || printf "$KIMI_ENTRY" PreToolUse Bash "$guard"
+  printf '\n# my provider settings\n  [services.mine]\n  api_key = "keep-me"\ntimeout = 30\n'
+  if [[ "$2" == after ]]; then
+    printf "$KIMI_ENTRY" PostToolUse '^(Bash)$' "$revert"
+  else
+    printf "$KIMI_ENTRY" PostToolUse Bash "$revert"
+    printf "$KIMI_ENTRY" PostToolUse Bash "$revert"
+  fi
+  printf '\n# Search service: keep the fetch key below in sync with the vault\n'
+  printf '[services.moonshot_search]\nkey = "v"\n'
+}
+# The first lines of file $1, as many as text $2 has, without the root key the
+# Kimi skill view inserts (python mode only; a separate writer).
+head_like() {
+  grep -v '^extra_skill_dirs = ' "$1" | head -n "$(( $(printf '%s\n' "$2" | wc -l) ))"
+}
+install_home_with() {  # home log python|no-python
+  if [[ "$3" == no-python ]]; then
+    HOME="$1" KIMI_CODE_HOME="$1/.kimi-code" PATH="$TIMEOUT_BIN:$PATH" \
+      bash "$INSTALL_SH" </dev/null > "$2" 2>&1
+  else
+    install_home "$1" "$2"
+  fi
+}
+for py_mode in python no-python; do
+  NB_HOME="$TMP_ROOT/stale-neighbours-$py_mode-home"
+  NB_CFG="$NB_HOME/.kimi-code/config.toml"
+  mkdir -p "$NB_HOME/.kimi-code"
+  stale_neighbours "$NB_HOME" before > "$NB_CFG"
+  install_home_with "$NB_HOME" "$TMP_ROOT/stale-neighbours-$py_mode.log" "$py_mode"
+  NB_WANT=$(stale_neighbours "$NB_HOME" after)
+  assert_eq "$(head_like "$NB_CFG" "$NB_WANT")" "$NB_WANT" \
+    "$py_mode: dropping a stale copy keeps the comment, the indented table and its keys after it"
+  assert_eq "$(check_config "$NB_HOME" 12 legacy 2>&1)" "" \
+    "$py_mode: beside other tables, stale copies still collapse to one anchored entry each"
+
+  EXTRA_HOME="$TMP_ROOT/stale-extra-key-$py_mode-home"
+  EXTRA_CFG="$EXTRA_HOME/.kimi-code/config.toml"
+  EXTRA_GUARD=$(kimi_cmd "$EXTRA_HOME" pre-tool-guardian.sh)
+  mkdir -p "$EXTRA_HOME/.kimi-code"
+  {
+    printf 'default_model = "kimi-code/k3"\ndefault_permission_mode = "manual"\n'
+    printf "$KIMI_ENTRY" PreToolUse Bash "$EXTRA_GUARD"
+    printf "$KIMI_ENTRY" PreToolUse Bash "$EXTRA_GUARD"
+    printf 'note = "mine"\n'
+  } > "$EXTRA_CFG"
+  EXTRA_BEFORE=$(cat "$EXTRA_CFG")
+  install_home_with "$EXTRA_HOME" "$TMP_ROOT/stale-extra-key-$py_mode.log" "$py_mode"
+  assert_eq "$(head_like "$EXTRA_CFG" "$EXTRA_BEFORE")|$(grep -c "^command = \"$EXTRA_GUARD\"$" "$EXTRA_CFG")" "$EXTRA_BEFORE|2" \
+    "$py_mode: a copy holding a key Clade never writes is refused: both copies left as written, none appended"
+  assert_eq "$(grep -c '^  Skipped: anchoring PreToolUse/Bash (a copy to drop holds a line Clade never writes)' \
+    "$TMP_ROOT/stale-extra-key-$py_mode.log")" "1" "$py_mode: install names the anchoring it refused"
+done
+
+# What only a TOML parser sees: an original Kimi cannot parse, and Clade's
+# guardian text inside a multi-line string, which the line rewrite reads as a
+# table. Either way nothing is rewritten and no anchored copy is appended.
+if python3 -c 'import tomllib' >/dev/null 2>&1; then
+  for parse_case in invalid string; do
+    PARSE_HOME="$TMP_ROOT/anchor-parse-$parse_case-home"
+    PARSE_CFG="$PARSE_HOME/.kimi-code/config.toml"
+    PARSE_GUARD=$(kimi_cmd "$PARSE_HOME" pre-tool-guardian.sh)
+    mkdir -p "$PARSE_HOME/.kimi-code"
+    {
+      printf 'default_model = "kimi-code/k3"\ndefault_permission_mode = "manual"\n'
+      if [[ "$parse_case" == invalid ]]; then
+        printf 'default_model = "twice"\n'
+        printf "$KIMI_ENTRY" PreToolUse Bash "$PARSE_GUARD"
+      else
+        printf '\n[notes]\ntext = """'
+        printf "$KIMI_ENTRY" PreToolUse Bash "$PARSE_GUARD"
+        printf '"""\n'
+      fi
+    } > "$PARSE_CFG"
+    PARSE_BEFORE=$(cat "$PARSE_CFG")
+    install_home "$PARSE_HOME" "$TMP_ROOT/anchor-parse-$parse_case.log"
+    case "$parse_case" in
+      invalid) PARSE_WHY='original config.toml does not parse' ;;
+      string) PARSE_WHY='candidate would change more than this entry and its copies' ;;
+    esac
+    assert_eq "$(head_like "$PARSE_CFG" "$PARSE_BEFORE")|$(grep -c "^command = \"$PARSE_GUARD\"$" "$PARSE_CFG")" \
+      "$PARSE_BEFORE|1" "tomllib check ($parse_case): config.toml is not rewritten and no anchored guardian is appended"
+    assert_eq "$(grep -c "^  Skipped: anchoring PreToolUse/Bash ($PARSE_WHY" "$TMP_ROOT/anchor-parse-$parse_case.log")" "1" \
+      "tomllib check ($parse_case): install names why it refused"
+  done
+else
+  printf '  - tomllib anchoring checks (tomllib unavailable; not run)\n'
+fi
 
 EMPTY_HOME="$TMP_ROOT/no-config-home"
 mkdir -p "$EMPTY_HOME/.kimi-code"

@@ -17,7 +17,8 @@
 #                           corrections in four days)
 #   post-tool-use-failure.sh  the recovery hint follows the tool's `error`, and
 #                           reaches each thread once, not on every failing command
-#   settings-hooks.json     the wiring that makes all three reachable
+#   settings-hooks.json     the wiring that makes all three reachable, and
+#                           which hooks fail closed (tests/lib/hooks-onfailure.sh)
 #   (the `# exists-for: … · retire-when: …` line every hook carries is checked
 #    in tests/test-hook-provenance.sh — split out when this file would have
 #    crossed the 1500-line rule a third time)
@@ -380,7 +381,7 @@ jq -e '.hooks.PostToolUse[].hooks[] | select(.id=="post-edit-check") | .asyncRew
 
 # asyncRewake implies async (Claude Code command-hook field reference), so a
 # separate async: true is dead config. The command-hook schema is also closed:
-# type/command/args/async/asyncRewake/shell/if/timeout/statusMessage/once. Fields
+# type/command/args/async/asyncRewake/shell/onFailure/if/timeout/statusMessage/once. Fields
 # invented around the wake — rewakeMessage, rewakeSummary — read as real settings
 # while doing nothing, and `claude plugin validate --strict` flags them as
 # unrecognized. Wake text belongs in the hook's own stderr.
@@ -410,6 +411,13 @@ jq -e '.hooks.UserPromptSubmit[].hooks[] | select(.id=="secret-scanner") | has("
   "$SETTINGS" >/dev/null 2>&1 \
   && pass "secret-scanner stays synchronous" \
   || fail "secret-scanner stays synchronous"
+
+# ─── onFailure: which hooks fail closed ──────────────────────────────
+# pre-tool-guardian fails closed, secret-scanner stays fail-open, and every
+# onFailure sits where Claude Code honours it. Kept in a sourced file because
+# this one sits at the edge of the 1500-line cap.
+# shellcheck source=lib/hooks-onfailure.sh
+. "$REPO_ROOT/tests/lib/hooks-onfailure.sh"
 
 # ─── secret-scanner: a note on handling, never a nag ─────────────────
 # The hook fires on EVERY prompt carrying a key-shaped string, so whatever it
@@ -1098,13 +1106,20 @@ else
 fi
 
 FI_MUT=$(mktemp)
-sed 's/^SSH_OPTS="-n /SSH_OPTS="/' "$REPO_ROOT/configs/scripts/fleet-install.sh" > "$FI_MUT"
-if bash "$FI_MUT" --self-test >/dev/null 2>&1; then
-  fail "dropping 'ssh -n' turns the fleet-install self-test red" \
-       "it stayed green — the stdin-drain control is not reproducing the bug"
-else
-  pass "dropping 'ssh -n' turns the fleet-install self-test red"
-fi
+fi_mutation() {  # SED-EXPR LABEL WHY — the mutant must differ, and fail the self-test
+  sed "$1" "$REPO_ROOT/configs/scripts/fleet-install.sh" > "$FI_MUT"
+  if cmp -s "$FI_MUT" "$REPO_ROOT/configs/scripts/fleet-install.sh"; then
+    fail "$2 turns the fleet-install self-test red" "its anchor no longer matches"
+  elif bash "$FI_MUT" --self-test >/dev/null 2>&1; then
+    fail "$2 turns the fleet-install self-test red" "it stayed green — $3"
+  else
+    pass "$2 turns the fleet-install self-test red"
+  fi
+}
+fi_mutation 's/^SSH_OPTS="-n /SSH_OPTS="/' "dropping 'ssh -n'" \
+  "the stdin-drain control is not reproducing the bug"
+fi_mutation 's/if \[ -r \(~[^ ]*kit-checksum\.sh\) \]; then \. [^;]*; fi/. \1 2>\/dev\/null || true/' \
+  "sourcing kit-checksum.sh with '|| true'" "a POSIX sh and bash 3.2 exit there under set -e"
 rm -f "$FI_MUT"
 
 # ─── sync-push must refuse to commit conflict markers ────────────────

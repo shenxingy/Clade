@@ -7,6 +7,9 @@ paths: configs/hooks/**/*.sh, configs/scripts/**/*.sh, tests/*.sh, install.sh
   detection with a fallback (`command -v X`, `stat -c … || stat -f …`), never
   `uname` branching. macOS has no `timeout`; wrapping a remote command in it there
   fails silently — one audit read a stale cached `origin/main` as a successful pull.
+- **Under `set -e`, bash 3.2 exits when `source` fails, even in `||` or `if`**
+  (a missing file, or one whose own command fails); bash 5 does not. Wrap an
+  optional source in `set +e` … `set -e`, never `source lib || true`.
 - **`ssh` reads stdin.** In a `while read … done < file` loop, the first `ssh`
   eats the rest of the file and hosts 2..n vanish with no error. Pass `-n`.
 - **`$?` after a pipe is the LAST command's.** `cmd | head; echo $?` reports

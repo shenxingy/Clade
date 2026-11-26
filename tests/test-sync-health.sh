@@ -18,6 +18,8 @@ set -uo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 HOOK="${SH_HOOK:-$REPO_ROOT/configs/hooks/sync-health.sh}"
+# shellcheck source=lib/source-shape.sh
+source "$REPO_ROOT/tests/lib/source-shape.sh"
 HOST_NAME=$(hostname)
 NOW=$(date +%s)
 
@@ -28,8 +30,11 @@ unset CLADE_SYNC_PUSH_BACKOFF_BASE_SECONDS CLADE_SYNC_PUSH_BACKOFF_MAX_SECONDS
 export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 GIT_TERMINAL_PROMPT=0 LC_ALL=C
 
 UTF8_LOCALE=""
+# Not `grep -q`: it stops at the first match, `locale -a` then dies of SIGPIPE,
+# and pipefail makes the pipeline fail. macOS lists 288 locales, so the case
+# read NOT MEASURED there although en_US.UTF-8 exists.
 for CANDIDATE in C.UTF-8 C.utf8 en_US.UTF-8 en_US.utf8; do
-  if locale -a 2>/dev/null | grep -qxF "$CANDIDATE"; then
+  if locale -a 2>/dev/null | grep -xF "$CANDIDATE" >/dev/null; then
     UTF8_LOCALE=$CANDIDATE
     break
   fi
@@ -324,6 +329,10 @@ EOF
   assert_eq "$rc" "0" "a missing backoff library cannot abort the other health checks"
   assert_contains "$OUT" "1 unmerged paths" "a missing backoff library still reports an unmerged store"
   assert_empty "$(cat "$H/.claude/stderr")" "a missing backoff library stays silent"
+  # The case above runs under this host's bash. Under bash 3.2 (macOS) it also
+  # needs the source's shape: there `source … || true` still exits under set -e.
+  assert_empty "$(guarded_source_lines "$HOOK")" \
+    "sync-health has no source that recovers through ||, && or a test (bash 3.2 exits there)"
 }
 
 t_unmerged() {
@@ -751,8 +760,28 @@ if [[ -z "${SH_SKIP_MUTATIONS:-}" ]]; then
   mutation green "no-op control (a comment reworded)" "$ALL_SECTIONS" \
     '# Case 5: ls-files -u' '# Case 5 (control): ls-files -u'
   mutation red "the missing backoff library source guard" backoff \
-    'source "$HOOK_LIBDIR/sync-push-backoff.sh" 2>/dev/null || true' \
-    'source "$HOOK_LIBDIR/sync-push-backoff.sh"'
+    'set +e
+# shellcheck source=/dev/null
+source "$HOOK_LIBDIR/sync-push-backoff.sh" 2>/dev/null
+set -e' 'source "$HOOK_LIBDIR/sync-push-backoff.sh" 2>/dev/null'
+  mutation red "the bash 3.2-safe source shape (back to || true)" backoff \
+    'set +e
+# shellcheck source=/dev/null
+source "$HOOK_LIBDIR/sync-push-backoff.sh" 2>/dev/null
+set -e' 'source "$HOOK_LIBDIR/sync-push-backoff.sh" 2>/dev/null || true'
+  # The two forms the shape check missed before it joined lines and read
+  # { … } groups; both pass every behavioural case here under bash 5.
+  mutation red "the bash 3.2-safe source shape (back to a continued || true)" backoff \
+    'set +e
+# shellcheck source=/dev/null
+source "$HOOK_LIBDIR/sync-push-backoff.sh" 2>/dev/null
+set -e' 'source "$HOOK_LIBDIR/sync-push-backoff.sh" 2>/dev/null \
+  || true'
+  mutation red "the bash 3.2-safe source shape (back to { source; } || true)" backoff \
+    'set +e
+# shellcheck source=/dev/null
+source "$HOOK_LIBDIR/sync-push-backoff.sh" 2>/dev/null
+set -e' '{ source "$HOOK_LIBDIR/sync-push-backoff.sh"; } 2>/dev/null || true'
   mutation red "the missing backoff library function guard" backoff \
     'if declare -F sync_push_backoff_active >/dev/null 2>&1; then
   sync_push_backoff_active || true

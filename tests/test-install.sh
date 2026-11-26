@@ -740,6 +740,22 @@ if command -v python3 &>/dev/null; then
     fail "installed validate-skills.py passes on installed skills"
   fi
 
+  # design-lint.py imports design_lint_common.py and design_lint_source.py
+  # from beside itself, so the *.py sweep must have installed both, and the
+  # run must leave no bytecode for them in the installed scripts directory.
+  printf '.x { padding: 13px; }\n' > "$SANDBOX/design-lint-probe.css"
+  if env -u PYTHONDONTWRITEBYTECODE python3 "$CLAUDE_DIR/scripts/design-lint.py" source \
+      "$SANDBOX/design-lint-probe.css" --json 2>&1 | grep -q '"check": "source.spacing.grid"'; then
+    pass "installed design-lint.py runs its source lane"
+  else
+    fail "installed design-lint.py runs its source lane"
+  fi
+  if find "$CLAUDE_DIR/scripts" -name 'design_lint_*.pyc' -print -quit | grep -q .; then
+    fail "installed design-lint.py writes no bytecode"
+  else
+    pass "installed design-lint.py writes no bytecode"
+  fi
+
   # Claude Code >=2.1.80 supplies authoritative rate-limit data in the
   # status-line JSON. The installed command must prefer it over its own
   # OAuth/cache fallback so the display tracks the current API response.

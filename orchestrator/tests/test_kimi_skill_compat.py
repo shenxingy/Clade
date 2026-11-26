@@ -129,9 +129,15 @@ def _clade_hook_tables(home: Path) -> list[str]:
     that the skill view leaves config.toml byte-identical would fail on a line
     the view never wrote. Seeding all of them keeps those assertions about the
     view. Parsed from install.sh rather than copied, so the two cannot drift.
+    The list names each matcher's alternation and install.sh writes it anchored
+    as ^(...)$; the assert below fails if that writer line changes.
     """
+    text = (REPO_ROOT / "install.sh").read_text(encoding="utf-8")
+    anchoring = '[[ -z "$_matcher" ]] || _kimi_matcher="^(${_matcher})\\$"'
+    assert anchoring in text, "install.sh no longer anchors Kimi matchers as ^(...)$; recheck this fixture"
     tables: list[str] = []
     for event, matcher, hook, timeout, mode in _install_hook_rows():
+        matcher = f"^({matcher})$" if matcher else ""
         command = f"{home}/.kimi-code/hooks/decision-to-kimi.sh"
         if mode == "once":
             command += " --once-per-session"

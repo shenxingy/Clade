@@ -109,12 +109,13 @@ SPECS=(
 )
 spec_text() { printf '%s\n' "${SPECS[@]}"; }
 
+# check_wiring HOME HOOKS_JSON: the ten wirings, pointing at HOME's ~/.codex adapter.
 check_wiring() {
-  python3 - "$1" <<'PY'
+  python3 - "$1" "$2" <<'PY'
 import json, sys
 from pathlib import Path
 home = Path(sys.argv[1])
-path = home / ".codex" / "hooks.json"
+path = Path(sys.argv[2])
 errors = []
 try:
     data = json.loads(path.read_text(encoding="utf-8"))
@@ -165,7 +166,8 @@ fi
 ADAPTER="$RUN_HOME/.codex/clade-hooks/decision-to-codex.sh"
 assert_file "$ADAPTER" "the adapter is installed under clade-hooks, not Codex-owned hooks/"
 assert_no_file "$RUN_HOME/.codex/config.toml" "install.sh never fabricates Codex trust state in config.toml"
-assert_probe check_wiring "$RUN_HOME" unused "all ten exact event/matcher/command/timeout/async wirings are present"
+assert_probe check_wiring "$RUN_HOME" "$RUN_HOME/.codex/hooks.json" "all ten exact event/matcher/command/timeout/async wirings are present"
+assert_no_file "$RUN_HOME/.codex-profiles" "a HOME without Codex profiles gets no profile directory created"
 assert_contains "$(cat "$TMP_ROOT/runtime-install.log")" "10 Clade hook wirings" "the install summary reports the Codex hook count"
 cp "$RUN_HOME/.codex/hooks.json" "$TMP_ROOT/runtime-first.json"
 install_home "$RUN_HOME" "$TMP_ROOT/runtime-reinstall.log"
@@ -223,6 +225,117 @@ LINK_MODE=$(stat -c %a "$LINK_HOME/actual/hooks.json" 2>/dev/null || stat -f %Lp
 if [[ -L "$LINK_HOME/.codex/hooks.json" ]]; then LINK_PRESERVED=yes; else LINK_PRESERVED=no; fi
 assert_eq "$LINK_RC|$LINK_PRESERVED|$LINK_MODE" "0|yes|640" "a symlink remains a symlink and its target keeps mode 0640"
 
+section "Codex profiles get Clade's hooks.json and agents/, as ~/.codex does"
+# CODEX_HOME=~/.codex-profiles/<name> reads that directory, not ~/.codex. On the
+# author's host a profile in daily use held its own hooks.json and agents/ and
+# had none of the ten wirings and a stale agent file. Profiles: own (own files,
+# user hooks, own trust state), linked (links to ~/.codex), fresh (config.toml
+# only) and login (auth.json only), both of which get the files created as
+# ~/.codex does, dangling (links to nowhere), odd (an agents file and a
+# hooks.json directory), locked (config.toml in a directory install.sh cannot
+# write), none (an empty directory, which is not a Codex home) and broken
+# (unparseable hooks.json, nothing else).
+PROFILE_HOME="$TMP_ROOT/profile-home"
+PROFILES="$PROFILE_HOME/.codex-profiles"
+amsg_fixture "$TMP_ROOT/profile-fixture"
+mkdir -p "$PROFILE_HOME/.codex/agents" "$PROFILES/own/agents" "$PROFILES/linked" "$PROFILES/none" "$PROFILES/broken" \
+  "$PROFILES/fresh" "$PROFILES/login" "$PROFILES/dangling" "$PROFILES/odd/hooks.json"
+cp "$TMP_ROOT/profile-fixture/.codex/hooks.json" "$PROFILES/own/hooks.json"
+cp "$PROFILES/own/hooks.json" "$TMP_ROOT/profile-own-before.json"
+printf '[hooks.state."/fake/profile/hooks.json:session_start:0:0"]\ntrusted_hash = "fixture"\n' > "$PROFILES/own/config.toml"
+cp "$PROFILES/own/config.toml" "$TMP_ROOT/profile-config-before.toml"
+printf 'stale-profile-agent\n' > "$PROFILES/own/agents/clade_cheap_worker.toml"
+printf 'name = "my_own"\n' > "$PROFILES/own/agents/my_own.toml"
+printf 'model = "linked"\n' > "$PROFILES/linked/config.toml"
+ln -s "$PROFILE_HOME/.codex/hooks.json" "$PROFILES/linked/hooks.json"
+ln -s "$PROFILE_HOME/.codex/agents" "$PROFILES/linked/agents"
+printf 'model = "fresh"\n' > "$PROFILES/fresh/config.toml"
+cp "$PROFILES/fresh/config.toml" "$TMP_ROOT/profile-fresh-config-before.toml"
+printf '{"auth_mode":"fixture"}\n' > "$PROFILES/login/auth.json"
+printf 'model = "dangling"\n' > "$PROFILES/dangling/config.toml"
+ln -s "$TMP_ROOT/profile-nowhere/hooks.json" "$PROFILES/dangling/hooks.json"
+ln -s "$TMP_ROOT/profile-nowhere/agents" "$PROFILES/dangling/agents"
+printf 'model = "odd"\n' > "$PROFILES/odd/config.toml"
+printf 'not a directory\n' > "$PROFILES/odd/agents"
+printf '{not json\n' > "$PROFILES/broken/hooks.json"
+cp "$PROFILES/broken/hooks.json" "$TMP_ROOT/profile-broken-before.json"
+# Root writes through mode 0555, so the locked case only means something as a user.
+if [[ "$(id -u)" != 0 ]]; then
+  mkdir -p "$PROFILES/locked"
+  printf 'model = "locked"\n' > "$PROFILES/locked/config.toml"
+  chmod 555 "$PROFILES/locked"
+fi
+# profile_agents_diff DIR: the Clade agents DIR lacks or holds a different copy of.
+profile_agents_diff() {
+  local agent diff=""
+  for agent in "$SRC_ROOT/configs/codex-agents/"*.toml; do
+    cmp -s "$agent" "$1/$(basename "$agent")" || diff+="$(basename "$agent") "
+  done
+  printf '%s' "$diff"
+}
+install_home "$PROFILE_HOME" "$TMP_ROOT/profile-install.log"
+assert_eq "$?" "0" "install.sh succeeds with own, linked, new, dangling, odd, empty and broken Codex profiles"
+PROFILE_LOG=$(cat "$TMP_ROOT/profile-install.log")
+assert_probe check_wiring "$PROFILE_HOME" "$PROFILES/own/hooks.json" \
+  "a profile's own hooks.json gets all ten wirings, through the ~/.codex adapter"
+PROFILE_USER_ERRORS=$(python3 - "$TMP_ROOT/profile-own-before.json" "$PROFILES/own/hooks.json" <<'PY'
+import json, sys
+before = json.load(open(sys.argv[1], encoding="utf-8"))
+after = json.load(open(sys.argv[2], encoding="utf-8"))
+errors = [f"top-level {k} changed" for k in before if k != "hooks" and after.get(k) != before[k]]
+errors += [f"{e} user groups moved" for e, g in before["hooks"].items() if after["hooks"][e][:len(g)] != g]
+print("; ".join(errors))
+PY
+)
+assert_eq "$PROFILE_USER_ERRORS" "" "the profile's own hook groups stay at their indices and unknown fields survive"
+cmp -s "$PROFILES/own/config.toml" "$TMP_ROOT/profile-config-before.toml"
+assert_eq "$?" "0" "the profile's trust state in config.toml is byte-identical"
+assert_eq "$(grep -cF "$PROFILES/own/hooks.json: Codex hooks: 10 wired, 10 new; review new Clade hooks in the Codex TUI with /hooks" <<< "$PROFILE_LOG")" "1" \
+  "install names the profile's hooks.json with its own /hooks review line"
+assert_eq "$(profile_agents_diff "$PROFILES/own/agents")|$(cat "$PROFILES/own/agents/my_own.toml")" '|name = "my_own"' \
+  "a profile's own agents/ gets the current Clade agents and keeps the user's"
+if [[ -L "$PROFILES/linked/hooks.json" && -L "$PROFILES/linked/agents" ]]; then LINKED_KEPT=yes; else LINKED_KEPT=no; fi
+assert_eq "$LINKED_KEPT|$(grep -cF "$PROFILES/linked" <<< "$PROFILE_LOG")" "yes|0" \
+  "a profile linked to ~/.codex keeps its links and is left alone"
+assert_probe check_wiring "$PROFILE_HOME" "$PROFILE_HOME/.codex/hooks.json" \
+  "~/.codex/hooks.json, which the linked profile reads, holds the ten wirings once"
+assert_probe check_wiring "$PROFILE_HOME" "$PROFILES/fresh/hooks.json" \
+  "a profile holding only config.toml gets a hooks.json created with all ten wirings, as ~/.codex does"
+assert_eq "$(grep -cF "$PROFILES/fresh/hooks.json: Codex hooks: 10 wired, 10 new; review new Clade hooks in the Codex TUI with /hooks" <<< "$PROFILE_LOG")" "1" \
+  "install names the created hooks.json with its own /hooks review line"
+cmp -s "$PROFILES/fresh/config.toml" "$TMP_ROOT/profile-fresh-config-before.toml"
+FRESH_CONFIG_CMP=$?
+assert_eq "$(profile_agents_diff "$PROFILES/fresh/agents")|$FRESH_CONFIG_CMP" "|0" \
+  "a profile holding only config.toml gets agents/ created with the Clade agents, and its config.toml is untouched"
+assert_probe check_wiring "$PROFILE_HOME" "$PROFILES/login/hooks.json" \
+  "a profile holding only auth.json gets a hooks.json created with all ten wirings"
+assert_eq "$(profile_agents_diff "$PROFILES/login/agents")" "" \
+  "a profile holding only auth.json gets agents/ created with the Clade agents"
+if [[ -L "$PROFILES/dangling/hooks.json" && -L "$PROFILES/dangling/agents" ]]; then DANGLING_KEPT=yes; else DANGLING_KEPT=no; fi
+assert_eq "$DANGLING_KEPT|$(ls -A "$TMP_ROOT/profile-nowhere" 2>/dev/null)|$(grep -cF "$PROFILES/dangling" <<< "$PROFILE_LOG")" "yes||0" \
+  "a profile's dangling hooks.json and agents links are not written through or replaced"
+assert_eq "$(ls -A "$PROFILES/none")" "" "an empty directory under ~/.codex-profiles is not a Codex home and gets nothing created"
+assert_eq "$(ls -A "$PROFILES/odd/hooks.json")|$(cat "$PROFILES/odd/agents")|$(grep -cF "$PROFILES/odd" <<< "$PROFILE_LOG")" "|not a directory|0" \
+  "a profile whose agents is a file and hooks.json a directory keeps both as they are"
+if [[ -d "$PROFILES/locked" ]]; then
+  assert_eq "$(ls -A "$PROFILES/locked")|$(grep -cF "$PROFILES/locked/agents: WARNING: Clade's Codex agents not installed" <<< "$PROFILE_LOG")|$(grep -cF "$PROFILES/locked/hooks.json: WARNING: Codex hooks unchanged" <<< "$PROFILE_LOG")" \
+    "config.toml|1|1" "a profile install.sh cannot write gets one warning per file and does not stop the install"
+  chmod 755 "$PROFILES/locked"
+else
+  printf '  - skipped: the unwritable-profile case (running as root, which writes through mode 0555)\n'
+fi
+cmp -s "$PROFILES/broken/hooks.json" "$TMP_ROOT/profile-broken-before.json"
+BROKEN_CMP=$?
+assert_eq "$BROKEN_CMP|$(grep -cF "$PROFILES/broken/hooks.json: WARNING: Codex hooks unchanged" <<< "$PROFILE_LOG")" "0|1" \
+  "a profile's unparseable hooks.json is left untouched with one warning naming it"
+cp "$PROFILES/own/hooks.json" "$TMP_ROOT/profile-own-first.json"
+install_home "$PROFILE_HOME" "$TMP_ROOT/profile-reinstall.log"
+PROFILE_REINSTALL_RC=$?
+cmp -s "$PROFILES/own/hooks.json" "$TMP_ROOT/profile-own-first.json"
+PROFILE_CMP=$?
+assert_eq "$PROFILE_REINSTALL_RC|$PROFILE_CMP|$(grep -cF "$PROFILES/own/hooks.json: Codex hooks: 10 wired, 0 new" "$TMP_ROOT/profile-reinstall.log")" \
+  "0|0|1" "a no-op reinstall leaves the profile's hooks.json byte-identical and reports zero new"
+
 section "unsafe inputs and no-Python installs touch nothing"
 for kind in invalid wrong-hooks wrong-event wrong-root; do
   home="$TMP_ROOT/unsafe-$kind"
@@ -243,9 +356,10 @@ for kind in invalid wrong-hooks wrong-event wrong-root; do
 done
 NO_PY_HOME="$TMP_ROOT/no-python-home"
 NO_PY_BIN="$TMP_ROOT/no-python-bin"
-mkdir -p "$NO_PY_HOME/.codex" "$NO_PY_BIN"
+mkdir -p "$NO_PY_HOME/.codex" "$NO_PY_HOME/.codex-profiles/own" "$NO_PY_BIN"
 printf '{"description":"no python","hooks":{}}\n' > "$NO_PY_HOME/.codex/hooks.json"
 cp "$NO_PY_HOME/.codex/hooks.json" "$NO_PY_HOME/before"
+cp "$NO_PY_HOME/.codex/hooks.json" "$NO_PY_HOME/.codex-profiles/own/hooks.json"
 for cmd in python python3; do
   printf '#!/usr/bin/env bash\nexit 1\n' > "$NO_PY_BIN/$cmd"
   chmod +x "$NO_PY_BIN/$cmd"
@@ -257,6 +371,10 @@ cmp -s "$NO_PY_HOME/.codex/hooks.json" "$NO_PY_HOME/before"
 NO_PY_CMP=$?
 assert_eq "$NO_PY_RC|$NO_PY_CMP|$(grep -c 'no working Python' "$TMP_ROOT/no-python.log" || true)" \
   "0|0|1" "no working Python leaves hooks.json untouched and warns once"
+cmp -s "$NO_PY_HOME/.codex-profiles/own/hooks.json" "$NO_PY_HOME/before"
+NO_PY_PROFILE_CMP=$?
+assert_eq "$NO_PY_PROFILE_CMP|$(grep -c 'WARNING: Codex hooks unchanged' "$TMP_ROOT/no-python.log" || true)" \
+  "0|1" "no working Python leaves a profile's hooks.json untouched under that one warning"
 
 SPACE_HOME="$TMP_ROOT/home with space"
 install_home "$SPACE_HOME" "$TMP_ROOT/space-install.log"
