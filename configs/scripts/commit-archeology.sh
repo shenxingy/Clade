@@ -18,6 +18,7 @@
 #                                dead, or which names none, may be reclaimed
 #   COMMIT_ARCH_SCAN_TIMEOUT=600 seconds a background refresh scan may run
 #                                before it is killed and its lock released
+#                                (both: 1 to 999999999 s, else the default)
 #
 # Detectors:
 #   wiring-gap       fix commits with "wire / hook up / not registered / not called"
@@ -41,16 +42,23 @@ WINDOW_DAYS="${COMMIT_ARCH_WINDOW:-60}"
 CACHE_HOURS="${COMMIT_ARCH_CACHE_HOURS:-24}"
 TOP_N="${COMMIT_ARCH_TOP_N:-4}"
 MIN_OCCURRENCES="${COMMIT_ARCH_MIN:-3}"
+# Both settings below take a whole number of seconds from 1 to 999999999; any
+# other value keeps the default. Taken as it stands, a grace of 0, a negative
+# number or one past bash's 64-bit range (it wraps negative) would make every
+# lock look abandoned, and so would 08 or 09: [[ -lt ]] reads a leading zero as
+# octal, so those are an error (and 010 is 8 s). A timeout of a non-number or 0
+# would kill every scan as it starts, and so would one past 2^31-1 on macOS,
+# whose sleep then exits at once.
 # A refresh lock or reclaim mutex younger than this is never taken from its holder.
 LOCK_GRACE_SECONDS="${COMMIT_ARCH_LOCK_GRACE:-30}"
-[[ "$LOCK_GRACE_SECONDS" =~ ^[0-9]+$ ]] || LOCK_GRACE_SECONDS=30
+[[ "$LOCK_GRACE_SECONDS" =~ ^[1-9][0-9]{0,8}$ ]] || LOCK_GRACE_SECONDS=30
 # A background refresh scan still running after this long is killed. The slowest
 # full scan measured on 2026-11-25 took 109 s (a 7,675-commit repository with
 # 3,244 commits in the window, on a 32-core host at load average 80). A bound
 # over 5x that frees a wedged lock within ten minutes and leaves a slower host
 # room to finish; the lessons are advisory, so a late refresh costs little.
 SCAN_TIMEOUT_SECONDS="${COMMIT_ARCH_SCAN_TIMEOUT:-600}"
-[[ "$SCAN_TIMEOUT_SECONDS" =~ ^[1-9][0-9]*$ ]] || SCAN_TIMEOUT_SECONDS=600
+[[ "$SCAN_TIMEOUT_SECONDS" =~ ^[1-9][0-9]{0,8}$ ]] || SCAN_TIMEOUT_SECONDS=600
 
 mkdir -p "$LESSONS_DIR" 2>/dev/null
 

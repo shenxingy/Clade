@@ -653,17 +653,33 @@ assert_eq "$([[ -d "$(lock_dir)" && ! -e "$(lock_dir)/pid" ]] && echo kept || ec
 clear_lock
 
 printf '# lock grace: COMMIT_ARCH_LOCK_GRACE sets it, and a malformed value keeps 30 s\n'
+# Taken as it stands, each of these would make every lock look abandoned, so a
+# claimer still between its mkdir and its pid write would lose its lock at once:
+# a negative grace or 0 outright; 08 because [[ -lt ]] reads a leading zero as
+# octal, and 08 is then an error; 9223372036854775808 because it overflows
+# bash's arithmetic to a negative number.
+for bad in -1 0 08 9223372036854775808; do
+  seed_cache
+  age_cache
+  move_head
+  mkdir -p "$(lock_dir)"
+  COMMIT_ARCH_LOCK_GRACE="$bad" COMMIT_ARCH_TEST_SCAN_DELAY=0 run_arch --inject > /dev/null 2>&1
+  # A reclaim writes its PID before the caller returns, so this needs no wait.
+  if [[ -d "$(lock_dir)" && ! -e "$(lock_dir)/pid" ]]; then
+    pass "a grace of '$bad' falls back to 30 s and leaves a fresh pid-less lock alone"
+  else
+    fail "a grace of '$bad' falls back to 30 s and leaves a fresh pid-less lock alone" \
+      "taken by $(head -1 "$(lock_dir)/pid" 2>/dev/null)"
+    wait_for_lock_release
+  fi
+  clear_lock
+done
 seed_cache
 age_cache
 move_head
 NEW_HEAD=$(git -C "$PROJ" rev-parse HEAD)
 mkdir -p "$(lock_dir)"
 sleep 2
-# Taken as it stands, a negative grace would make every lock look abandoned.
-COMMIT_ARCH_LOCK_GRACE=-1 COMMIT_ARCH_TEST_SCAN_DELAY=0 run_arch --inject > /dev/null
-# A reclaim writes its PID before the caller returns, so this needs no wait.
-assert_eq "$([[ -d "$(lock_dir)" && ! -e "$(lock_dir)/pid" ]] && echo kept || echo taken)" 'kept' \
-  'a negative grace falls back to 30 s and leaves a 2 s old lock alone'
 COMMIT_ARCH_LOCK_GRACE=1 COMMIT_ARCH_TEST_SCAN_DELAY=0 run_arch --inject > /dev/null
 wait_for_scan_count 1
 if wait_for_head "$NEW_HEAD"; then pass 'a 1 s grace reclaims a 2 s old pid-less lock'
@@ -814,13 +830,28 @@ assert_eq "$WATCHDOGS" '0' 'a scan that finishes in time takes its watchdog down
 
 printf '# scan timeout: a malformed value keeps the default\n'
 # `sleep abc` fails at once and `sleep 0` returns at once, so either value taken
-# as it stands would kill every scan as it starts.
-for bad in abc 0; do
+# as it stands would kill every scan as it starts. So would 2147483648 on macOS,
+# whose sleep refuses a count past 2^31-1 and exits at once (measured on macOS
+# 26.3.1: 2147483647 sleeps, 2147483648 prints its usage). This sleep refuses
+# the same way on any host.
+BSD_SLEEP_BIN="$SANDBOX/bsd-sleep-bin"
+mkdir -p "$BSD_SLEEP_BIN"
+cat > "$BSD_SLEEP_BIN/sleep" <<EOF
+#!/usr/bin/env bash
+if [[ "\${1:-}" =~ ^[0-9]+$ ]] && { [[ \${#1} -gt 10 ]] || [[ \${#1} -eq 10 && "\$1" > 2147483647 ]]; }; then
+  printf 'usage: sleep number[unit] [...]\\n' >&2
+  exit 1
+fi
+exec "$(command -v sleep)" "\$@"
+EOF
+chmod +x "$BSD_SLEEP_BIN/sleep"
+for bad in abc 0 2147483648; do
   seed_cache
   age_cache
   move_head
   NEW_HEAD=$(git -C "$PROJ" rev-parse HEAD)
-  COMMIT_ARCH_SCAN_TIMEOUT="$bad" COMMIT_ARCH_TEST_SCAN_DELAY=1 run_arch --inject > /dev/null
+  PATH="$BSD_SLEEP_BIN:$PATH" COMMIT_ARCH_SCAN_TIMEOUT="$bad" COMMIT_ARCH_TEST_SCAN_DELAY=1 \
+    run_arch --inject > /dev/null
   if wait_for_head "$NEW_HEAD"; then pass "a scan timeout of '$bad' keeps the default and the scan completes"
   else fail "a scan timeout of '$bad' keeps the default and the scan completes" 'HEAD sidecar was not updated'; fi
   wait_for_lock_release
