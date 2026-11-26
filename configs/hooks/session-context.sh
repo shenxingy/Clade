@@ -186,14 +186,51 @@ PYEOF
   [[ -n "$LOOP_LINE" ]] && CONTEXT="${CONTEXT}${LOOP_LINE}\n"
 fi
 
-# Next TODO item: priority tiers first, then file order; owner sections and
-# inline owner-only phrasings in this TODO.md are skipped case-insensitively:
-# "needs the owner", "owner decision", and "Owner:".
-# Move marked bold titles past the opening "**" so the shared trim keeps the
-# title and drops the body. Trim with sed, not bare xargs — xargs errors on
-# unmatched quotes in TODO text.
-NEXT_TODO=$(awk '
+# Next TODO item: priority tiers first, then file order. Skipped: items under a
+# ##/### heading that names the owner (until the next heading of that level or
+# higher), and items whose text matches TODO_OWNER_PHRASES case-insensitively.
+# An item is its top-level `- [ ]` line plus the indented and blank lines after
+# it, up to the next column-0 line, so a phrase wrapped onto line two counts.
+# Fenced blocks (``` or ~~~, closed by a run of the same character at least as
+# long) are code: a `#` or `- [ ]` inside one is neither a heading nor an item.
+# Each list is written once; the tiers and the title trim both read the markers.
+TODO_PRIORITY_MARKERS='🔴 🟠 🟡 🔵'   # highest first, space-separated
+TODO_OWNER_PHRASES='needs the owner|owner decision|owner:'   # lowercase ERE
+# One awk pass, no sed or xargs after it: it also moves a marked bold title past
+# its "**" and trims, which is quote-safe (xargs errors on an unmatched quote).
+NEXT_TODO=$(awk -v markers="$TODO_PRIORITY_MARKERS" -v owner_re="$TODO_OWNER_PHRASES" '
+  function flush(   text, t) {
+    if (!pending) return
+    pending = 0
+    text = tolower(item)
+    gsub(/[[:space:]]+/, " ", text)
+    if (text ~ owner_re) return
+    if (!fallback) fallback = first
+    for (t = 1; t <= ntiers; t++) if (index(first, marker[t])) break
+    if (t <= ntiers && !(t in selected)) selected[t] = first
+  }
+  BEGIN { ntiers = split(markers, marker, " ") }
   {
+    run = rest = ""
+    if ($0 ~ /^[[:space:]]*(```|~~~)/) {   # one test per line; the rest only on fence lines
+      rest = $0
+      sub(/^[[:space:]]+/, "", rest)
+      match(rest, /^(`+|~+)/)
+      run = substr(rest, 1, RLENGTH)
+      rest = substr(rest, RLENGTH + 1)
+    }
+    if (fence != "") {
+      if (substr(run, 1, 1) == substr(fence, 1, 1) && length(run) >= length(fence) &&
+          rest !~ /[^[:space:]]/) fence = ""
+      next
+    }
+    # ```json``` at a line start is inline code: a backtick fence has none after its run.
+    opens = length(run) >= 3 && !(run ~ /^`/ && index(rest, "`"))
+    if (pending) {
+      if ($0 ~ /^[^[:space:]]/) flush()
+      else { if (opens) fence = run; else item = item " " $0; next }
+    }
+    if (opens) { fence = run; next }
     if ($0 ~ /^#+[[:space:]]/) {
       heading = $0
       sub(/[[:space:]].*$/, "", heading)
@@ -201,28 +238,23 @@ NEXT_TODO=$(awk '
       if (owner_level && level <= owner_level) owner_level = 0
       if ((level == 2 || level == 3) && tolower($0) ~ /owner/) owner_level = level
     }
-    if ($0 !~ /^- \[ \]/ || owner_level) next
-    item = tolower($0)
-    if (item ~ /needs the owner/ || item ~ /owner decision/ || item ~ /owner:/) next
-    if (!fallback) fallback = $0
-    if ($0 ~ /🔴/) tier = 1
-    else if ($0 ~ /🟠/) tier = 2
-    else if ($0 ~ /🟡/) tier = 3
-    else if ($0 ~ /🔵/) tier = 4
-    else next
-    if (!seen[tier]) {
-      selected[tier] = $0
-      seen[tier] = 1
-    }
+    if ($0 ~ /^- \[ \]/ && !owner_level) { pending = 1; first = item = $0 }
   }
   END {
-    if (seen[1]) print selected[1]
-    else if (seen[2]) print selected[2]
-    else if (seen[3]) print selected[3]
-    else if (seen[4]) print selected[4]
-    else if (fallback) print fallback
+    flush()
+    out = fallback
+    for (t = 1; t <= ntiers; t++) if (t in selected) { out = selected[t]; break }
+    for (t = 1; t <= ntiers; t++) {
+      head = "- [ ] " marker[t] " **"
+      if (index(out, head) == 1) { out = marker[t] " " substr(out, length(head) + 1); break }
+    }
+    if ((p = index(out, "- [ ] **"))) out = substr(out, 1, p - 1) substr(out, p + 8)
+    if ((p = index(out, "**"))) out = substr(out, 1, p - 1)
+    sub(/^[[:space:]]+/, "", out)
+    sub(/[[:space:]]+$/, "", out)
+    if (out != "") print out
   }
-' TODO.md 2>/dev/null | sed 's/^- \[ \] 🔴 \*\*/🔴 /;s/^- \[ \] 🟠 \*\*/🟠 /;s/^- \[ \] 🟡 \*\*/🟡 /;s/^- \[ \] 🔵 \*\*/🔵 /;s/- \[ \] \*\*//' | sed 's/\*\*.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+' TODO.md 2>/dev/null)
 if [[ -n "$NEXT_TODO" ]]; then
   CONTEXT="${CONTEXT}\nNext TODO: ${NEXT_TODO}\n"
 fi

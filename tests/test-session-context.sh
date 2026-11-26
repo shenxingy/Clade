@@ -459,6 +459,138 @@ OUT=$(todo_ctx)
 assert_line "$OUT" "Next TODO: Old style title" \
   "control: an unmarked bold title keeps its old rendering"
 
+# ─── Next TODO: fenced blocks are code, not structure (#204 residue) ──
+# A column-0 `#` inside a fence was read as a heading, so a shell comment in a
+# code sample ended an owner section and its items became eligible. Each spec is
+# open|inner|close; the inner line must not close the fence (another fence
+# character, a shorter run, or a run with an info string after it).
+for spec in \
+  '```bash||```' \
+  '~~~|```|~~~' \
+  '````markdown|```|````' \
+  '```|```bash|```'
+do
+  IFS='|' read -r f_open f_inner f_close <<< "$spec"
+  {
+    printf '%s\n' '## Needs the owner' '- [ ] 🔴 Owner red item before the fence is skipped' "$f_open"
+    [[ -n "$f_inner" ]] && printf '%s\n' "$f_inner"
+    printf '%s\n' '# a column-0 comment inside the fence' "$f_close" \
+      '- [ ] 🔴 Owner red item after the fence is skipped' \
+      '## Agent work' '- [ ] 🟠 Agent orange item is eligible'
+  } > "$TODO_PROJ/TODO.md"
+  OUT=$(todo_ctx)
+  assert_line "$OUT" "Next TODO: - [ ] 🟠 Agent orange item is eligible" \
+    "a column-0 # inside a fence (open '$f_open', inner '$f_inner') keeps the owner section open"
+done
+
+cat > "$TODO_PROJ/TODO.md" <<'EOF'
+## Agent work
+~~~markdown
+## Owner decisions
+~~~
+- [ ] 🔴 Agent red item after the fence is eligible
+EOF
+OUT=$(todo_ctx)
+assert_line "$OUT" "Next TODO: - [ ] 🔴 Agent red item after the fence is eligible" \
+  "a fenced owner heading does not open an owner section"
+
+cat > "$TODO_PROJ/TODO.md" <<'EOF'
+```markdown
+- [ ] 🔴 Example item inside a fence is not a task
+```
+- [ ] 🔵 Real blue item is eligible
+EOF
+OUT=$(todo_ctx)
+assert_line "$OUT" "Next TODO: - [ ] 🔵 Real blue item is eligible" \
+  "a checkbox inside a fence is not an open item"
+
+cat > "$TODO_PROJ/TODO.md" <<'EOF'
+```inline``` code at the start of a line opens no fence
+- [ ] 🔴 Red item after the inline code is eligible
+EOF
+OUT=$(todo_ctx)
+# Control: passes on HEAD too; it pins that fence tracking cannot swallow the file.
+assert_line "$OUT" "Next TODO: - [ ] 🔴 Red item after the inline code is eligible" \
+  "control: a backtick run with a backtick after it is inline code, not a fence"
+
+# ─── Next TODO: the owner check reads the whole item (#204 residue) ───
+# An item is its `- [ ]` line plus every indented or blank line after it, up to
+# the next column-0 line. The check read only the first line, so a TODO.md
+# wrapped at 80 columns hid any owner phrase that landed on line two.
+cat > "$TODO_PROJ/TODO.md" <<'EOF'
+- [ ] 🔴 **Pick the storage backend**
+  Owner: choose between SQLite and Postgres.
+- [ ] 🟠 Agent orange item is eligible
+EOF
+OUT=$(todo_ctx)
+assert_line "$OUT" "Next TODO: - [ ] 🟠 Agent orange item is eligible" \
+  "an owner phrase on an item's continuation line skips the item"
+
+cat > "$TODO_PROJ/TODO.md" <<'EOF'
+- [ ] 🔴 **Retire the dormant GUI** — this needs
+  the owner to sign off first.
+- [ ] 🟠 Agent orange item is eligible
+EOF
+OUT=$(todo_ctx)
+assert_line "$OUT" "Next TODO: - [ ] 🟠 Agent orange item is eligible" \
+  "an owner phrase wrapped across the line break skips the item"
+
+cat > "$TODO_PROJ/TODO.md" <<'EOF'
+- [ ] 🔴 **Item with a second paragraph**
+
+  Needs the owner: a pricing call.
+- [ ] 🟠 Agent orange item is eligible
+EOF
+OUT=$(todo_ctx)
+assert_line "$OUT" "Next TODO: - [ ] 🟠 Agent orange item is eligible" \
+  "an owner phrase after a blank line inside the item skips the item"
+
+cat > "$TODO_PROJ/TODO.md" <<'EOF'
+- [ ] 🔴 **Item with a code sample**
+  ```bash
+# a column-0 comment inside the item's own fence
+  ```
+  Owner: decide this first.
+- [ ] 🟠 Agent orange item is eligible
+EOF
+OUT=$(todo_ctx)
+assert_line "$OUT" "Next TODO: - [ ] 🟠 Agent orange item is eligible" \
+  "a column-0 line inside the item's own fence does not end the item"
+
+cat > "$TODO_PROJ/TODO.md" <<'EOF'
+- [ ] 🔴 Agent red item is eligible
+- [ ] 🟠 Owner: the next item's phrase is not this item's
+EOF
+OUT=$(todo_ctx)
+# Control: passes on HEAD too; it pins the item boundary the fix introduces.
+assert_line "$OUT" "Next TODO: - [ ] 🔴 Agent red item is eligible" \
+  "control: an item ends at the next column-0 line"
+
+# ─── Next TODO: one marker list (#204 residue) ────────────────────────
+# The four markers were written twice, in the awk tiers and again in a sed that
+# trims the title, so a marker added to one was half-supported. Prepend a new
+# marker to the single definition in a copy of the hook: it must outrank 🔴 and
+# have its title trimmed, i.e. both uses read the one list.
+DRIFT_HOOKS="$TMP_ROOT/drift-hooks"
+cp -R "$REPO_ROOT/configs/hooks" "$DRIFT_HOOKS"
+sed "s/^TODO_PRIORITY_MARKERS='/TODO_PRIORITY_MARKERS='🟣 /" \
+  "$SESSION_CONTEXT" > "$DRIFT_HOOKS/session-context.sh"
+if cmp -s "$SESSION_CONTEXT" "$DRIFT_HOOKS/session-context.sh"; then
+  fail "fixture: the marker definition is one TODO_PRIORITY_MARKERS line" \
+    "no line starts with TODO_PRIORITY_MARKERS=' — the anchor is gone"
+else
+  printf '%s\n' '- [ ] 🔴 **Red title** red-body' '- [ ] 🟣 **Purple title** purple-body' \
+    > "$TODO_PROJ/TODO.md"
+  OUT=$(echo '{}' | env HOME="$TODO_HOME" CLAUDE_PROJECT_DIR="$TODO_PROJ" \
+    bash "$DRIFT_HOOKS/session-context.sh" | jq -r '.hookSpecificOutput.additionalContext // empty')
+  assert_line "$OUT" "Next TODO: 🟣 Purple title" \
+    "a marker added to the one definition sets both its tier and its title trim"
+fi
+for marker in 🔴 🟠 🟡 🔵; do
+  assert_eq "$(grep -c -- "$marker" "$SESSION_CONTEXT")" "1" \
+    "the $marker marker is written on one line of the hook"
+done
+
 # ─── What the model reads: line breaks and the auto-pull notice ──────
 # Every assertion above is a substring match, which passes whether sections are
 # separated by a newline or by the two characters backslash and n — the shape
