@@ -35,6 +35,13 @@ SHADOW="${CLADE_WORKER_SHADOW_DIR:-}"
 [[ -z "$SHADOW" ]] && exit 0
 # Absolute before the `cd` below, so a relative setting means what it always did.
 case "$SHADOW" in /*) ;; *) SHADOW="$PWD/$SHADOW" ;; esac
+# Every git call below names its repository by cwd or --git-dir, and a caller's
+# repository variables override both: GIT_DIR or GIT_WORK_TREE would make the
+# ignore-rule reads consult another repository, so a file info/exclude lists
+# lands in the shadow, and GIT_INDEX_FILE would make the shadow's add -A write
+# the worker's own index. So drop all of them, the list git itself clears when
+# it moves into another repository (`git rev-parse --local-env-vars`).
+unset $(git rev-parse --local-env-vars 2>/dev/null) 2>/dev/null
 
 # FILE_PATH is a LABEL, not a gate. The snapshot below is `add -A` over the whole
 # worktree, so it never needed a path — and requiring one made this hook blind to

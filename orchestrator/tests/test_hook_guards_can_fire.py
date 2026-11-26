@@ -215,6 +215,8 @@ HOOK_SUITES: dict[str, dict] = {
              [('cd "$WORKTREE" 2>/dev/null || exit 0\n', "")]),
             ("a relative shadow made absolute before that cd",
              [('case "$SHADOW" in /*) ;; *) SHADOW="$PWD/$SHADOW" ;; esac', ":")]),
+            ("a caller's repository variables dropped before any git call",
+             [('unset $(git rev-parse --local-env-vars 2>/dev/null) 2>/dev/null', ":")]),
         ],
     },
     "configs/hooks/pre-tool-guardian.sh": {

@@ -272,6 +272,36 @@ assert_eq "$(git --git-dir="$XR/rel-shadow.git" rev-list --count HEAD 2>/dev/nul
 mv "$XR/main/.git/info/exclude" "$XR/exclude.removed"
 xr_snap "$XWT" "$XSH"
 xr_has "$XSH" local-secret.env "a removed info/exclude no longer applies to the next snapshot"
+mv "$XR/exclude.removed" "$XR/main/.git/info/exclude"
+
+# A caller's repository variables must not redirect the hook. Measured on the
+# hook without the unset: GIT_DIR naming a shadow not yet made stopped every
+# checkpoint; naming one that exists, the ignore-rule reads consulted the
+# shadow and a file info/exclude lists was snapshotted; and GIT_INDEX_FILE made
+# the shadow's add -A write the worker's own index (that last predates the
+# ignore rules).
+xr_snap_env() {  # $1 = shadow, $2 = extra env assignments; the worktree is the cwd
+  ( cd "$XWT" && printf '{"tool_name":"Bash","tool_input":{}}' \
+      | env $2 CLADE_WORKER_SHADOW_DIR="$1" CLADE_WORKER_WORKTREE="$XWT" bash "$CK_HOOK" ) >/dev/null 2>&1
+}
+xr_count() { git --git-dir="$1" rev-list --count HEAD 2>/dev/null; }
+XENV0="$XR/env-new-shadow.git"
+xr_snap_env "$XENV0" "GIT_DIR=$XENV0 GIT_WORK_TREE=$XWT"
+assert_eq "$(xr_count "$XENV0")" "1" "a caller's GIT_DIR naming a shadow not yet made does not stop the snapshot"
+# Each case below starts from a shadow an ordinary run made, so it fails for
+# its own reason and not because an earlier case left no shadow.
+XENV="$XR/env-shadow.git"
+xr_snap_env "$XENV" ""
+: > "$XENV/info/exclude"  # as a shadow made before 2026-11-26 has it
+xr_snap_env "$XENV" "GIT_DIR=$XENV GIT_WORK_TREE=$XWT"
+assert_eq "$(xr_count "$XENV")" "2" "a caller's GIT_DIR naming the shadow does not stop the snapshot"
+xr_lacks "$XENV" local-secret.env "nor switch off info/exclude"
+xr_has   "$XENV" untracked.txt "that snapshot still holds the worktree's files (control)"
+XIDX_BEFORE=$(cksum < "$XIDX")
+xr_snap_env "$XENV" "GIT_INDEX_FILE=$XIDX"
+assert_eq "$(xr_count "$XENV")" "3" "a caller's GIT_INDEX_FILE does not stop the snapshot"
+assert_eq "$(cksum < "$XIDX")" "$XIDX_BEFORE" "nor make the hook write the worker's own index"
+git -C "$XWT" reset -q 2>/dev/null  # repair the index if that last case failed
 
 # ─── Summary ─────────────────────────────────────────────────────────
 
