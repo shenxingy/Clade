@@ -160,7 +160,8 @@ header through its last key line, plus the one blank line install.sh wrote
 before it. Comments, blank lines and tables after it stay, so on a config where
 install.sh appended nothing else, install then uninstall gives back the same
 bytes. Where `tomllib` exists the result must parse to the original minus
-exactly those entries, or the file is left alone with a warning, as it is when
+exactly those entries, or the file is left alone with a warning; a check that
+dies before giving a verdict counts as a refusal. The file is left alone too when
 the edited copy cannot be written back (a read-only `config.toml`); the
 uninstall then carries on, and the adapter stays while the file names it. The
 file keeps its mode, and a symlink stays a symlink. An entry the user wrote

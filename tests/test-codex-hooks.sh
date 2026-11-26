@@ -1001,6 +1001,23 @@ print("; ".join(errors))
 PY
 }
 
+# Codex keys hook trust as <path>:<event>:<group>:<handler>. In the template
+# two user handlers sit behind one of Clade's: the Stop group added after
+# installing (Stop:2:0) and the handler added into Clade's SessionEnd group
+# (SessionEnd:1:1). Both move up, onto keys they were never trusted under, so
+# the uninstall must name exactly those two, and no handler that kept its key.
+codex_moved_report() {  # codex_moved_report LOG — empty when exactly the moved handlers are named
+  local log="$1" errors="" named
+  grep -qF 'WARNING: 2 of your Codex hooks moved' "$log" || errors="no warning naming the 2 moved user hooks"
+  grep -qF 'stop:2:0 -> stop:1:0  /fake/user/after-install' "$log" \
+    || errors="$errors; the Stop group behind Clade's was not named"
+  grep -qF 'session_end:1:1 -> session_end:1:0  /fake/user/shared-group' "$log" \
+    || errors="$errors; the handler behind Clade's in a shared SessionEnd group was not named"
+  named=$(grep -c ' -> ' "$log")
+  [[ "$named" == 2 ]] || errors="$errors; $named handlers named as moved, not 2"
+  printf '%s' "$errors"
+}
+
 # Each probe is also an oracle for the mutation controls below.
 probe_codex_uninstall() {
   local script="$1" probe="$2" d rc errors=""
@@ -1010,7 +1027,7 @@ probe_codex_uninstall() {
       seed_codex_home "$d"
       uninstall_home "$d" "$d/log" "$script"
       rc=$?
-      errors=$(codex_uninstalled "$d")
+      errors="$(codex_uninstalled "$d")$(codex_moved_report "$d/log")"
       [[ "$rc" == 0 ]] || errors="uninstall exited $rc $errors"
       ;;
     untouched)
@@ -1080,6 +1097,8 @@ assert_contains "$(cat "$TMP_ROOT/un-uninstall.log")" "Codex hooks: 10 removed f
   "uninstall.sh reports the ten wirings it took out"
 assert_contains "$(cat "$TMP_ROOT/un-uninstall.log")" "Codex hooks: 1 removed from $UN_T/.codex-profiles/own/hooks.json" \
   "uninstall.sh cleans a profile that holds its own hooks.json"
+assert_eq "$(codex_moved_report "$TMP_ROOT/un-uninstall.log")" "" \
+  "after a real install: uninstall.sh names the two user handlers whose trust key moved, and no other"
 cp "$UN_T/.codex/hooks.json" "$TMP_ROOT/un-after.json"
 uninstall_home "$UN_T" "$TMP_ROOT/un-uninstall-2.log"
 UN_RC=$?
@@ -1114,10 +1133,14 @@ UNINSTALL_MUTATIONS=(
   $'uninstall\tadapter-kept\tif [[ -n "$_codex_still" ]]; then\tif false; then\tinvalid'
   $'merger\tno-op-write\tif removed:\tif True:\tuntouched'
   $'merger\tempty-group\tif not handlers:\tif False:\troundtrip'
-  $'merger\tshared-group\tgroup["hooks"] = handlers\tcontinue\troundtrip'
+  $'merger\tshared-group\tgroup["hooks"] = [handler for _, handler in handlers]\tcontinue\troundtrip'
   $'merger\tuser-empty-event\tif event_removed and not kept_groups:\tif not kept_groups:\troundtrip'
   $'merger\temptied-event\tif event_removed and not kept_groups:\tif False:\troundtrip'
-  $'merger\tadapter-prefix\t.startswith(prefix)]\t.startswith("")]\troundtrip'
+  $'merger\tadapter-prefix\th.get("command", "").startswith(prefix)\th.get("command", "").startswith("")\troundtrip'
+  $'merger\tmoved-reported\tif old != new:\tif False:\troundtrip'
+  $'merger\tmoved-only\tif old != new:\tif True:\troundtrip'
+  $'merger\tmoved-new-group\ttrust_position(event, len(kept_groups), new_index)\ttrust_position(event, group_index, new_index)\troundtrip'
+  $'merger\tmoved-event-label\tre.sub(r"(?<!^)(?=[A-Z])", "_", event).lower()\tevent.lower()\troundtrip'
 )
 for mutation in "${UNINSTALL_MUTATIONS[@]}"; do
   IFS=$'\t' read -r kind name old new probe <<< "$mutation"

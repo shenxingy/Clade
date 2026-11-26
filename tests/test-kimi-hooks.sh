@@ -1072,6 +1072,12 @@ for cmd in python python3; do
   printf '#!/usr/bin/env bash\nexit 1\n' > "$NO_PY_BIN/$cmd"
   chmod +x "$NO_PY_BIN/$cmd"
 done
+# A python3 whose parse check (the one script uninstall.sh feeds on stdin) is
+# killed before it prints, as by a signal or the OOM killer; all else is real.
+SILENT_PY_BIN="$TMP_ROOT/silent-check-python-bin"
+mkdir -p "$SILENT_PY_BIN"
+printf '#!/usr/bin/env bash\n[[ "${1:-}" == - ]] && exit 137\nexec %q "$@"\n' "$(command -v python3)" > "$SILENT_PY_BIN/python3"
+chmod +x "$SILENT_PY_BIN/python3"
 uninstall_home() {  # uninstall_home HOME LOG [UNINSTALL_SH] [PATH_PREFIX]
   local home="$1" log="$2" script="${3:-$UNINSTALL_SH}" path_prefix="${4:-$FAKE_BIN}"
   HOME="$home" KIMI_CODE_HOME="$home/.kimi-code" PATH="$path_prefix:$PATH" PYTHONDONTWRITEBYTECODE=1 \
@@ -1152,6 +1158,29 @@ probe_kimi_uninstall() {
       rc=$?
       errors=$(kimi_uninstalled "$d" "$config")
       ;;
+    clade-only)
+      # The common config: no [[hooks]] of the user's, so after the uninstall
+      # none is left at all, and the parse check must expect no hooks key.
+      python3 - "$USER_AFTER" "$config" "$d/expected.toml" <<'PY' || errors="the user [[hooks]] entries could not be dropped from the fixture"
+import sys
+from pathlib import Path
+user_tables = (
+    '[[hooks]]\nevent = "SessionStart"\nmatcher = "custom-user-matcher"\ncommand = "custom-user-hook"\ntimeout = 17\n\n',
+    sys.argv[1],
+)
+for name in sys.argv[2:]:
+    path = Path(name)
+    text = path.read_text(encoding="utf-8")
+    for table in user_tables:
+        assert text.count(table) == 1, (name, table)
+        text = text.replace(table, "")
+    path.write_text(text, encoding="utf-8")
+PY
+      ! grep -qE 'custom-user-hook|user-after-install' "$config" || errors="$errors; the fixture still holds a user [[hooks]] entry"
+      uninstall_home "$d" "$d/log" "$script"
+      rc=$?
+      errors="$errors$(kimi_uninstalled "$d" "$config")"
+      ;;
     symlink)
       mkdir -p "$d/actual"
       mv "$config" "$d/actual/config.toml"
@@ -1168,8 +1197,8 @@ probe_kimi_uninstall() {
       rc=$?
       cmp -s "$config" "$d/before" || errors="a config.toml holding nothing of Clade's was rewritten"
       ;;
-    multiline|unparseable)
-      if [[ "$probe" == multiline ]]; then
+    multiline|unparseable|silent-check)
+      if [[ "$probe" != unparseable ]]; then
         # A user string that LOOKS like a Clade table: the line-based edit
         # would cut it, so only the parse check can see the damage.
         printf '\n[notes]\ntext = """\n[[hooks]]\ncommand = "%s/.kimi-code/hooks/decision-to-kimi.sh fake"\n"""\n' "$d" >> "$config"
@@ -1177,7 +1206,11 @@ probe_kimi_uninstall() {
         printf '\n[broken\n' >> "$config"
       fi
       cp "$config" "$d/before"
-      uninstall_home "$d" "$d/log" "$script"
+      if [[ "$probe" == silent-check ]]; then
+        uninstall_home "$d" "$d/log" "$script" "$SILENT_PY_BIN:$FAKE_BIN"
+      else
+        uninstall_home "$d" "$d/log" "$script"
+      fi
       rc=$?
       cmp -s "$config" "$d/before" || errors="a config.toml the uninstaller could not verify was changed"
       [[ -f "$d/.kimi-code/hooks/decision-to-kimi.sh" ]] || errors="$errors; the adapter was deleted while config.toml still runs it"
@@ -1238,13 +1271,15 @@ uninstall_home "$UN_T" "$TMP_ROOT/un-uninstall-2.log"
 UN_RC=$?
 cmp -s "$UN_CONFIG" "$TMP_ROOT/un-after.toml"
 assert_eq "$UN_RC|$?" "0|0" "a second uninstall leaves config.toml byte-identical"
-UN_PROBES="roundtrip no-python symlink untouched"
+UN_PROBES="roundtrip no-python symlink untouched clade-only"
+UN_PARSE_CHECKED=""
 if python3 -c 'import tomllib' >/dev/null 2>&1; then
-  UN_PROBES="$UN_PROBES multiline unparseable"
+  UN_PROBES="$UN_PROBES multiline unparseable silent-check"
+  UN_PARSE_CHECKED=1
 else
   # Without tomllib the uninstaller has no parse check, so it makes the line
   # edit; these probes, and the mutations they judge, would fail either way.
-  printf '  - uninstall probes multiline, unparseable and their mutations (tomllib unavailable; not run)\n'
+  printf '  - uninstall probes multiline, unparseable, silent-check and the parse-check mutations (tomllib unavailable; not run)\n'
 fi
 if [[ "$(id -u)" == 0 ]]; then
   # root writes through mode 555 and 400, so these probes cannot fail there.
@@ -1289,6 +1324,12 @@ UNINSTALL_MUTATIONS=(
   $'write-guard\tif { cat "$_kimi_candidate" > "$KIMI_CONFIG"; } 2>/dev/null; then\tcat "$_kimi_candidate" > "$KIMI_CONFIG"; if true; then\treadonly-file'
   $'adapter-kept-readonly\tif [[ -f "$KIMI_CONFIG" ]] && grep -qF \'hooks/decision-to-kimi.sh\' "$KIMI_CONFIG"; then\tif false; then\treadonly-file'
   $'temp-cleanup\t[[ -z "$_kimi_candidate" ]] || rm -f "$_kimi_candidate"\t:\troundtrip'
+)
+# The parse check exists only where tomllib does, and so do these mutations of
+# it. clade-only runs everywhere, so its probe alone cannot gate them.
+[[ -z "$UN_PARSE_CHECKED" ]] || UNINSTALL_MUTATIONS+=(
+  $'no-hooks-left\tdel expected["hooks"]\texpected["hooks"] = kept\tclade-only'
+  $'check-verdict\t_kimi_problem="${_kimi_problem:-the parse check exited without a verdict}"\t:\tsilent-check'
 )
 for mutation in "${UNINSTALL_MUTATIONS[@]}"; do
   IFS=$'\t' read -r name old new probe <<< "$mutation"

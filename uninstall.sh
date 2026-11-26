@@ -210,7 +210,10 @@ fi
 # "$HOME/.codex/clade-hooks/decision-to-codex.sh". The merger's --remove takes
 # out each handler whose command starts with that quoted path, and any group or
 # event list that emptied; user groups keep their order and fields, and a file
-# with nothing of Clade's is not rewritten. A profile (CODEX_HOME=
+# with nothing of Clade's is not rewritten. Codex keys hook trust by position
+# (<path>:<event>:<group>:<handler>), so a user handler that sat behind a
+# removed one moves onto a key it was never trusted under; the merger names
+# each one for review in /hooks. A profile (CODEX_HOME=
 # ~/.codex-profiles/<name>) holding its own hooks.json is cleaned the same way;
 # one linked to ~/.codex/hooks.json was cleaned through it. The adapter goes
 # only once no hooks.json names it, so a file that could not be cleaned keeps
@@ -228,7 +231,7 @@ for _codex_hooks in "$CODEX_DIR/hooks.json" "$HOME/.codex-profiles/"*/hooks.json
     fi
   elif _codex_out=$("$PYTHON" "$SCRIPT_DIR/configs/scripts/codex-hooks-merge.py" --remove \
       --target "$_codex_hooks" --adapter "$CODEX_ADAPTER" 2>&1); then
-    printf '  %s\n' "$_codex_out"
+    printf '%s\n' "$_codex_out" | sed 's/^/  /'
   else
     echo "  WARNING: Codex hooks unchanged in $_codex_hooks (merger failed)"
   fi
@@ -312,8 +315,10 @@ if [[ -f "$KIMI_CONFIG" ]] && grep -qF "\"$KIMI_ADAPTER " "$KIMI_CONFIG"; then
   else
     _kimi_removed=$(( $(grep -cF "\"$KIMI_ADAPTER " "$KIMI_CONFIG") - $(grep -cF "\"$KIMI_ADAPTER " "$_kimi_candidate" || true) ))
   fi
-  if [[ -z "$_kimi_problem" && -n "$PYTHON" ]] && "$PYTHON" -c 'import tomllib' >/dev/null 2>&1; then
-    _kimi_problem=$("$PYTHON" - "$KIMI_CONFIG" "$_kimi_candidate" "$KIMI_ADAPTER " 2>&1 <<'PY'
+  # The verdict is the exit status, not the output: a check killed before it
+  # prints (a signal, OOM) must refuse the edit, not pass it unchecked.
+  if [[ -z "$_kimi_problem" && -n "$PYTHON" ]] && "$PYTHON" -c 'import tomllib' >/dev/null 2>&1 \
+      && ! _kimi_problem=$("$PYTHON" - "$KIMI_CONFIG" "$_kimi_candidate" "$KIMI_ADAPTER " 2>&1 <<'PY'
 from pathlib import Path
 import sys
 import tomllib
@@ -345,7 +350,8 @@ if candidate != expected:
     print("the edit would change more than Clade's [[hooks]] entries")
     raise SystemExit(1)
 PY
-    ) || true
+      ); then
+    _kimi_problem="${_kimi_problem:-the parse check exited without a verdict}"
   fi
   if [[ -n "$_kimi_problem" ]]; then
     echo "  WARNING: Kimi hooks unchanged ($_kimi_problem)"

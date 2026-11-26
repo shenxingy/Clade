@@ -81,7 +81,11 @@ session cleanup 与 memory sync。它不会重复安装 plugin 已有的两个 h
 group 或 event 列表；当没有任何 hooks.json 再引用 adapter 时，才删除
 `~/.codex/clade-hooks/`。用户条目保持原有顺序与字段；不含 Clade 条目的文件不会被
 重写；无法解析的文件（或没有可用 Python 的机器）保持原样，它仍在调用的 adapter
-也一并保留。`config.toml` 不会被修改，所以已删除 handler 的 trust 条目会留在那里，
+也一并保留。`config.toml` 不会被修改。Codex 按位置
+（`<hooks.json 路径>:<event>:<group>:<handler>`）记录 hook 的 trust，所以在同一
+event 中排在被删除的 Clade group 或 handler 之后的用户 handler 会前移到一个从未被
+信任过的 key 上，在 `/hooks` 中重新检查之前 Codex 不会运行它；uninstall 会列出每个
+这样的 handler 及其新旧位置。不再有 handler 占用的位置，其 trust 条目会留在那里，
 不再被使用。
 
 Codex 从 `SKILL.md` 加载可执行 workflow；Clade 原来的 Claude distribution

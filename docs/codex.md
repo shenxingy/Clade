@@ -98,8 +98,13 @@ file of its own, then any group or event list the removal emptied, then
 `~/.codex/clade-hooks/` once no hooks.json names the adapter. User groups keep
 their order and fields, a file holding nothing of Clade's is not rewritten, and
 a file it cannot parse (or a machine with no working Python) is left as it was,
-together with the adapter it still runs. `config.toml` is not edited, so trust
-entries for the removed handlers stay there unused.
+together with the adapter it still runs. `config.toml` is not edited. Codex
+keys hook trust by position (`<hooks.json path>:<event>:<group>:<handler>`), so a
+user handler that sat behind a removed Clade group or handler in the same event
+moves up onto a key it was never trusted under, and Codex does not run it until
+it is reviewed again in `/hooks`. The uninstall names each such handler with its
+old and new position. Trust entries for positions no handler holds any more stay
+there unused.
 
 Codex loads executable workflow instructions from `SKILL.md`, while Clade's
 original Claude distribution executes `prompt.md`. The generator combines both
