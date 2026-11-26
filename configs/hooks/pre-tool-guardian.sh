@@ -39,7 +39,9 @@
 # so any statement whose last option token lacked an `f` killed the hook with
 # exit 1 — a non-blocking error to Claude Code, which then ran the command with
 # every later check (force push, DROP, pkill) skipped. Ten of 20,111 real
-# commands replayed on 2026-10-20 crashed it that way.
+# commands replayed on 2026-10-20 crashed it that way. settings-hooks.json now
+# sets "onFailure": "block": on Claude Code 2.1.295+ a crash or a timeout refuses
+# the call instead, safe or not, so this rule stands; older CLIs still fail open.
 
 set -uo pipefail
 

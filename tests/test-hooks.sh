@@ -17,7 +17,8 @@
 #                           corrections in four days)
 #   post-tool-use-failure.sh  the recovery hint follows the tool's `error`, and
 #                           reaches each thread once, not on every failing command
-#   settings-hooks.json     the wiring that makes all three reachable
+#   settings-hooks.json     the wiring that makes all three reachable, and
+#                           which hooks fail closed (tests/lib/hooks-onfailure.sh)
 #   (the `# exists-for: … · retire-when: …` line every hook carries is checked
 #    in tests/test-hook-provenance.sh — split out when this file would have
 #    crossed the 1500-line rule a third time)
@@ -380,7 +381,7 @@ jq -e '.hooks.PostToolUse[].hooks[] | select(.id=="post-edit-check") | .asyncRew
 
 # asyncRewake implies async (Claude Code command-hook field reference), so a
 # separate async: true is dead config. The command-hook schema is also closed:
-# type/command/args/async/asyncRewake/shell/if/timeout/statusMessage/once. Fields
+# type/command/args/async/asyncRewake/shell/onFailure/if/timeout/statusMessage/once. Fields
 # invented around the wake — rewakeMessage, rewakeSummary — read as real settings
 # while doing nothing, and `claude plugin validate --strict` flags them as
 # unrecognized. Wake text belongs in the hook's own stderr.
@@ -410,6 +411,13 @@ jq -e '.hooks.UserPromptSubmit[].hooks[] | select(.id=="secret-scanner") | has("
   "$SETTINGS" >/dev/null 2>&1 \
   && pass "secret-scanner stays synchronous" \
   || fail "secret-scanner stays synchronous"
+
+# ─── onFailure: which hooks fail closed ──────────────────────────────
+# pre-tool-guardian fails closed, secret-scanner stays fail-open, and every
+# onFailure sits where Claude Code honours it. Kept in a sourced file because
+# this one sits at the edge of the 1500-line cap.
+# shellcheck source=lib/hooks-onfailure.sh
+. "$REPO_ROOT/tests/lib/hooks-onfailure.sh"
 
 # ─── secret-scanner: a note on handling, never a nag ─────────────────
 # The hook fires on EVERY prompt carrying a key-shaped string, so whatever it
