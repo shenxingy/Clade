@@ -331,12 +331,13 @@ section "commit_changes sweep scope"
 
 SWEEP_SCOPE_REPO=$(setup_test_repo)
 cd "$SWEEP_SCOPE_REPO" || exit 1
-mkdir -p .claude logs/loop logs/claude-tasks/shadow web/node_modules/pkg scratch notes release vendor/nested
+mkdir -p .claude logs/loop logs/claude-tasks/shadow node_modules/pkg web/node_modules/pkg scratch notes release vendor/nested
 git init -q --bare logs/claude-tasks/shadow/task-1.git
 git init -q --bare scratch/ckpt.git
 echo checkpoint | git --git-dir=scratch/ckpt.git hash-object -w --stdin >/dev/null
 ( cd vendor/nested && git init -q && echo lib > lib.txt && git add lib.txt \
     && git -c user.name=T -c user.email=t@example.com commit -qm init )
+echo dep > node_modules/pkg/index.js
 echo dep > web/node_modules/pkg/index.js
 echo note > notes/node_modules.md
 echo ref > release/HEAD
@@ -355,7 +356,11 @@ assert_contains "$tracked_now" "swept.txt" "a worker-created file is still swept
 assert_contains "$tracked_now" "notes/node_modules.md" "a file merely named node_modules.md is still swept"
 assert_contains "$tracked_now" "release/HEAD" "a directory holding only a HEAD file is not taken for a git dir"
 assert_not_contains "$tracked_now" "logs/claude-tasks/" "worker logs and their shadow checkpoint repos are never swept"
-assert_not_contains "$tracked_now" "node_modules/" "a node_modules tree is never swept"
+# Two cases, because the two patterns are separate: `*/node_modules/*` needs a
+# `/` before node_modules, so it never matches the root tree, the common layout.
+assert_eq "0" "$(printf '%s\n' "$tracked_now" | grep -c '^node_modules/')" \
+  "a node_modules tree at the checkout root is never swept"
+assert_not_contains "$tracked_now" "web/node_modules/" "a node_modules tree in a subdirectory is never swept"
 assert_not_contains "$tracked_now" "vendor/nested" "a nested clone is never swept, not even as a gitlink"
 assert_not_contains "$tracked_now" "scratch/ckpt.git" "a bare repository anywhere in the checkout is never swept"
 # The exact warning, not the bare path: the old sweep's own commit output
