@@ -1164,6 +1164,109 @@ assert_eq "$(check_config "$PAIR_HOME" 13 legacy 2>&1)" "" \
 assert_eq "$(grep -A2 '^event = "Stop"$' "$PAIR_HOME/.kimi-code/config.toml" | sed -n 2p)" 'matcher = "Bash"' \
   "the guardian command wired on another event keeps its own matcher"
 
+# A dropped copy loses only the lines Clade writes for an entry: the header,
+# its four keys and blank lines. A comment above the next table stays, and an
+# indented table header ends the copy, so the keys under it stay too, even one
+# named like a hook key. A copy holding any other line is refused whole. Each
+# case also runs with no usable python, so with no tomllib check, as on a stock
+# macOS python3: the line rewrite has to be safe on its own.
+KIMI_ENTRY='\n[[hooks]]\nevent = "%s"\nmatcher = "%s"\ncommand = "%s"\ntimeout = 5\n'
+kimi_cmd() { printf '%s' "$1/.kimi-code/hooks/decision-to-kimi.sh $1/.claude/hooks/$2"; }
+stale_neighbours() {  # home before|after
+  local guard revert
+  guard=$(kimi_cmd "$1" pre-tool-guardian.sh)
+  revert=$(kimi_cmd "$1" revert-detector.sh)
+  printf 'default_model = "kimi-code/k3"\ndefault_permission_mode = "manual"\n'
+  printf "$KIMI_ENTRY" PreToolUse '^(Bash)$' "$guard"
+  [[ "$2" == after ]] || printf "$KIMI_ENTRY" PreToolUse Bash "$guard"
+  printf '\n# my provider settings\n  [services.mine]\n  api_key = "keep-me"\ntimeout = 30\n'
+  if [[ "$2" == after ]]; then
+    printf "$KIMI_ENTRY" PostToolUse '^(Bash)$' "$revert"
+  else
+    printf "$KIMI_ENTRY" PostToolUse Bash "$revert"
+    printf "$KIMI_ENTRY" PostToolUse Bash "$revert"
+  fi
+  printf '\n# Search service: keep the fetch key below in sync with the vault\n'
+  printf '[services.moonshot_search]\nkey = "v"\n'
+}
+# The first lines of file $1, as many as text $2 has, without the root key the
+# Kimi skill view inserts (python mode only; a separate writer).
+head_like() {
+  grep -v '^extra_skill_dirs = ' "$1" | head -n "$(( $(printf '%s\n' "$2" | wc -l) ))"
+}
+install_home_with() {  # home log python|no-python
+  if [[ "$3" == no-python ]]; then
+    HOME="$1" KIMI_CODE_HOME="$1/.kimi-code" PATH="$TIMEOUT_BIN:$PATH" \
+      bash "$INSTALL_SH" </dev/null > "$2" 2>&1
+  else
+    install_home "$1" "$2"
+  fi
+}
+for py_mode in python no-python; do
+  NB_HOME="$TMP_ROOT/stale-neighbours-$py_mode-home"
+  NB_CFG="$NB_HOME/.kimi-code/config.toml"
+  mkdir -p "$NB_HOME/.kimi-code"
+  stale_neighbours "$NB_HOME" before > "$NB_CFG"
+  install_home_with "$NB_HOME" "$TMP_ROOT/stale-neighbours-$py_mode.log" "$py_mode"
+  NB_WANT=$(stale_neighbours "$NB_HOME" after)
+  assert_eq "$(head_like "$NB_CFG" "$NB_WANT")" "$NB_WANT" \
+    "$py_mode: dropping a stale copy keeps the comment, the indented table and its keys after it"
+  assert_eq "$(check_config "$NB_HOME" 12 legacy 2>&1)" "" \
+    "$py_mode: beside other tables, stale copies still collapse to one anchored entry each"
+
+  EXTRA_HOME="$TMP_ROOT/stale-extra-key-$py_mode-home"
+  EXTRA_CFG="$EXTRA_HOME/.kimi-code/config.toml"
+  EXTRA_GUARD=$(kimi_cmd "$EXTRA_HOME" pre-tool-guardian.sh)
+  mkdir -p "$EXTRA_HOME/.kimi-code"
+  {
+    printf 'default_model = "kimi-code/k3"\ndefault_permission_mode = "manual"\n'
+    printf "$KIMI_ENTRY" PreToolUse Bash "$EXTRA_GUARD"
+    printf "$KIMI_ENTRY" PreToolUse Bash "$EXTRA_GUARD"
+    printf 'note = "mine"\n'
+  } > "$EXTRA_CFG"
+  EXTRA_BEFORE=$(cat "$EXTRA_CFG")
+  install_home_with "$EXTRA_HOME" "$TMP_ROOT/stale-extra-key-$py_mode.log" "$py_mode"
+  assert_eq "$(head_like "$EXTRA_CFG" "$EXTRA_BEFORE")|$(grep -c "^command = \"$EXTRA_GUARD\"$" "$EXTRA_CFG")" "$EXTRA_BEFORE|2" \
+    "$py_mode: a copy holding a key Clade never writes is refused: both copies left as written, none appended"
+  assert_eq "$(grep -c '^  Skipped: anchoring PreToolUse/Bash (a copy to drop holds a line Clade never writes)' \
+    "$TMP_ROOT/stale-extra-key-$py_mode.log")" "1" "$py_mode: install names the anchoring it refused"
+done
+
+# What only a TOML parser sees: an original Kimi cannot parse, and Clade's
+# guardian text inside a multi-line string, which the line rewrite reads as a
+# table. Either way nothing is rewritten and no anchored copy is appended.
+if python3 -c 'import tomllib' >/dev/null 2>&1; then
+  for parse_case in invalid string; do
+    PARSE_HOME="$TMP_ROOT/anchor-parse-$parse_case-home"
+    PARSE_CFG="$PARSE_HOME/.kimi-code/config.toml"
+    PARSE_GUARD=$(kimi_cmd "$PARSE_HOME" pre-tool-guardian.sh)
+    mkdir -p "$PARSE_HOME/.kimi-code"
+    {
+      printf 'default_model = "kimi-code/k3"\ndefault_permission_mode = "manual"\n'
+      if [[ "$parse_case" == invalid ]]; then
+        printf 'default_model = "twice"\n'
+        printf "$KIMI_ENTRY" PreToolUse Bash "$PARSE_GUARD"
+      else
+        printf '\n[notes]\ntext = """'
+        printf "$KIMI_ENTRY" PreToolUse Bash "$PARSE_GUARD"
+        printf '"""\n'
+      fi
+    } > "$PARSE_CFG"
+    PARSE_BEFORE=$(cat "$PARSE_CFG")
+    install_home "$PARSE_HOME" "$TMP_ROOT/anchor-parse-$parse_case.log"
+    case "$parse_case" in
+      invalid) PARSE_WHY='original config.toml does not parse' ;;
+      string) PARSE_WHY='candidate would change more than this entry and its copies' ;;
+    esac
+    assert_eq "$(head_like "$PARSE_CFG" "$PARSE_BEFORE")|$(grep -c "^command = \"$PARSE_GUARD\"$" "$PARSE_CFG")" \
+      "$PARSE_BEFORE|1" "tomllib check ($parse_case): config.toml is not rewritten and no anchored guardian is appended"
+    assert_eq "$(grep -c "^  Skipped: anchoring PreToolUse/Bash ($PARSE_WHY" "$TMP_ROOT/anchor-parse-$parse_case.log")" "1" \
+      "tomllib check ($parse_case): install names why it refused"
+  done
+else
+  printf '  - tomllib anchoring checks (tomllib unavailable; not run)\n'
+fi
+
 EMPTY_HOME="$TMP_ROOT/no-config-home"
 mkdir -p "$EMPTY_HOME/.kimi-code"
 install_home "$EMPTY_HOME" "$TMP_ROOT/no-config-install.log"

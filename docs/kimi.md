@@ -153,15 +153,23 @@ with a once-only mode for session context. The list names each matcher's
 alternation (`Edit|Write`), and every non-empty one is written anchored
 (`^(Edit|Write)$`), because Kimi applies a matcher unanchored
 ([Protocol evidence](#protocol-evidence)). It appends an entry only when the
-exact event + anchored matcher + command tuple is absent. This has four
+exact event + anchored matcher + command tuple is absent. This has five
 important consequences:
 
 - reinstalling does not duplicate entries;
 - an entry an earlier install wrote unanchored (same event and command) is
   anchored in place, not appended beside, and a second copy of it is dropped,
   so no unanchored copy keeps firing; the rewrite keeps `config.toml`'s mode;
+- that rewrite fails closed, because `config.toml` can hold provider
+  credentials. An entry ends at the next table header, indented or not. A
+  dropped copy loses only its `[[hooks]]` line, its four keys and its blank
+  lines, so a comment or a table after it stays. A copy holding any other
+  line is refused, and so is a result that tomllib (Python 3.11+, where
+  present) does not parse to the original with only that entry changed. A
+  refusal leaves the file as it was, appends no anchored copy beside the old
+  one, and prints a `Skipped: anchoring` line;
 - an entry with any other event or command, such as a user's own hook, is
-  never rewritten or removed;
+  never rewritten or removed, and neither is anything outside a Clade entry;
 - a machine holding only the original guardian command keeps that exact
   command, now with `^(Bash)$`, and gains the other 11 entries, with no
   replacement or orphaned adapter command.
