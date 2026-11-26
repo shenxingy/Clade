@@ -5,9 +5,10 @@
   "problem_statement": "greet.hello should return 'hello, NAME!' but returns 'hi NAME'. Fix greet.hello to match the expected format.",
   "FAIL_TO_PASS": ["tests/test_greet.py::test_hello"],
   "PASS_TO_PASS": ["tests/test_greet.py::test_shout"],
-  "test_cmd": "python -m pytest -p no:cacheprovider --no-header -q",
+  "test_cmd": "{pytest} -p no:cacheprovider --no-header -q",
   "synthetic": {
     "repo_files": {
+      "pytest.ini": "[pytest]\npythonpath = .\n",
       "greet.py": "def hello(name):\n    # BUG: wrong greeting format\n    return f\"hi {name}\"\n\n\ndef shout(name):\n    return f\"{name.upper()}!\"\n",
       "tests/test_greet.py": "from greet import hello, shout\n\n\ndef test_hello():\n    assert hello(\"sam\") == \"hello, sam!\"\n\n\ndef test_shout():\n    assert shout(\"sam\") == \"SAM!\"\n"
     },

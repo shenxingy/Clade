@@ -12,7 +12,9 @@ test_evals.py for the oracle harness.
 from __future__ import annotations
 
 import importlib.util
+import os
 import pytest
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -243,3 +245,95 @@ def test_held_out_without_definitions_is_a_schema_error():
     errs = rr.validate_instance({**base, "HELD_OUT": ["t::held"]}, "x")
     assert any("held_out_files" in e for e in errs)
     assert rr.validate_instance({**base, "HELD_OUT": "not-a-list"}, "x")
+
+
+# ─── Which pytest runs the suite ─────────────────────────────────────────────
+# Bundled cases name no interpreter: ``{pytest}`` is filled in from the worker's
+# _pytest_launcher. Any other test_cmd is run as given. These read the command
+# subprocess.run actually receives, not the helper's return value.
+
+
+def _command_run_tests_spawns(monkeypatch, inst: dict, repo_dir: Path) -> str:
+    spawned: list[str] = []
+
+    def fake_run(cmd, **kwargs):
+        spawned.append(cmd)
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(rr.subprocess, "run", fake_run)
+    rr.run_tests(inst, repo_dir)
+    assert len(spawned) == 1, spawned
+    return spawned[0]
+
+
+def test_bundled_cases_name_no_interpreter():
+    """A fixture that names its own interpreter bypasses the launcher, which is
+    how three bundled cases read UNMEASURED under any HOME but the author's."""
+    instances, _ = rr.load_instances()
+    bundled = [i for i in instances if i.get("synthetic")]
+    assert len(bundled) >= 3
+    for inst in bundled:
+        assert inst["test_cmd"].startswith(rr.PYTEST_PLACEHOLDER + " "), (
+            f"{inst['instance_id']}: test_cmd {inst['test_cmd']!r} names its own "
+            "interpreter instead of the {pytest} placeholder"
+        )
+
+
+def test_a_bundled_case_runs_through_the_worker_pytest_launcher(monkeypatch, tmp_path):
+    instances, _ = rr.load_instances()
+    inst = {i["instance_id"]: i for i in instances}["synthetic-resolved"]
+    asked: list[Path] = []
+    launcher = "'/opt/some env/bin/python' -m pytest"
+    monkeypatch.setattr(rr, "_pytest_launcher", lambda d: asked.append(d) or launcher)
+
+    cmd = _command_run_tests_spawns(monkeypatch, inst, tmp_path)
+
+    assert asked == [tmp_path], "the launcher must be resolved for the materialized repo"
+    assert cmd.startswith(launcher + " -v"), cmd
+    assert rr.PYTEST_PLACEHOLDER not in cmd and "python -m" not in cmd.replace(launcher, "")
+
+
+@pytest.mark.parametrize("inst", [
+    # A real instance: `python` must mean the prepared environment's interpreter,
+    # even when this machine has none by that name.
+    {"instance_id": "user-python", "test_cmd": "python -m pytest -p no:cacheprovider -q"},
+    # The placeholder is a bundled-case template, not something to honour in a
+    # command a user wrote.
+    {"instance_id": "user-placeholder", "test_cmd": "{pytest} tests/ -q"},
+    # A synthetic case without the placeholder (eval_review can promote one) is
+    # also run as written.
+    {"instance_id": "promoted-synthetic", "test_cmd": "python3 -m pytest tests/ -q",
+     "synthetic": {"repo_files": {"a.py": ""}, "canned_patch": ""}},
+])
+def test_a_user_test_cmd_is_run_exactly_as_given(monkeypatch, tmp_path, inst):
+    """The harness promises to run what it is given. The one change any command
+    gets is the documented verbosity normalization the parser needs."""
+    monkeypatch.setattr(shutil, "which", lambda *a, **k: None)
+
+    def must_not_ask(d):
+        raise AssertionError(f"{inst['instance_id']}: asked for a launcher")
+
+    monkeypatch.setattr(rr, "_pytest_launcher", must_not_ask)
+
+    cmd = _command_run_tests_spawns(monkeypatch, inst, tmp_path)
+    assert cmd == rr.force_verbose(inst["test_cmd"])
+
+
+def test_dry_run_scores_under_a_different_home(tmp_path):
+    """The defect itself. A bare `python` found its pytest through the user site
+    directory, computed from $HOME; under another HOME every bundled case read
+    UNMEASURED and the dry run exited 1."""
+    home = tmp_path / "home"
+    home.mkdir()
+    env = {**os.environ, "HOME": str(home)}
+    probe = subprocess.run([sys.executable, "-c", "import pytest"], env=env,
+                           capture_output=True, timeout=60)
+    if probe.returncode != 0:
+        pytest.skip("this interpreter's own pytest lives in the user site; no "
+                    "launcher can reach one under another HOME")
+    proc = subprocess.run(
+        [sys.executable, str(EVALS_DIR / "run_resolve_eval.py"), "--dry-run"],
+        capture_output=True, text=True, timeout=180, env=env,
+    )
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert "UNMEASURED" not in proc.stdout, proc.stdout
