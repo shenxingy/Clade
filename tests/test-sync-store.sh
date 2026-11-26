@@ -55,7 +55,12 @@ assert_same_file() {
   fi
 }
 
-TMP_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/clade-sync-store.XXXXXX")"
+# macOS sets TMPDIR with a trailing slash. Left in, TMP_ROOT holds `T//clade-…`
+# while sync-setup names its helper by `cd … && pwd`, which drops the extra
+# slash, so the missing-helper message case failed on every Mac.
+_tmp_base="${TMPDIR:-/tmp}"
+TMP_ROOT="$(mktemp -d "${_tmp_base%/}/clade-sync-store.XXXXXX")"
+unset _tmp_base
 trap 'rm -rf "$TMP_ROOT"' EXIT
 export HOME="$TMP_ROOT/home"
 mkdir -p "$HOME"
