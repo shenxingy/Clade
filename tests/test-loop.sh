@@ -511,6 +511,128 @@ assert_not_contains "$tracked_now" "logs/loop-untracked" "loop log dir NOT commi
 still_dirty=$(git status --porcelain -- created-by-worker.txt)
 assert_eq "" "$still_dirty" "worker-created file fully committed (status clean)"
 
+# A repo on branch $1 that tracks a bare remote whose pre-receive appends one
+# line to $2 and refuses, so every push the loop attempts is counted.
+_push_rejecting_repo() {
+  local repo remote
+  repo=$(setup_test_repo)
+  remote="$TEST_DIR/remote-$$-$RANDOM.git"
+  git init -q --bare "$remote"
+  git -C "$repo" checkout -q -b "$1"
+  git -C "$repo" remote add origin "$remote"
+  git -C "$repo" push -q -u origin "HEAD:refs/heads/$1" 2>/dev/null
+  printf '#!/usr/bin/env bash\necho attempted >> "%s"\nexit 1\n' "$2" > "$remote/hooks/pre-receive"
+  chmod +x "$remote/hooks/pre-receive"
+  mkdir -p "$repo/.claude" "$repo/logs/loop"
+  printf '# Goal: converge\n\n- [x] already done\n' > "$repo/goal.md"
+  echo "$repo"
+}
+_push_attempts() { if [[ -f "$1" ]]; then wc -l < "$1" | tr -d ' '; else echo 0; fi; }
+# Runs the loop in repo $1 with the mock worker touching $2, the REAL committer
+# on PATH, and an optional directory $3 ahead of both.
+mkdir -p "$TEST_DIR/real-committer-bin"
+printf '#!/usr/bin/env bash\nexec bash "%s/committer.sh" "$@"\n' "$SCRIPTS_DIR" > "$TEST_DIR/real-committer-bin/committer"
+chmod +x "$TEST_DIR/real-committer-bin/committer"
+: > "$TEST_DIR/empty-gitconfig"
+_loop_real_committer() (
+  exec 3>&- 4>&- 5>&- 6>&- 7>&- 8>&- 9>&- 2>/dev/null
+  cd "$1" || exit 1
+  PATH="${3:+$3:}$TEST_DIR/real-committer-bin:$PATH" MOCK_CLAUDE_TOUCH="$2" \
+    GIT_CONFIG_GLOBAL="$TEST_DIR/empty-gitconfig" GIT_CONFIG_NOSYSTEM=1 \
+    timeout --kill-after=5s 90s bash "$SCRIPTS_DIR/loop-runner.sh" "goal.md" --max-iter 3 --max-workers 1 --state .claude/loop-state --log-dir logs/loop 2>&1
+)
+
+# Push regression: the sweep runs the REAL committer, outside any worker, so
+# committer pushed it — and a rejected push exits 3 AFTER the commit, which the
+# sweep read as "changes remain uncommitted" and broke the run commit_failed.
+# The loop never publishes (worker and syntax-fixer commits are never pushed
+# either), so the sweep passes --no-push.
+SWEEP_PUSHES="$TEST_DIR/sweep-push-attempts-$$"
+SWEEP_REPO=$(_push_rejecting_repo feat/sweep "$SWEEP_PUSHES")
+sweep_status=0
+output=$(_loop_real_committer "$SWEEP_REPO" "$SWEEP_REPO/README.md") || sweep_status=$?
+assert_contains "$(git -C "$SWEEP_REPO" log -1 --format=%s)" "chore: commit loop iteration" \
+  "real committer: the leftover sweep committed locally"
+assert_eq "0" "$(_push_attempts "$SWEEP_PUSHES")" "leftover sweep never pushes (committer --no-push)"
+assert_not_contains "$output" "committer failed" "a committed sweep is never reported as uncommitted"
+assert_file_contains "$SWEEP_REPO/logs/loop/last-progress" "Exit: converged" \
+  "a remote that rejects pushes does not end the run commit_failed"
+assert_eq "0" "$sweep_status" "loop with a push-rejecting remote exits 0"
+
+# Syntax-fixer push regression: node_fix_syntax starts `claude -p` straight
+# from the loop, and its prompt says to commit with committer. Outside a worker
+# that committer pushed HEAD — every worker commit of the run — on any
+# iteration that hit a syntax failure. The stand-in fixer does what the prompt
+# says: it repairs bad.sh and runs the prompt's committer line verbatim.
+FIX_PUSHES="$TEST_DIR/fixer-push-attempts-$$"
+FIX_REPO=$(_push_rejecting_repo feat/fixer "$FIX_PUSHES")
+printf 'if true; then\n' > "$FIX_REPO/bad.sh"
+git -C "$FIX_REPO" add bad.sh && git -C "$FIX_REPO" commit -q -m "test: a broken script"
+mkdir -p "$TEST_DIR/fixer-bin"
+cat > "$TEST_DIR/fixer-bin/claude" <<EOF
+#!/usr/bin/env bash
+case "\$*" in
+  *"Fix syntax errors in these files"*)
+    printf '#!/usr/bin/env bash\ntrue\n' > bad.sh
+    line=\$(printf '%s\n' "\$*" | sed -n 's/^4\. Commit fixes with: //p')
+    printf '%s\n' "\$line" >> "$TEST_DIR/fixer-ran"
+    eval "\$line" ;;
+  *) exec "$MOCK_BIN/claude" "\$@" ;;
+esac
+EOF
+chmod +x "$TEST_DIR/fixer-bin/claude"
+output=$(_loop_real_committer "$FIX_REPO" "$FIX_REPO/bad.sh" "$TEST_DIR/fixer-bin") || true
+assert_file_contains "$TEST_DIR/fixer-ran" 'committer "fix: syntax errors" bad.sh' \
+  "the loop ran the syntax fixer, which ran its prompt's committer line"
+assert_contains "$(git -C "$FIX_REPO" log --format=%s)" "fix: syntax errors" \
+  "the syntax fixer's commit landed locally"
+assert_eq "0" "$(_push_attempts "$FIX_PUSHES")" "the syntax fixer's commit is never pushed"
+assert_contains "$(git -C "$FIX_REPO" log --grep='^fix: syntax errors' --format=%B)" \
+  "X-Clade-Task: loop-iter1-fix" "the syntax fixer commits as a loop worker (X-Clade-Task trailer)"
+
+# A non-zero committer exit does not always mean nothing was committed:
+# committer exits 1 on its FATAL attribution check AFTER `git commit`. The
+# sweep still stops the run commit_failed, but must not claim the changes are
+# uncommitted when HEAD moved; a refusal before the commit still says so. The
+# early stand-in exits 128, as committer does when its `git add` fails under
+# set -e, so the warning's exit code is read from the pipeline, not assumed.
+_late_or_early_fail_committer() {  # $1 = dir for the stand-in, $2 = late|early
+  mkdir -p "$1"
+  cat > "$1/committer" <<EOF
+#!/usr/bin/env bash
+msg="\$1"; shift
+args=(); for a in "\$@"; do [[ "\$a" == "--no-push" ]] || args+=("\$a"); done
+if [[ "$2" == late ]]; then
+  git add -- "\${args[@]}" && git commit -q -m "\$msg"
+  echo "FATAL: commit was created with unexpected attribution; stop delivery and inspect HEAD." >&2
+  exit 1
+fi
+exit 128
+EOF
+  chmod +x "$1/committer"
+}
+for when in late:1 early:128; do
+  fail_rc="${when#*:}"; when="${when%%:*}"
+  _late_or_early_fail_committer "$TEST_DIR/committer-$when-bin" "$when"
+  FAIL_REPO=$(setup_test_repo)
+  mkdir -p "$FAIL_REPO/.claude" "$FAIL_REPO/logs/loop"
+  printf '# Goal: converge\n\n- [x] already done\n' > "$FAIL_REPO/goal.md"
+  fail_status=0
+  output=$(_loop_real_committer "$FAIL_REPO" "$FAIL_REPO/README.md" "$TEST_DIR/committer-$when-bin") || fail_status=$?
+  assert_eq "1" "$fail_status" "committer failing $when: the loop exits 1"
+  assert_file_contains "$FAIL_REPO/logs/loop/last-progress" "Exit: commit_failed" \
+    "committer failing $when: the run ends commit_failed"
+  assert_contains "$output" "committer failed (exit $fail_rc)" "committer failing $when: the warning names its exit code ($fail_rc)"
+  if [[ "$when" == late ]]; then
+    assert_not_contains "$output" "changes remain uncommitted" \
+      "committer failing after its commit: not reported as uncommitted"
+    assert_contains "$output" "after committing" "committer failing after its commit: the warning says HEAD moved"
+  else
+    assert_contains "$output" "changes remain uncommitted" \
+      "committer refusing before its commit: reported as uncommitted"
+  fi
+done
+
 # Max-iter bypass regression: empty-task iterations used to `continue` past
 # _check_convergence, so an all-empty loop ran until the consecutive-empty
 # breaker (3) regardless of --max-iter — max_iter+1 iterations or more.
