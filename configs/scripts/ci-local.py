@@ -33,10 +33,16 @@ Usage
     ci-local.py --repo PATH     another repository
     ci-local.py --strict        exit 2 when the run is not green (see below)
     ci-local.py --no-rerun      a failed step is a failure at once, never rerun
+    ci-local.py --allow-host-mutation   on a throwaway VM: run skipped-unsafe steps
 
 A skipped job is reported, never silently dropped: "nothing ran" and
 "everything passed" must not look the same, which is the failure mode two
 instruments in this repository have already shipped.
+
+A step that changes the host the way only a throwaway runner may — sudo,
+docker image/system prune, rm -rf of a path outside the checkout, apt-get
+remove — is not run: it is skipped-unsafe (ci_local_runner.host_mutation). A
+pure setup or cleanup step leaves the result intact; a gate step is unproven.
 
 Skips come in two kinds, and only one of them leaves the result intact:
 
@@ -81,7 +87,8 @@ It also gets an empty npm global prefix of its own (NPM_CONFIG_PREFIX, its
 bins first on PATH), so a step's `npm install -g` lands there, not in this
 host's global packages, and two gates at once do not race there; npm's cache
 stays shared. Four things still change this host's npm state: a prefix the
-workflow names itself, `sudo npm install -g` (sudo resets the environment),
+workflow names itself, `sudo npm install -g` (sudo resets the environment;
+such a step runs only under --allow-host-mutation),
 `npm config set prefix` (it writes ~/.npmrc), and a step that uses nvm, which
 refuses the variable. Such a step runs without it: from the start when its
 text shows nvm, and once more when its output shows nvm's refusal of the job's
@@ -714,6 +721,12 @@ class StepPlan:
     run: bool                # executes on the success path
     reason: str = ""         # why not, or what it runs without
     unproven: bool = False   # the hosted run's lane is not proven by this one
+    unsafe: bool = False     # not run: it changes the host (skipped-unsafe)
+
+
+# --allow-host-mutation: this machine is a throwaway VM, so a step that
+# changes the host runs as it would on a hosted runner.
+_ALLOW_HOST_MUTATION = False
 
 
 # Actions that prepare the runner or move files, and test nothing: skipping
@@ -756,6 +769,11 @@ def plan_step(step: Step) -> StepPlan:
         if not verdict:
             # GitHub skips it on a passing run too: nothing is left unproven.
             return StepPlan(False, f"if: {cond} is false on the success path")
+    # Written for a VM deleted after the job (sudo, docker image prune -a): on
+    # this host it deleted 316 GB of images. Setup-only skips prove nothing less.
+    mutation = None if _ALLOW_HOST_MUTATION else runner.host_mutation(step.run)
+    if mutation:
+        return StepPlan(False, mutation.reason, unproven=not mutation.setup_only, unsafe=True)
     in_run = _expression_kind(step.run)
     # A secret the step declares, inherits from job or workflow env, or uses in
     # run: keeps it from running at all. Run with the variable unset — what
@@ -909,6 +927,7 @@ class StepResult:
     command: str = ""
     output_tail: str = ""
     unproven: bool = False
+    unsafe: bool = False
     # Set only when the step was rerun: the exit code and output of the FIRST
     # attempt. On a flaky step that output is the only evidence of the flake.
     first_exit: int | None = None
@@ -940,36 +959,6 @@ class JobResult:
         return [s for s in self.steps if s.status == "flaky"]
 
 
-# A fixed per-step timeout reads a loaded host as a hang. On a 32-core box at
-# load ~80, this repository's pytest step took 1,914 s against 528 s on a quiet
-# one, so the 900 s that suits a quiet machine killed a step that was only
-# waiting for CPU, and a timed-out step is never rerun. The default therefore
-# scales with how oversubscribed the host is when the run starts: 900 s at or
-# below one runnable task per CPU, up to 4x (3,600 s) so a real hang still ends.
-# Sampled once, at the start; --timeout sets it outright.
-STEP_TIMEOUT_BASE = 900
-STEP_TIMEOUT_MAX_FACTOR = 4.0
-
-
-def default_step_timeout(load1: float | None, cpus: int | None) -> tuple[int, str]:
-    """(seconds, why) for the default step timeout, from the 1-minute load
-    average and the CPU count. Either unknown (no os.getloadavg on Windows)
-    falls back to the base."""
-    if not load1 or not cpus or cpus < 1:
-        return STEP_TIMEOUT_BASE, f"{STEP_TIMEOUT_BASE} s, load unknown"
-    factor = min(max(load1 / cpus, 1.0), STEP_TIMEOUT_MAX_FACTOR)
-    return (int(STEP_TIMEOUT_BASE * factor),
-            f"{STEP_TIMEOUT_BASE} s x {factor:.1f}, load {load1:.0f} on {cpus} CPUs")
-
-
-def _host_load() -> tuple[float | None, int | None]:
-    try:
-        load1 = os.getloadavg()[0]
-    except (AttributeError, OSError):
-        load1 = None
-    return load1, os.cpu_count()
-
-
 def run_job(job: Job, repo: Path, tail_lines: int, echo: bool, timeout: int,
             rerun: bool = True) -> JobResult:
     result = JobResult(job=job, status="pass")
@@ -991,7 +980,7 @@ def run_job(job: Job, repo: Path, tail_lines: int, echo: bool, timeout: int,
                 # The job goes on: a skipped step is not a failed one. Whether
                 # the skip leaves the lane unproven is recorded, not decided here.
                 result.steps.append(StepResult(step.display, "skip", reason=plan.reason,
-                                               unproven=plan.unproven))
+                                               unproven=plan.unproven, unsafe=plan.unsafe))
             continue
         assert step.run is not None
 
@@ -1039,24 +1028,9 @@ def run_job(job: Job, repo: Path, tail_lines: int, echo: bool, timeout: int,
 
         if echo:
             print(f"    · {step.display} … ", end="", flush=True)
-        rc, elapsed, out, timed_out = runner.attempt(step.run, cwd, {**env, **files.begin_step()},
-                                                     timeout)
-        # nvm, loaded where the step's text does not show it (a script, an
-        # eval), refused the job's prefix and deactivated itself: the attempt
-        # failed, or passed on another node. Its result is discarded and the
-        # step runs once more without the prefix, on fresh runner files, so
-        # the discarded attempt's $GITHUB_ENV and $GITHUB_PATH writes are
-        # dropped; nothing else it did is undone. Not after a timeout, like
-        # the rerun below, and not a rerun: --no-rerun leaves it alone.
-        if not timed_out and runner.nvm_refused(out, files.npm_prefix):
-            env.pop("NPM_CONFIG_PREFIX", None)
-            why = runner.NVM_REFUSED.format(rc)
-            if echo:
-                print(f"nvm refused the job's npm prefix (exit {rc}), running it again "
-                      "without it … ", end="", flush=True)
-            rc, redo, out, timed_out = runner.attempt(step.run, cwd, {**env, **files.begin_step()},
-                                                      timeout)
-            elapsed += redo
+        rc, elapsed, out, timed_out, refused = runner.attempt_in_prefix(
+            step.run, cwd, env, files, timeout, echo)
+        why = refused or why
         note = f'ci-local: step "{step.display}" {why}' if why else ""
         tail = runner.step_tail(note, out, tail_lines)
         first_exit: int | None = None
@@ -1185,6 +1159,8 @@ def print_plan(repo: Path, plan: list[tuple[Job, Skip | None]]) -> None:
             if p.unproven:
                 print(f"         ↳ UNPROVEN step {step.display}: {p.reason}")
                 lanes.append(f"{job.display} › {step.display}")
+            elif p.unsafe:
+                print(f"         ↳ step {step.display}: {p.reason}")
     if lanes:
         print(f"\n  {len(lanes)} lane(s) would be UNPROVEN — a run here cannot speak for: "
               + ", ".join(lanes))
@@ -1245,12 +1221,18 @@ def main() -> int:
                          "non-zero runs once more with the same command, env and "
                          "directory; a pass then is reported FLAKY, never green. A step "
                          "that hit --timeout is never rerun.")
+    ap.add_argument("--allow-host-mutation", action="store_true",
+                    help="Run the steps that change this host (sudo, docker prune, rm -rf "
+                         "outside the checkout, apt-get remove), skipped-unsafe by "
+                         "default. Only on a throwaway VM.")
     ap.add_argument("--tail", type=int, default=40, help="Failure output lines (default 40).")
     ap.add_argument("--timeout", type=int, default=None,
                     help="Per-step timeout in seconds. Default: 900, scaled by the "
                          "host's load per CPU at start (up to 3600), and printed. A "
                          "hung step is a failure, and is not rerun.")
     args = ap.parse_args()
+    global _ALLOW_HOST_MUTATION
+    _ALLOW_HOST_MUTATION = args.allow_host_mutation   # before any step is planned
 
     repo = args.repo.resolve()
     if not (repo / ".github" / "workflows").is_dir():
@@ -1311,7 +1293,7 @@ def main() -> int:
     if args.timeout is not None:
         step_timeout, timeout_why = args.timeout, "--timeout"
     else:
-        step_timeout, timeout_why = default_step_timeout(*_host_load())
+        step_timeout, timeout_why = runner.default_step_timeout(*runner.host_load())
     if not args.json:
         print(f"step timeout {step_timeout} s ({timeout_why}; --timeout N sets it)")
 
@@ -1383,6 +1365,11 @@ def main() -> int:
                 ],
                 "skipped": [{"job": r.job.display, "reason": r.reason, "unproven": r.unproven}
                             for r in skipped],
+                # Steps not run because they change the host; a gate among them
+                # is in `unproven` too. --allow-host-mutation runs them.
+                "skipped_unsafe": [{"job": r.job.display, "workflow": r.job.workflow,
+                                    "step": s.name, "reason": s.reason, "unproven": s.unproven}
+                                   for r in ran for s in r.steps if s.unsafe],
                 # Its job still counts as passed above, and the run is not
                 # green. The first attempt's output is the flake's evidence.
                 "flaky": [
@@ -1462,6 +1449,8 @@ def main() -> int:
                                       for r, s in flaky))
     for ln in lanes:
         print(f"  unproven {ln.label}: {ln.reason}")
+    for job_r, s in ((r, s) for r in ran for s in r.steps if s.unsafe and not s.unproven):
+        print(f"  {job_r.job.display} › {s.name}: {s.reason}")
     for r in skipped:
         if not r.unproven:
             print(f"  skipped {r.job.display}: {r.reason}")

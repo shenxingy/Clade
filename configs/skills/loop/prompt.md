@@ -93,7 +93,7 @@ The loop runs as a deterministic + LLM hybrid state machine:
 [DET] Holdout (--holdout)   — scenarios outside the repo; names never reach a prompt or the checkout
 [DET] Goal reconciliation  — coordinator marks exact task-bound goal items
 [DET] Attempt ledger        — records per task whether it landed and why not
-[DET] Commit changes        — sweeps leftovers and counts all worker commits
+[DET] Commit changes        — sweeps leftovers and counts all worker commits (never pushed)
 [DET] Convergence check     — CONVERGED? max_iter? 3 consecutive empty iters?
 → Repeat until converged, max_iter reached, or stuck
 ```
@@ -247,7 +247,7 @@ Check progress:
   /loop --status          — check anytime
   tail -f logs/loop/      — follow raw output
 
-Workers commit directly. No server restart needed.
+Workers commit directly; the loop never pushes. No server restart needed.
 Goal achieved → supervisor outputs STATUS: CONVERGED → loop exits.
 ```
 

@@ -78,7 +78,7 @@
         "hooks": [
           {
             "id": "session-end-cleanup",
-            "description": "Delete this session's correction-pairing shadow (<runtime>/claude-edit-shadows/session-<session_id>.jsonl). No matcher on purpose: every end reason (clear, logout, prompt_input_exit, other) retires that session_id, and the next session gets a new one. Attribution-scoped \u2014 it unlinks only the file keyed by the ending session_id, so a parallel live session's shadow is never touched.",
+            "description": "Delete this session's correction-pairing shadow (<runtime>/claude-edit-shadows/session-<session_id>.jsonl). No matcher on purpose: every end reason (clear, logout, prompt_input_exit, other) retires that session_id, and the next session gets a new one. Attribution-scoped \u2014 it removes only what is keyed by the ending session_id: its shadow file and, under Kimi, its empty --once-per-session sentinel dirs (<runtime>/kimi-session-context/<session_id>.<hook>.once, matched on the raw id, never the sanitized key), so a parallel live session's shadow and sentinels are never touched.",
             "type": "command",
             "command": "~/.claude/hooks/session-end-cleanup.sh",
             "timeout": 5

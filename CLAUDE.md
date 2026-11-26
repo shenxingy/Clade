@@ -315,7 +315,10 @@ said so, which is how the next defect went unseen for months.
 
 Fixed by `.gitattributes merge=union` on the append-only files (verified to keep
 both sides where `-X ours` dropped one), plus a guard that refuses to commit any
-file carrying conflict markers. Both pinned by `tests/test-hooks.sh`.
+file carrying conflict markers. Both pinned by `tests/test-hooks.sh`. A merge
+`-X ours` cannot settle (a modify/delete) is aborted before the run records
+`unresolved-conflict`, so the next run is not refused on unmerged paths; an abort
+that itself fails records `merge-abort-failed` (`tests/test-memory-sync-breaker.sh`).
 
 **A per-host circuit breaker stops a wedged store from spawning endless pushes.**
 `sync-push.sh` records conflict, staging, commit and push failures as one
@@ -457,8 +460,11 @@ upstream). A branch tracking another name — `git worktree add -b X <path>
 origin/main` makes origin/main the upstream — is committed and not pushed, exit 0;
 a detached HEAD likewise. An autonomous worker (`CLADE_WORKER_TASK_ID` set) never
 pushes: its runner owns delivery — `run-tasks-parallel.sh` merges each
-`batch/task-*` branch locally, and `worker.py` gates its own `auto_push` — so the
-`-u` path would otherwise publish every unreviewed task branch. `--no-push` skips
+`batch/task-*` branch locally, `run-tasks.sh` leaves its commits on the current
+branch for the caller to push, and `worker.py` gates its own `auto_push` — so the
+`-u` path would otherwise publish every unreviewed task branch. Both runners give
+each task its own id (`batch-<ts>-<n>`) unless the caller passed one
+(`loop-runner.sh`: `loop-iter<N>`). `--no-push` skips
 the push; a push git rejects exits 3, never forced. `tests/test-checks.sh` pins
 each case against a bare remote.
 

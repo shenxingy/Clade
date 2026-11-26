@@ -215,8 +215,19 @@ if [[ "$SYNC_BACKEND" == "github" ]] || [[ "$HAS_REMOTE" -gt 0 ]]; then
     REMOTE_BRANCH=$(git rev-parse --abbrev-ref --symbolic-full-name @{u} 2>/dev/null || echo "origin/master")
     _conflicted=$(git diff --name-only "$REMOTE_BRANCH"...HEAD 2>/dev/null | tr '\n' ' ')
     git merge --no-edit -X ours "$REMOTE_BRANCH" 2>/dev/null || {
+      # `-X ours` settles conflicting hunks only; a modify/delete stops the merge
+      # with MERGE_HEAD and a conflicted index. Left in progress, every later run
+      # refused on unmerged paths until someone aborted it by hand. Abort it, and
+      # record an abort that fails under its own reason: the store stays wedged.
+      _merge_reason=unresolved-conflict
+      if git rev-parse -q --verify MERGE_HEAD >/dev/null 2>&1; then
+        git merge --abort 2>/dev/null || {
+          echo "sync-push: could not abort the failed merge; run git merge --abort in $SYNC_DIR." >&2
+          _merge_reason=merge-abort-failed
+        }
+      fi
       echo "sync-push: unresolved conflict after pull; resolve it by hand." >&2
-      sync_push_record_failure unresolved-conflict
+      sync_push_record_failure "$_merge_reason"
       exit 1
     }
     echo "[$(date)] sync conflict on $(hostname) — merged -X ours; their side dropped for:$_conflicted" \

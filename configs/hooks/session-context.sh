@@ -186,14 +186,81 @@ PYEOF
   [[ -n "$LOOP_LINE" ]] && CONTEXT="${CONTEXT}${LOOP_LINE}\n"
 fi
 
-# Next TODO item: priority tiers first, then file order; owner sections and
-# inline owner-only phrasings in this TODO.md are skipped case-insensitively:
-# "needs the owner", "owner decision", and "Owner:".
-# Move marked bold titles past the opening "**" so the shared trim keeps the
-# title and drops the body. Trim with sed, not bare xargs — xargs errors on
-# unmatched quotes in TODO text.
-NEXT_TODO=$(awk '
+# Next TODO item: priority tiers first, then file order. Skipped: items under a
+# ##/### heading that names the owner (until the next heading of that level or
+# higher), and items whose text matches TODO_OWNER_PHRASES case-insensitively.
+# An item is its top-level `- [ ]` line plus the indented and blank lines after
+# it, up to where it ends (below), so a phrase wrapped onto line two counts,
+# and so does one inside an inline code span: pairing backticks as CommonMark
+# does takes more than a regex, and a wrong pair would print an owner item.
+# Fenced blocks (``` or ~~~, closed by a run of the same character at least as
+# long) are code: a `#` or `- [ ]` inside one is neither a heading nor an item.
+# A list item starts at a marker (-, *, +, 1. or 1)) at column 0, or 1-3 columns
+# in unless that is at or past the open item's content column, which nests it in
+# that item. It ends at the next column-0 line, or at a fence line indented less
+# than its content column (its indent, the marker and the whitespace after it, a
+# tab reaching the next multiple of 4), as in CommonMark.
+# A fence opened inside the item ends with it, so an unclosed sample in one item
+# cannot hide the items after it, and that line is then read as usual: a fence
+# run there opens a top-level fence. A top-level fence (in no list item) runs to
+# its closer or EOF, and there a run indented four columns or more opens or
+# closes nothing.
+# Each list is written once; the tiers and the title trim both read the markers.
+TODO_PRIORITY_MARKERS='🔴 🟠 🟡 🔵'   # highest first, space-separated
+TODO_OWNER_PHRASES='needs the owner|owner decision|owner:'   # lowercase ERE
+# One awk pass, no sed or xargs after it: it also moves a marked bold title past
+# its "**" and trims, which is quote-safe (xargs errors on an unmatched quote).
+NEXT_TODO=$(awk -v markers="$TODO_PRIORITY_MARKERS" -v owner_re="$TODO_OWNER_PHRASES" '
+  function flush(   text, t) {
+    if (!pending) return
+    pending = 0
+    text = tolower(item)
+    gsub(/[[:space:]]+/, " ", text)
+    if (text ~ owner_re) return
+    if (!fallback) fallback = first
+    for (t = 1; t <= ntiers; t++) if (index(first, marker[t])) break
+    if (t <= ntiers && !(t in selected)) selected[t] = first
+  }
+  function width(s,   i, n) {   # columns s spans from column 0; a tab moves to the next multiple of 4
+    for (i = 1; i <= length(s); i++) n = (substr(s, i, 1) == "\t") ? n + 4 - n % 4 : n + 1
+    return n + 0
+  }
+  BEGIN { ntiers = split(markers, marker, " ") }
   {
+    run = rest = ""   # run: the fence run of a line that can open or close a fence; ind: its indent
+    if ($0 ~ /^[[:space:]]*(```|~~~)/) {   # one test per line; the rest only on fence lines
+      match($0, /^[[:space:]]*/)
+      ind = width(substr($0, 1, RLENGTH))
+      rest = substr($0, RLENGTH + 1)
+      match(rest, /^(`+|~+)/)
+      run = substr(rest, 1, RLENGTH)
+      rest = substr(rest, RLENGTH + 1)
+      # ```json``` at a line start is inline code: a backtick fence has none after its run.
+      if (run ~ /^`/ && index(rest, "`")) run = ""
+    }
+    # The open list item ends here: a column-0 line, or a fence line left of its content.
+    ends = ($0 ~ /^[^[:space:]]/) || (in_list && run != "" && ind < offset)
+    if ((ends || !in_list) && ind >= 4) run = ""   # 4+ columns in no list item: indented code
+    if (fence != "") {
+      if (!(ends && in_list)) {
+        if (substr(run, 1, 1) == substr(fence, 1, 1) && length(run) >= length(fence) &&
+            rest !~ /[^[:space:]]/) fence = ""
+        next
+      }
+      fence = ""   # this line ends the list item, so the fence inside it ends too
+    }
+    if (ends) {   # a list item starts on this line, or none is open
+      in_list = match($0, /^([-*+]|[0-9]+[.)])[[:space:]]+/)
+      if (in_list) offset = width(substr($0, 1, RLENGTH))   # the column its text starts at
+    } else if (match($0, /^ ( |  )?([-*+]|[0-9]+[.)])[[:space:]]+/)) {   # a marker 1-3 columns in
+      col = width(substr($0, 1, RLENGTH)); match($0, /[^ ]/)
+      if (!in_list || RSTART - 1 < offset) { in_list = 1; offset = col }   # else nested in the open item
+    }
+    if (pending) {
+      if (ends) flush()
+      else { if (run != "") fence = run; else item = item " " $0; next }
+    }
+    if (run != "") { fence = run; next }
     if ($0 ~ /^#+[[:space:]]/) {
       heading = $0
       sub(/[[:space:]].*$/, "", heading)
@@ -201,28 +268,23 @@ NEXT_TODO=$(awk '
       if (owner_level && level <= owner_level) owner_level = 0
       if ((level == 2 || level == 3) && tolower($0) ~ /owner/) owner_level = level
     }
-    if ($0 !~ /^- \[ \]/ || owner_level) next
-    item = tolower($0)
-    if (item ~ /needs the owner/ || item ~ /owner decision/ || item ~ /owner:/) next
-    if (!fallback) fallback = $0
-    if ($0 ~ /🔴/) tier = 1
-    else if ($0 ~ /🟠/) tier = 2
-    else if ($0 ~ /🟡/) tier = 3
-    else if ($0 ~ /🔵/) tier = 4
-    else next
-    if (!seen[tier]) {
-      selected[tier] = $0
-      seen[tier] = 1
-    }
+    if ($0 ~ /^- \[ \]/ && !owner_level) { pending = 1; first = item = $0 }
   }
   END {
-    if (seen[1]) print selected[1]
-    else if (seen[2]) print selected[2]
-    else if (seen[3]) print selected[3]
-    else if (seen[4]) print selected[4]
-    else if (fallback) print fallback
+    flush()
+    out = fallback
+    for (t = 1; t <= ntiers; t++) if (t in selected) { out = selected[t]; break }
+    for (t = 1; t <= ntiers; t++) {
+      head = "- [ ] " marker[t] " **"
+      if (index(out, head) == 1) { out = marker[t] " " substr(out, length(head) + 1); break }
+    }
+    if ((p = index(out, "- [ ] **"))) out = substr(out, 1, p - 1) substr(out, p + 8)
+    if ((p = index(out, "**"))) out = substr(out, 1, p - 1)
+    sub(/^[[:space:]]+/, "", out)
+    sub(/[[:space:]]+$/, "", out)
+    if (out != "") print out
   }
-' TODO.md 2>/dev/null | sed 's/^- \[ \] 🔴 \*\*/🔴 /;s/^- \[ \] 🟠 \*\*/🟠 /;s/^- \[ \] 🟡 \*\*/🟡 /;s/^- \[ \] 🔵 \*\*/🔵 /;s/- \[ \] \*\*//' | sed 's/\*\*.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+' TODO.md 2>/dev/null)
 if [[ -n "$NEXT_TODO" ]]; then
   CONTEXT="${CONTEXT}\nNext TODO: ${NEXT_TODO}\n"
 fi

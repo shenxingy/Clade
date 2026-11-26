@@ -174,8 +174,8 @@ sys.modules[spec.name] = mod  # dataclasses resolve their module through sys.mod
 spec.loader.exec_module(mod)
 cases = [((8, 32), 900), ((32, 32), 900), ((96, 32), 2700), ((400, 32), 3600),
          ((None, 32), 900), ((5.0, None), 900), ((0.0, 4), 900)]
-bad = [(args, mod.default_step_timeout(*args)[0], want) for args, want in cases
-       if mod.default_step_timeout(*args)[0] != want]
+bad = [(args, mod.runner.default_step_timeout(*args)[0], want) for args, want in cases
+       if mod.runner.default_step_timeout(*args)[0] != want]
 print("ok" if not bad else bad)
 PY
 )

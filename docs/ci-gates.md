@@ -8,7 +8,8 @@ What each CI workflow runs, why each gate exists and what it caught, and how to
 run one gate by hand. Moved verbatim from `CLAUDE.md` on 2026-11-16, so that
 every Clade session no longer loads it. `check-ci-checklist.py` reads the
 section below. It fails when CI runs a gate this file does not name, when a
-command documented here cannot run, or when a job count stated here is wrong.
+command documented here cannot run, when a script, suite or eval that CI or
+this file names is not in the tree, or when a job count stated here is wrong.
 
 ## Table of Contents
 
@@ -43,7 +44,8 @@ caller's in any spelling, with its bins first on `PATH`), so
 2026-11-17); npm's cache stays shared, since cacache is built for concurrent
 writers. Four things still change this machine's npm state: a prefix the
 workflow names itself, which wins as on a runner; `sudo npm install -g`, since
-sudo resets the environment; `npm config set prefix`, which writes
+sudo resets the environment (a `sudo` step runs only under
+`--allow-host-mutation`); `npm config set prefix`, which writes
 `~/.npmrc` (the job's prefix still outranks it); and a step that uses nvm.
 nvm refuses `NPM_CONFIG_PREFIX` and deactivates itself, so the step would exit
 11, or, in a script without `-e`, pass on another node. A step whose text shows
@@ -73,7 +75,15 @@ without it falls back to this machine's own credentials), an action step other
 than checkout, cache, artifacts or `setup-*` (a lint action, a local
 composite), or a step run without a non-secret `${{ }}` env value it inherits —
 is reported **unproven** and the summary reads `PARTIAL`; a run where no job ran
-reads `NOTHING RAN`. A step that exits non-zero is rerun once with the same
+reads `NOTHING RAN`. A step written for a throwaway runner that would change the
+host — `sudo`, `docker image/system/builder/volume prune`, a `docker rmi` of
+every image, `rm` outside the checkout and `$RUNNER_TEMP`, `apt-get
+remove/purge/autoremove` — is **skipped-unsafe** and never run (on 2026-11-25 a
+"Free up disk space" step's prune deleted 316 GB of a host's Docker images): a
+setup or cleanup step leaves the result intact, a gate step holding one is
+unproven, the JSON lists both under `skipped_unsafe`, and `--allow-host-mutation`
+runs them on a throwaway VM. This repository's own `Install shellcheck` step is
+one; the gate after it fails, not skips, where shellcheck is missing. A step that exits non-zero is rerun once with the same
 command, env and directory; green the second time it is **FLAKY** — its job is
 not failed, the summary reads `FLAKY` (or `PARTIAL`, which outranks it) and
 names each one as `Job › Step (first exit N)`, and the JSON lists it under
@@ -90,7 +100,8 @@ skipped as GitHub-side, and the four key-gated tiers, the only steps here that
 use a secret, gate on `schedule`/`workflow_dispatch`, which is harmless.
 `tests/test-ci-local.sh` pins the classes (the rerun and FLAKY cases in
 `tests/lib/ci-local-flaky.sh`, the labels, tag tiers and runner files in
-`tests/lib/ci-local-runner.sh`, both of which it sources) and removes each
+`tests/lib/ci-local-runner.sh`, the skipped-unsafe steps in
+`tests/lib/ci-local-host-mutation.sh`, all of which it sources) and removes each
 guard from a copy of the runner to show the suite notices.
 
 The list below is the EXPLANATION — why each gate exists and what it caught.
@@ -401,9 +412,10 @@ bash tests/test-context-policy-install.sh
 #      throwaway $HOME and synthetic transcripts — install.sh adds
 #      statusLine.refreshInterval or keeps the user's, the segment reads
 #      "20m workflow", the whole line fits COLUMNS (the pane's width) with
-#      the task time last to go, a missing model prints elapsed time and
-#      starts one detached refit behind a lock, every fail-soft case exits 0
-#      with the other segments. Its last suite removes each guard from a copy
+#      the task time last to go, the line never reads the model (no refit,
+#      the same line with it missing or corrupt) while --json on a missing
+#      model starts one detached refit behind a lock, every fail-soft case
+#      exits 0 with the other segments. Its last suite removes each guard from a copy
 #      of statusline-command.sh, install.sh or task-eta.py and requires red.
 bash tests/test-statusline-eta.sh
 
@@ -447,7 +459,7 @@ added to that script in the same commit too.**
 
 On push/PR to `main`, four workflow files fire:
 
-- `ci.yml` — `syntax-check` (28 gates), `pytest` (suite + 2 offline evals),
+- `ci.yml` — `syntax-check` (29 gates), `pytest` (suite + 2 offline evals),
   `shell-tests` (37 suites), `install-test`. `run_hack_eval.py` scores
   `judge_diversity.test_integrity` against the labelled reward-hack corpus in
   `evals/hack_cases/` — read its README before changing either, because that

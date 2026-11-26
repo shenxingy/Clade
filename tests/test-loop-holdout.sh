@@ -164,6 +164,8 @@ cat > "$TEST_ROOT/bin/committer" <<'EOF'
 #!/usr/bin/env bash
 msg="$1"
 shift
+# Like the real committer: --no-push may sit anywhere after the message.
+args=(); for a in "$@"; do [[ "$a" == "--no-push" ]] || args+=("$a"); done; set -- "${args[@]}"
 git restore --staged :/ 2>/dev/null || true
 git add -- "$@" && git commit -q -m "$msg"
 EOF

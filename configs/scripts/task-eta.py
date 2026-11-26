@@ -33,11 +33,11 @@ What the range is, and why the line never prints it
 ---------------------------------------------------
 A survival lookup on elapsed time, fitted from the last 30 days of this
 machine's own main-thread transcripts: at elapsed t, the p25-p75 of the time
-that was left for past tasks that ran at least t. Only ``--json`` carries it
-(the status line still loads the model; deleting it is in TODO.md). The line printed it from 2026-11-20 only when
-p75 was at most 4 times p25, and dropped it on 2026-11-23: the owner settled on
-not chasing time remaining, and a band too wide to act on tells nobody whether
-to wait. On the author's
+that was left for past tasks that ran at least t. Only ``--json`` carries it,
+and only ``--json`` reads the model: a status-line call never opens it. The
+line printed it from 2026-11-20 only when p75 was at most 4 times p25, and
+dropped it on 2026-11-23: the owner settled on not chasing time remaining, and
+a band too wide to act on tells nobody whether to wait. On the author's
 history it almost never was narrow: tasks were 28x wide at 1 min and 8x at 15 min, and
 single background jobs 5-9x, on a held-out week (2026-11-12..20, 221 tasks and
 1,106 jobs; docs/research/2026-11-19-cc-eta-and-bottlenecks.md). Neither the
@@ -57,23 +57,25 @@ The model and its refit
 names (``~/.claude/projects``, each ``~/.claude-profiles/*/projects``, and the
 config dir's own), main-thread transcripts modified in the last 30 days, and
 writes the survival grid atomically. When the model is missing or older than a
-day, a status-line call starts ONE detached low-priority refit behind an
+day, a ``--json`` call starts ONE detached low-priority refit behind an
 ``O_EXCL`` lock file (``task-eta-model.lock``; a lock older than an hour is
-stale, and one caller breaks it under a second lock), and prints elapsed time
-only until a model exists; a config dir it cannot write means no refit. Each
-refit appends one line to ``task-eta-fit.log``.
+stale, and one caller breaks it under a second lock), and carries no band
+until a model exists; a config dir it cannot write means no refit. Each
+refit appends one line to ``task-eta-fit.log``. A status-line call (no
+``--json``) does none of this: it neither reads the model nor starts a refit,
+so the line is the same with the model present, missing or corrupt.
 
 Failing soft
 ------------
-In status-line mode every error, and a one-second deadline, ends in printing
-nothing and exit 0, so the other segments always render.
+In status-line mode (and ``--json``) every error, and a one-second deadline,
+ends in printing nothing and exit 0, so the other segments always render.
 
 Usage
 -----
   task-eta.py --stdin                 status-line JSON on stdin (reads transcript_path)
   task-eta.py --stdin --forms         the segment two ways, longest first, one per line
   task-eta.py --transcript PATH       the same for a transcript path
-  task-eta.py ... --json              the estimate as JSON instead of the line
+  task-eta.py ... --json              the estimate as JSON, band included (the only mode that reads the model)
   task-eta.py --fit                   refit the model now (foreground)
   task-eta.py --check-tail [N]        tail read vs full parse on the N largest local transcripts
   task-eta.py --self-test             synthetic transcripts only; exit 1 when a guard fails
@@ -775,7 +777,7 @@ def release_lock(path, token):
 
 
 def spawn_refit(cfg, token):
-    """Start `--fit --background` detached, so the status line never waits for it."""
+    """Start `--fit --background` detached, so the --json caller never waits for it."""
     import subprocess
     kw = {'stdin': subprocess.DEVNULL, 'stdout': subprocess.DEVNULL, 'stderr': subprocess.DEVNULL,
           'close_fds': True}
@@ -791,8 +793,9 @@ def spawn_refit(cfg, token):
 _SPAWN = spawn_refit
 
 
-def model_for_statusline(cfg, now):
-    """The model (None when missing), after starting one refit if it is missing or a day old."""
+def model_for_json(cfg, now):
+    """The model (None when missing), after starting one refit if it is missing or a day old.
+    Only --json calls this: the line prints no band, so it never reads the model or refits it."""
     path = model_path(cfg)
     model = load_model(path)
     try:
@@ -927,7 +930,9 @@ def cmd_statusline(argv, stdin=None, stdout=None):
             path = argv[i + 1] if 0 <= i < len(argv) - 1 else None
         if not isinstance(path, str) or not path or not os.path.isfile(path):
             return 0
-        model = model_for_statusline(config_dir(), time.time())     # file ages: the real clock
+        # The band is --json's alone. The line prints none, so it never reads the model or starts a
+        # refit, and a corrupt model cannot blank it. File ages use the real clock.
+        model = model_for_json(config_dir(), time.time()) if '--json' in argv else None
         est = estimate(path, model, now_s() * 1000.0)
         if '--json' in argv:
             out = json.dumps(est)
@@ -1358,14 +1363,14 @@ def _selftest_body(tmp, cfg, check, io, random):
     _SPAWN = lambda c, k: calls.append(k)   # noqa: E731
     c2 = os.path.join(tmp, 'cfg2')
     os.makedirs(c2)
-    first = model_for_statusline(c2, now)
-    model_for_statusline(c2, now)
+    first = model_for_json(c2, now)
+    model_for_json(c2, now)
     check(first is None and len(calls) == 1, 'missing model: one refit across two calls (%d)' % len(calls))
     write_model(model, model_path(c2))
     release_lock(lock_path(c2), calls[0])
-    check(model_for_statusline(c2, now) is not None and len(calls) == 1, 'fresh model: no refit')
+    check(model_for_json(c2, now) is not None and len(calls) == 1, 'fresh model: no refit')
     os.utime(model_path(c2), (now - MODEL_MAX_AGE_S - 60,) * 2)
-    check(model_for_statusline(c2, now) is not None and len(calls) == 2, 'day-old model: used, and refitted')
+    check(model_for_json(c2, now) is not None and len(calls) == 2, 'day-old model: used, and refitted')
 
     def boom(c, k):
         raise OSError('spawn failed')
@@ -1373,7 +1378,7 @@ def _selftest_body(tmp, cfg, check, io, random):
     for p in (lock_path(c2), model_path(c2)):
         if os.path.exists(p):
             os.unlink(p)
-    model_for_statusline(c2, now)
+    model_for_json(c2, now)
     check(not os.path.exists(lock_path(c2)), 'a failed spawn leaves no lock behind')
 
     # 14. The status-line entry point fails soft.
@@ -1395,8 +1400,8 @@ def _selftest_body(tmp, cfg, check, io, random):
     rc, out = run(['--transcript', wfp])
     rc2, js = run(['--transcript', wfp, '--json'])
     os.environ['CLAUDE_CONFIG_DIR'] = cfg
-    check(rc == 0 and out == '20m workflow' and json.loads(js)['bg']['range'] is None,
-          'a missing config dir: elapsed only: %r' % out)
+    check(rc == 0 and out == '20m workflow' and js and json.loads(js)['bg']['range'] is None,
+          'a missing config dir: the line prints, --json carries no band: %r %r' % (out, js))
     rc, out = run(['--transcript', wfp, '--json'])
     check(rc == 0 and json.loads(out).get('bg', {}).get('kind') == 'workflow', '--json prints the estimate')
     bad = _Synth()
@@ -1414,8 +1419,25 @@ def _selftest_body(tmp, cfg, check, io, random):
         check(rc == 0 and out == '', 'fails soft, prints nothing: %s' % what)
     with open(model_path(cfg), 'w') as f:
         json.dump({'version': MODEL_VERSION, 'grid_s': GRID_S, 'episode': {'global': ['corrupt']}}, f)
-    rc, out = run(['--transcript', notif.write(os.path.join(tmp, 'live', 'n.jsonl'))])
-    check(rc == 0 and out == '', 'a corrupt model raises inside the estimate and still prints nothing')
+    np_ = notif.write(os.path.join(tmp, 'live', 'n.jsonl'))
+    rc, out = run(['--transcript', np_])
+    rc2, js = run(['--transcript', np_, '--json'])
+    check(rc == 0 and out == '20m', 'a corrupt model: the line never reads it: %r' % out)
+    check(rc2 == 0 and js == '', 'a corrupt model raises inside the --json estimate, which prints nothing')
+
+    # 15. Only --json reads the model and refits it: a line call on a missing model starts nothing.
+    calls = []
+    _SPAWN = lambda c, k: calls.append(k)   # noqa: E731
+    c3 = os.path.join(tmp, 'cfg3')
+    os.makedirs(c3)
+    os.environ['CLAUDE_CONFIG_DIR'] = c3
+    rc, out = run(['--stdin', '--forms'], json.dumps({'transcript_path': wfp}))
+    check(rc == 0 and out.split('\n') == ['20m workflow', '20m'] and calls == [] and os.listdir(c3) == [],
+          'a status-line call on a missing model starts no refit and takes no lock: %r %r' % (out, os.listdir(c3)))
+    rc, js = run(['--stdin', '--json'], json.dumps({'transcript_path': wfp}))
+    check(rc == 0 and len(calls) == 1 and os.listdir(c3) == ['task-eta-model.lock'],
+          '--json on a missing model starts one refit behind its lock (%d)' % len(calls))
+    os.environ['CLAUDE_CONFIG_DIR'] = cfg
 
 
 # ─── CLI ───

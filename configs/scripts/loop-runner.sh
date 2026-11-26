@@ -714,10 +714,24 @@ Swept by loop-runner node_commit_changes: changes left uncommitted by
 workers during iteration $ITERATION of goal $GOAL_FILE."
 
   if command -v committer &>/dev/null; then
+    # --no-push: the loop never publishes. Worker and syntax-fixer commits run
+    # under CLADE_WORKER_TASK_ID, which committer never pushes, and the fallback
+    # below only commits; this sweep runs outside any worker, so committer
+    # pushed it, and with it every worker commit of the run. A rejected push
+    # exits 3 AFTER the commit, which the || below read as "uncommitted".
+    # A non-zero exit can still follow a commit (committer's FATAL attribution
+    # check on the new HEAD), so the warning says which; the run stops either way.
+    local head_before
+    head_before=$(git rev-parse HEAD 2>/dev/null || true)
     # shellcheck disable=SC2086
     # tee to stderr — this function's stdout is captured (new_commits=$(...))
-    committer "$commit_msg" $files_to_commit 2>&1 | tee -a "$LOG_DIR/loop.log" >&2 || {
-      log_warn "committer failed — changes remain uncommitted"
+    committer "$commit_msg" --no-push $files_to_commit 2>&1 | tee -a "$LOG_DIR/loop.log" >&2 || {
+      local rc=$?
+      if [ "$(git rev-parse HEAD 2>/dev/null || true)" != "$head_before" ]; then
+        log_warn "committer failed (exit $rc) after committing — inspect HEAD before delivering it"
+      else
+        log_warn "committer failed (exit $rc) — changes remain uncommitted"
+      fi
       return 1
     }
   else

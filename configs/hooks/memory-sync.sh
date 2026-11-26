@@ -182,6 +182,10 @@ if [[ "$_backoff_half_open" == true ]]; then
 fi
 
 "$SYNC_PUSH" &>/dev/null &
-disown
+# The push can exit, and leave the job table, before this line runs. A bare
+# `disown` then failed "current: no such job" and set -e made the hook exit 1:
+# 9 of 400 runs with an instant stub on the author's host, 2026-11-25.
+# tests/test-memory-sync-breaker.sh forces that order with a DEBUG trap.
+disown %% 2>/dev/null || true
 
 exit 0

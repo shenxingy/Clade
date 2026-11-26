@@ -948,9 +948,9 @@ ci_local_runner_mutations() {
   mutation red "a comment after runs-on: not being a label" \
     'line = _uncomment(raw).strip()' 'line = raw.strip()'
   # The files every step gets.
-  mutation red "the runner files reaching a step (call site)" \
-    'rc, elapsed, out, timed_out = runner.attempt(step.run, cwd, {**env, **files.begin_step()},' \
-    'rc, elapsed, out, timed_out = runner.attempt(step.run, cwd, env,'
+  mutation red "the runner files reaching a step's first attempt" \
+    'rc, elapsed, out, timed_out = attempt(script, cwd, {**env, **files.begin_step()}, timeout)' \
+    'rc, elapsed, out, timed_out = attempt(script, cwd, env, timeout)'
   mutation red "a \$GITHUB_ENV write reaching later steps" \
     'env.update(files.env)' 'env.update({})'
   mutation red "\$GITHUB_ENV outranking workflow and job env" \
@@ -1064,24 +1064,29 @@ ci_local_runner_mutations() {
 '
   # nvm loaded where the step's text does not show it.
   mutation red "a step nvm refused the job's prefix running again (call site)" \
-    'if not timed_out and runner.nvm_refused(out, files.npm_prefix):' 'if False:'
+    'rc, elapsed, out, timed_out, refused = runner.attempt_in_prefix(
+            step.run, cwd, env, files, timeout, echo)' \
+    'rc, elapsed, out, timed_out, refused = (*runner.attempt(
+            step.run, cwd, {**env, **files.begin_step()}, timeout), "")'
+  mutation red "a step nvm refused the job's prefix running again (in the helper)" \
+    'if timed_out or not nvm_refused(out, files.npm_prefix):' 'if True:'
   mutation red "the run again on fresh runner files, the discarded attempt's writes dropped" \
-    'rc, redo, out, timed_out = runner.attempt(step.run, cwd, {**env, **files.begin_step()},' \
-    'rc, redo, out, timed_out = runner.attempt(step.run, cwd, {**env, **files._current, "RUNNER_TEMP": str(files.temp), "GITHUB_WORKSPACE": str(files.workspace)},'
+    'rc, redo, out, timed_out = attempt(script, cwd, {**env, **files.begin_step()}, timeout)' \
+    'rc, redo, out, timed_out = attempt(script, cwd, {**env, **files._current, "RUNNER_TEMP": str(files.temp), "GITHUB_WORKSPACE": str(files.workspace)}, timeout)'
   mutation red "the job's prefix leaving the step before it runs again" \
-    '            env.pop("NPM_CONFIG_PREFIX", None)
-' ''
+    '    env.pop("NPM_CONFIG_PREFIX", None)
+    why = NVM_REFUSED' '    why = NVM_REFUSED'
   mutation red "why a step ran again, for its note and the JSON" \
-    '            why = runner.NVM_REFUSED.format(rc)
+    '        why = refused or why
 ' ''
   mutation red "the run again named on the step's line" \
-    '            if echo:
-                print(f"nvm refused' '            if False:
-                print(f"nvm refused'
+    '    if echo:
+        print(f"nvm refused' '    if False:
+        print(f"nvm refused'
   mutation red "only nvm's refusal of the job's own prefix counting" \
     'f'"'"'currently set to "{prefix}"'"'"')' ''"'"'currently set to "'"'"')'
   mutation red "no run again after a timeout" \
-    'if not timed_out and runner.nvm_refused(' 'if runner.nvm_refused('
+    'if timed_out or not nvm_refused(' 'if not nvm_refused('
   mutation red "no_npm_prefix naming a step that passed" \
     'first_output_tail=first_tail, npm_note=why)' 'first_output_tail=first_tail)'
   mutation red "no_npm_prefix naming a step that failed" \

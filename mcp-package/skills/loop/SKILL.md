@@ -34,7 +34,7 @@ POST (deterministic + conditional LLM):
   holdout          — run --holdout scenarios kept outside the repository
   reconcile_goal   — coordinator marks exact task-bound goal items whose task changed the tree
   record_attempts  — ledger: per task, did it land, and if not why (worker's own last message)
-  commit_changes   — sweep leftovers and count every iteration commit
+  commit_changes   — sweep leftovers and count every iteration commit (never pushed)
                 ↓
 Deterministic convergence check:
   - remaining unchecked items = 0 → CONVERGED (and every --holdout scenario passes)

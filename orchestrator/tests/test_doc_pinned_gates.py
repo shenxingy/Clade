@@ -16,6 +16,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 REPO = Path(__file__).resolve().parents[2]
 ARCH_MAP = REPO / "configs" / "scripts" / "check-arch-map.py"
 CI_CHECKLIST = REPO / "configs" / "scripts" / "check-ci-checklist.py"
@@ -98,15 +100,22 @@ jobs:
 """
 
 
-def _ci_tree(root: Path, doc: str | None, claude_md: str = "") -> Path:
+def _ci_tree(root: Path, doc: str | None, claude_md: str = "", *,
+             workflow: str = _WORKFLOW, files: tuple[str, ...] = ("tests/test-foo.sh",),
+             source: str | None = None) -> Path:
     (root / "configs" / "scripts").mkdir(parents=True)
     script = root / "configs" / "scripts" / CI_CHECKLIST.name
     shutil.copy2(CI_CHECKLIST, script)
+    if source is not None:
+        script.write_text(source, encoding="utf-8")
     (root / ".github" / "workflows").mkdir(parents=True)
-    (root / ".github" / "workflows" / "ci.yml").write_text(_WORKFLOW, encoding="utf-8")
+    (root / ".github" / "workflows" / "ci.yml").write_text(workflow, encoding="utf-8")
     (root / "CLAUDE.md").write_text(claude_md, encoding="utf-8")
+    for rel in files:
+        (root / rel).parent.mkdir(parents=True, exist_ok=True)
+        (root / rel).write_text("", encoding="utf-8")
     if doc is not None:
-        (root / "docs").mkdir()
+        (root / "docs").mkdir(exist_ok=True)
         (root / "docs" / "ci-gates.md").write_text(doc, encoding="utf-8")
     return script
 
@@ -144,3 +153,93 @@ def test_ci_checklist_fails_when_the_doc_is_missing(tmp_path):
     result = _run(script, cwd=tmp_path)
     assert result.returncode == 1
     assert "docs/ci-gates.md is missing" in result.stderr
+
+
+# A suite CI runs and the doc lists, but that is not in the tree, used to pass:
+# coverage compares which artefacts are NAMED, so the gate stayed green while
+# CI's own `bash tests/test-foo.sh` step would fail (#208 review).
+
+_FOO_DOC = "# CI gates\n\n## CI (GitHub Actions)\n\nbash tests/test-foo.sh\n"
+_LOOP_DOC = ('# CI gates\n\n## CI (GitHub Actions)\n\n'
+             'for t in foo bar; do bash "tests/test-$t.sh"; done\n')
+_EVALS_WORKFLOW = _WORKFLOW + """\
+  evals:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Score the corpus
+        run: |
+          cd orchestrator
+          python evals/run_x.py
+"""
+_EVALS_DOC = _FOO_DOC + "cd orchestrator && .venv/bin/python evals/run_x.py\n"
+
+
+def test_ci_checklist_names_a_suite_that_ci_runs_but_the_tree_lacks(tmp_path):
+    script = _ci_tree(tmp_path, _FOO_DOC, files=())
+    result = _run(script, cwd=tmp_path)
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert "tests/test-foo.sh" in result.stderr
+    assert "ci.yml:shell-tests" in result.stderr
+    assert "no such file" in result.stderr
+
+
+def test_ci_checklist_names_a_looped_suite_name_with_no_file(tmp_path):
+    script = _ci_tree(tmp_path, _LOOP_DOC)
+    result = _run(script, cwd=tmp_path)
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert "tests/test-bar.sh" in result.stderr
+    assert "listed in docs/ci-gates.md" in result.stderr
+    assert "tests/test-foo.sh" not in result.stderr
+
+
+def test_ci_checklist_finds_evals_under_orchestrator(tmp_path):
+    # CI and the doc both reach evals/ through `cd orchestrator`, so a root-level
+    # evals/run_x.py is not the file they run.
+    script = _ci_tree(tmp_path, _EVALS_DOC, workflow=_EVALS_WORKFLOW,
+                      files=("tests/test-foo.sh", "orchestrator/evals/run_x.py"))
+    result = _run(script, cwd=tmp_path)
+    assert result.returncode == 0, result.stdout + result.stderr
+
+    wrong = tmp_path / "wrong-home"
+    wrong.mkdir()
+    script = _ci_tree(wrong, _EVALS_DOC, workflow=_EVALS_WORKFLOW,
+                      files=("tests/test-foo.sh", "evals/run_x.py"))
+    result = _run(script, cwd=wrong)
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert "evals/run_x.py" in result.stderr
+
+
+# Each guard of the file check, removed from a copy of the script: the fixture
+# that claims it must flip. An anchor that no longer matches fails here rather
+# than mutating nothing.
+_FILE_GUARD_MUTATIONS = [
+    ("the existence test itself",
+     "        if not (home / artefact).is_file():\n",
+     "        if False:\n",
+     dict(doc=_FOO_DOC, files=()), 0),
+    ("the call site in main()",
+     "    if absent:\n",
+     "    if False:\n",
+     dict(doc=_FOO_DOC, files=()), 0),
+    ("the checklist's own names",
+     '        named.setdefault(artefact, []).append(f"listed in {CHECKLIST_REL}")\n',
+     "        pass\n",
+     dict(doc=_LOOP_DOC), 0),
+    ("evals/ resolved against orchestrator/",
+     'ARTEFACT_HOMES = {"evals": "orchestrator"}\n',
+     "ARTEFACT_HOMES: dict[str, str] = {}\n",
+     dict(doc=_EVALS_DOC, workflow=_EVALS_WORKFLOW,
+          files=("tests/test-foo.sh", "orchestrator/evals/run_x.py")), 1),
+]
+
+
+@pytest.mark.parametrize("what,old,new,tree,mutant_rc", _FILE_GUARD_MUTATIONS,
+                         ids=[m[0] for m in _FILE_GUARD_MUTATIONS])
+def test_ci_checklist_file_guards_can_fire(tmp_path, what, old, new, tree, mutant_rc):
+    source = CI_CHECKLIST.read_text(encoding="utf-8")
+    assert source.count(old) == 1, f"mutation anchor moved: {what}"
+    real = _run(_ci_tree(tmp_path / "real", **tree), cwd=tmp_path / "real")
+    mutant = _run(_ci_tree(tmp_path / "mutant", source=source.replace(old, new), **tree),
+                  cwd=tmp_path / "mutant")
+    assert real.returncode == 1 - mutant_rc, real.stdout + real.stderr
+    assert mutant.returncode == mutant_rc, f"removing {what} went unnoticed"

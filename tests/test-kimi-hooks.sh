@@ -727,6 +727,77 @@ run_payload UserPromptSubmit session-context.sh \
   "$(prompt_payload session_context_once_02 "Please continue")" \
   "a different Kimi session gets its own context" MESSAGE
 
+section "SessionEnd releases only the ending session's first-prompt sentinel"
+ONCE_DIR="$RUNTIME/kimi-session-context"
+OTHER_SENTINEL="$ONCE_DIR/session_context_once_02.session-context.sh.once"
+PREFIX_SENTINEL="$ONCE_DIR/${CONTEXT_SID}x.session-context.sh.once"
+mkdir -p "$PREFIX_SENTINEL"
+assert_file "$OTHER_SENTINEL" "a parallel session holds its own sentinel"
+# Each id below must release nothing: a dotted id the shadow sanitizer would
+# fold onto session_context_once_02, a traversal that resolves to its sentinel,
+# and two ids that begin with a valid id and only fail the regex at its $
+# anchor, one running into the other session's sentinel name and one passing
+# through the first session's sentinel and back out with "..". Both sentinels
+# are put back after each id, so a release is reported by the id that caused
+# it and does not cascade into the cases after it.
+for HOSTILE in 'session.context_once_02' '../kimi-session-context/session_context_once_02' \
+  'session_context_once_02.session-context' \
+  "$CONTEXT_SID.session-context.sh.once/../session_context_once_02"; do
+  run_payload SessionEnd session-end-cleanup.sh \
+    "$(tool_payload SessionEnd "$HOSTILE" Bash '{"command":""}')" \
+    "SessionEnd for id '$HOSTILE' has no protocol output" ALLOW
+  assert_file "$OTHER_SENTINEL" "id '$HOSTILE' cannot release another session's sentinel"
+  assert_file "$SENTINEL" "id '$HOSTILE' leaves the first session's sentinel"
+  mkdir -p "$OTHER_SENTINEL" "$SENTINEL"
+done
+# Names the ending id's glob does match, but that are not an empty sentinel
+# directory: a regular file, a directory with contents, and a symlink to an
+# empty directory. The hook's rmdir must leave all three, and must not follow
+# the link to the directory behind it.
+PLANTED_FILE="$ONCE_DIR/${CONTEXT_SID}.planted.once"
+PLANTED_FULL="$ONCE_DIR/${CONTEXT_SID}.full.once"
+PLANTED_LINK="$ONCE_DIR/${CONTEXT_SID}.link.once"
+LINK_TARGET="$TMP_ROOT/once-link-target"
+mkdir -p "$PLANTED_FULL" "$LINK_TARGET"
+: > "$PLANTED_FILE"
+: > "$PLANTED_FULL/keep"
+ln -s "$LINK_TARGET" "$PLANTED_LINK"
+run_payload SessionEnd session-end-cleanup.sh \
+  "$(tool_payload SessionEnd "$CONTEXT_SID" Bash '{"command":""}')" \
+  "SessionEnd with a sentinel to release has no protocol output" ALLOW
+assert_no_file "$SENTINEL" "SessionEnd releases the ending session's sentinel"
+assert_file "$OTHER_SENTINEL" "a parallel session's sentinel survives that SessionEnd"
+assert_file "$PREFIX_SENTINEL" "an id that only extends the ending id keeps its sentinel"
+if [[ -f "$PLANTED_FILE" && ! -L "$PLANTED_FILE" ]]; then
+  pass "a regular file under the ending id's sentinel name survives"
+else
+  fail "a regular file under the ending id's sentinel name survives" "missing $PLANTED_FILE"
+fi
+assert_file "$PLANTED_FULL/keep" "a sentinel-named directory with contents keeps them"
+if [[ -L "$PLANTED_LINK" && -d "$LINK_TARGET" ]]; then
+  pass "a sentinel-named symlink is neither removed nor followed"
+else
+  fail "a sentinel-named symlink is neither removed nor followed" "link or its target is gone"
+fi
+rm -rf "$PLANTED_FILE" "$PLANTED_FULL" "$PLANTED_LINK" "$LINK_TARGET"
+run_payload UserPromptSubmit session-context.sh "$PAYLOAD" \
+  "a resumed session (same id after SessionEnd) gets the context once more" MESSAGE
+assert_file "$SENTINEL" "the resumed session claims a fresh sentinel"
+ln -s "$RUNTIME" "$TMP_ROOT/runtime-link"
+RUN_OUT=$(tool_payload SessionEnd session_context_once_02 Bash '{"command":""}' | \
+  HOME="$RUN_HOME" CLADE_RUNTIME_DIR="$TMP_ROOT/runtime-link" CP_SHADOW_DIR="$SHADOW" \
+  bash -c "$(hook_command "$RUN_HOME" SessionEnd session-end-cleanup.sh)")
+RUN_RC=$?
+assert_eq "$RUN_RC|$RUN_OUT" "0|" "a symlinked runtime root fails open with no output"
+assert_file "$OTHER_SENTINEL" "a symlinked runtime root is never followed to a sentinel"
+RUN_OUT=$(tool_payload SessionEnd session_context_once_02 Bash '{"command":""}' | \
+  HOME="$RUN_HOME" CLADE_RUNTIME_DIR="$RUNTIME" CP_SHADOW_DIR="$TMP_ROOT/no-shadow-dir" \
+  bash -c "$(hook_command "$RUN_HOME" SessionEnd session-end-cleanup.sh)")
+RUN_RC=$?
+assert_eq "$RUN_RC|$RUN_OUT" "0|" "SessionEnd with no shadow dir exits 0 silently"
+assert_no_file "$OTHER_SENTINEL" "the sentinel is released even when the session left no shadow dir"
+rmdir "$PREFIX_SENTINEL" 2>/dev/null
+
 section "memory sync on both PostToolUse matchers"
 : > "$RUN_HOME/.claude/.sync-config"
 cat > "$RUN_HOME/.claude/scripts/sync-push.sh" <<'EOF'

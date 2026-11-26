@@ -173,6 +173,8 @@ cat > "$MOCK_BIN/committer" <<'MOCKEOF'
 #!/usr/bin/env bash
 msg="${1:-batch commit}"
 shift
+# Like the real committer: --no-push may sit anywhere after the message.
+args=(); for a in "$@"; do [[ "$a" == "--no-push" ]] || args+=("$a"); done; set -- "${args[@]}"
 CONVENTIONAL_RE='^(feat|fix|refactor|test|chore|docs|perf|style|ci|build)(\(.+\))?: .+'
 if ! printf '%s\n' "$msg" | head -1 | grep -qE "$CONVENTIONAL_RE"; then
   echo "checks: commit message must follow conventional commit format." >&2

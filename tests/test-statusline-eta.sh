@@ -18,11 +18,15 @@
 #   past 4 h; the fit to a pane 94, 80, 70, 46, 35 and 29 columns wide (at 80
 #   the drop-in alone is too much), with no "git:(" label and the task time
 #   last to go;
-#   a missing model prints elapsed time only and starts ONE detached refit
-#   that writes the model; five concurrent calls start one refit, not five;
+#   the line never reads the model: a status-line call on a missing model
+#   starts no refit and takes no lock, and a corrupt model leaves the line as
+#   it was; only `task-eta.py --json` reads it, and on a missing model starts
+#   ONE detached refit that writes it; five concurrent --json calls start one
+#   refit, not five;
 #   fail soft: no transcript, an empty one, a directory, malformed lines, stdin
 #   that is not JSON and a corrupt model each print the other segments, no
-#   traceback, exit 0, and a missing config dir still prints elapsed time; `slt eta off|on`; no python3 drops only this segment;
+#   traceback, exit 0; a corrupt model or a missing config dir leaves --json
+#   exit 0 with no traceback; `slt eta off|on`; no python3 drops only this segment;
 #   a backslash in the segment is not read as an escape.
 #
 # The last suite removes each guard in turn from a COPY (statusline-command.sh,
@@ -229,6 +233,16 @@ sl() {
   OUT=$(plain "$RAW")
 }
 
+# ej NOW TRANSCRIPT — task-eta.py --json, the one mode that reads the model; sets JS, RC, ERR
+ej() {
+  local payload
+  payload=$(jq -cn --arg t "$2" '{transcript_path: $t}')
+  JS=$(printf '%s' "$payload" | CLADE_TASK_ETA_NOW="$1" python3 "$ETA" --stdin --json 2>"$SANDBOX/ej.err")
+  RC=$?
+  ERR=$(cat "$SANDBOX/ej.err")
+}
+band() { printf '%s' "$JS" | jq -r '.bg.range | type' 2>/dev/null; }   # object, null, or nothing
+
 wait_for_model() {  # up to ~30 s for a refit to write the model and release its lock
   local i=0
   while [[ $i -lt 300 ]]; do
@@ -242,25 +256,48 @@ refits_running() { pgrep -f "$ETA --fit" 2>/dev/null | wc -l | tr -d ' '; }
 
 # ─── Suite 2: the first call has no model ────────────────────────────
 
-section "No model yet: elapsed only, and one detached refit"
+section "No model yet: the line starts no refit; --json starts one"
 
 rm -f "$MODEL" "$LOCK" "$FITLOG"
-sl "$T20" "$FIX/wf.jsonl"
+CLADE_TASK_ETA_FIT_DELAY=3 sl "$T20" "$FIX/wf.jsonl"   # a refit it started would hold the lock 3 s
 if [[ $RC -eq 0 && "$OUT" == "work 20m workflow" ]]; then
-  pass "elapsed only while the model is missing: '$OUT'"
+  pass "the line is the same while the model is missing: '$OUT'"
 else
-  fail "elapsed only while the model is missing" "rc=$RC out='$OUT' err='$ERR'"
+  fail "the line is the same while the model is missing" "rc=$RC out='$OUT' err='$ERR'"
+fi
+n_running=$(refits_running)
+if [[ ! -e "$LOCK" && ! -e "$MODEL" && ! -e "$FITLOG" && "$n_running" == "0" ]]; then
+  pass "a status-line call on a missing model starts no refit and takes no lock"
+else
+  fail "a status-line call on a missing model starts no refit and takes no lock" \
+    "lock=$([[ -e $LOCK ]] && echo held || echo free) model=$([[ -f $MODEL ]] && echo yes || echo no) refits running: $n_running"
+fi
+if [[ "$n_running" != "0" || -e "$LOCK" ]]; then   # a refit it started must not feed the cases below
+  pkill -f "$ETA --fit" 2>/dev/null; sleep 0.2
+fi
+rm -f "$MODEL" "$LOCK" "$FITLOG"
+ej "$T20" "$FIX/wf.jsonl"
+if [[ $RC -eq 0 && "$(band)" == "null" && "$ERR" != *Traceback* ]]; then
+  pass "--json with no model yet: the estimate, no band"
+else
+  fail "--json with no model yet: the estimate, no band" "rc=$RC json='$JS' err='$ERR'"
 fi
 if wait_for_model && grep -q "fit ok" "$FITLOG" 2>/dev/null; then
-  pass "that call started a refit, which wrote the model and released its lock"
+  pass "that --json call started a refit, which wrote the model and released its lock"
 else
-  fail "that call started a refit, which wrote the model and released its lock" \
+  fail "that --json call started a refit, which wrote the model and released its lock" \
     "model=$([[ -f $MODEL ]] && echo yes || echo no) lock=$([[ -e $LOCK ]] && echo held || echo free) log=$(cat "$FITLOG" 2>/dev/null)"
+fi
+ej "$T20" "$FIX/wf.jsonl"
+if [[ $RC -eq 0 && "$(band)" == "object" ]]; then
+  pass "with the model it wrote, --json carries the band"
+else
+  fail "with the model it wrote, --json carries the band" "rc=$RC json='$JS' err='$ERR'"
 fi
 
 # ─── Suite 3: the line, with a model ─────────────────────────────────
 
-section "The segment, with a model fitted from the synthetic history"
+section "The segment: elapsed time and the job it waits on"
 
 sl "$T20" "$FIX/wf.jsonl"
 if [[ $RC -eq 0 && "$OUT" == "work 20m workflow" ]]; then
@@ -328,27 +365,53 @@ fi
 printf '{"version": 1, "grid_s": "corrupt"' > "$MODEL"
 sl "$T20" "$FIX/wf.jsonl"
 if [[ $RC -eq 0 && "$OUT" == "work 20m workflow" && "$ERR" != *Traceback* ]]; then
-  pass "a corrupt model reads as no model: elapsed only"
+  pass "an unreadable model: the line is the same"
 else
-  fail "a corrupt model reads as no model: elapsed only" "rc=$RC out='$OUT' err='$ERR'"
+  fail "an unreadable model: the line is the same" "rc=$RC out='$OUT' err='$ERR'"
 fi
-wait_for_model >/dev/null    # that call refits too; let it finish before the lock case
+# A model that loads, then raises inside the lookup: it blanked the segment while the line read it.
+python3 - "$MODEL" "$ETA" <<'PY'
+import importlib.util, json, sys
+spec = importlib.util.spec_from_file_location('te', sys.argv[2])
+te = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(te)
+with open(sys.argv[1], 'w') as f:
+    json.dump({'version': te.MODEL_VERSION, 'grid_s': te.GRID_S, 'episode': {'global': ['corrupt']},
+               'bg': {'global': ['corrupt']}}, f)
+PY
+sl "$T20" "$FIX/wf.jsonl"
+if [[ $RC -eq 0 && "$OUT" == "work 20m workflow" && "$ERR" != *Traceback* ]]; then
+  pass "a model that raises in the lookup: the line never reads it: '$OUT'"
+else
+  fail "a model that raises in the lookup: the line never reads it" "rc=$RC out='$OUT' err='$ERR'"
+fi
+ej "$T20" "$FIX/wf.jsonl"
+if [[ $RC -eq 0 && -z "$JS" && "$ERR" != *Traceback* ]]; then
+  pass "that model in --json: nothing printed, exit 0, no traceback"
+else
+  fail "that model in --json: nothing printed, exit 0, no traceback" "rc=$RC json='$JS' err='$ERR'"
+fi
 CLAUDE_CONFIG_DIR="$SANDBOX/no-such-config-dir" sl "$T20" "$FIX/wf.jsonl"
 if [[ $RC -eq 0 && "$OUT" == "work 20m workflow" && "$ERR" != *Traceback* ]]; then
-  pass "a missing config dir (no lock can be made): elapsed only"
+  pass "a missing config dir: the line is the same"
 else
-  fail "a missing config dir (no lock can be made): elapsed only" "rc=$RC out='$OUT' err='$ERR'"
+  fail "a missing config dir: the line is the same" "rc=$RC out='$OUT' err='$ERR'"
+fi
+CLAUDE_CONFIG_DIR="$SANDBOX/no-such-config-dir" ej "$T20" "$FIX/wf.jsonl"
+if [[ $RC -eq 0 && "$(band)" == "null" && "$ERR" != *Traceback* ]]; then
+  pass "a missing config dir (no lock can be made): --json still prints, no band"
+else
+  fail "a missing config dir (no lock can be made): --json still prints, no band" "rc=$RC json='$JS' err='$ERR'"
 fi
 
 # ─── Suite 5: one refit at a time ────────────────────────────────────
 
-section "The refit lock: five concurrent calls start one refit"
+section "The refit lock: five concurrent --json calls start one refit"
 
-wait_for_model
-rm -f "$MODEL" "$FITLOG"
+rm -f "$MODEL" "$LOCK" "$FITLOG"
 export CLADE_TASK_ETA_FIT_DELAY=3       # the refit holds its lock this long before fitting
 for _ in 1 2 3 4 5; do
-  sl "$T20" "$FIX/wf.jsonl" &
+  ej "$T20" "$FIX/wf.jsonl" &
 done
 wait
 n_running=$(refits_running)
@@ -525,9 +588,12 @@ mutation red "task-eta: a TaskStop ends the job it names" task-eta.py \
   "                self._stop(inp.get('task_id') or inp.get('shell_id'), ts)" '                pass'
 mutation red "task-eta: a refused launch never ran" task-eta.py \
   "                self._unlaunch(b.get('tool_use_id'))" '                pass'
-mutation red "task-eta: a lock error leaves elapsed time" task-eta.py \
+mutation red "task-eta: a lock error leaves the --json estimate" task-eta.py \
   '        except OSError:                  # a missing or read-only config dir' \
   '        except FileExistsError:          # a missing or read-only config dir'
+mutation red "task-eta: the line loads no model" task-eta.py \
+  "model_for_json(config_dir(), time.time()) if '--json' in argv else None" \
+  'model_for_json(config_dir(), time.time())'
 
 # Bounded parallelism; bash 3.2 has no `wait -n`, so wait oldest-first.
 SE_JOBS=$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 2)
