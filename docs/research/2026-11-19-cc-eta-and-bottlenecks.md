@@ -397,3 +397,15 @@ task's elapsed time (`25m`), the job it waits on while no turn runs
 (`20m workflow`), a Monitor's timeout (`≤8m left`), and nothing when idle. The
 `run`/`wait`/`idle` words, the job's age, the `+N` count and the band are gone;
 `--json` still carries the band.
+
+**2026-11-25: the line no longer reads the model (branch `perf/task-eta-line-no-model`).**
+With the band gone from the line, the model served `--json` alone, yet every
+status-line call still opened it, started the daily detached refit when it was
+missing or a day old, and printed nothing when a model loaded and then raised in
+the lookup. Now only `--json` reads the model and starts the refit; a status-line
+call prints the same line with the model present, missing or corrupt. The fit,
+the lock and `--json`'s band are unchanged. The wall time did not move: on one
+real 2.4 MB transcript (median-sized among 53 of one profile's), the status-line
+call took a median of 129.8 ms before and 129.3 ms after over 20 interleaved runs
+each, on a host at load 90 over 32 cores; the model load it drops costs 0.043 ms
+in process. The change removes work and a failure mode, not latency.
