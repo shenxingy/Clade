@@ -219,6 +219,15 @@ jobs:
           r() { if eval "$2"; then echo "$1 ok"; else echo "$1 BAD"; fi >> .npm-results; }
           r same-prefix 'test "$NPM_CONFIG_PREFIX" = "$(cat .npm-prefix-first)"'
           r installed-earlier 'test "$(ci-local-t-npmbin)" = job-prefix'
+      # The spelling npm documents. Before the $GITHUB_ENV write below, which
+      # would rightly hand this step an upper-case one as well.
+      - name: Names a lower-case prefix of its own
+        env:
+          npm_config_prefix: npm-own-lower
+        run: |
+          r() { if eval "$2"; then echo "$1 ok"; else echo "$1 BAD"; fi >> .npm-results; }
+          r lower-one-spelling 'test "$(env | grep -ci "^npm_config_prefix=")" = 1 && test "$(env | grep -c "^npm_config_prefix=")" = 1'
+          r lower-wins 'test "$npm_config_prefix" = npm-own-lower'
       - name: Names a prefix of its own
         env:
           NPM_CONFIG_PREFIX: npm-own-prefix
@@ -476,6 +485,9 @@ for k in one-spelling not-callers empty outside root-on-path bin-first; do
 done
 assert_eq "$(npm_result same-prefix)" "same-prefix ok" "the prefix is the job's: the next step has the same one"
 assert_eq "$(npm_result installed-earlier)" "installed-earlier ok" "what a step installs, a later step runs"
+for k in lower-one-spelling lower-wins; do
+  assert_eq "$(npm_result "$k")" "$k ok" "a step's own lower-case npm_config_prefix wins, the only spelling: $k"
+done
 assert_eq "$(npm_result workflow-wins)" "workflow-wins ok" "a step's own NPM_CONFIG_PREFIX still wins, as on a runner"
 assert_eq "$(npm_result env-file-wins)" "env-file-wins ok" "so does one a step wrote to \$GITHUB_ENV"
 for k in expr-own expr-one-spelling; do
@@ -645,6 +657,11 @@ ci_local_runner_mutations() {
     '(str(prefix / "bin"), str(prefix), env.get' '(str(prefix), env.get'
   mutation red "the prefix itself on PATH (where Windows npm puts bins)" \
     '(str(prefix / "bin"), str(prefix), env.get' '(str(prefix / "bin"), env.get'
+  # The anchor carries `for k in workflow_keys if`: the same comparison is on
+  # the deletion loop too.
+  mutation red "a workflow's prefix counted in any spelling (npm_config_prefix too)" \
+    'for k in workflow_keys if k.lower() == "npm_config_prefix"}' \
+    'for k in workflow_keys if k == "NPM_CONFIG_PREFIX"}'
   mutation red "a step's own NPM_CONFIG_PREFIX winning" \
     '[*files.env, *(k for k, v in step.env.items() if not _EXPR.search(v))]' '[*files.env]'
   mutation red "a \$GITHUB_ENV NPM_CONFIG_PREFIX winning" \
