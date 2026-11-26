@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # test-loop-env.sh — the environment, deployment and out-of-process half of the
-# loop test system. Split VERBATIM out of tests/test-loop.sh, which stood at
-# 1448 lines against the 1500-line ceiling; every case below is the one that
-# ran there, unchanged.
+# loop test system. Suites 12-16 were split VERBATIM out of tests/test-loop.sh,
+# which stood at 1448 lines against the 1500-line ceiling; each is the case
+# that ran there, unchanged. Suites 17 and 18 were written here, for the same reason.
 #
 # NOT a standalone suite. It is SOURCED by tests/test-loop.sh and depends on
 # that file's fixture (tests/lib/loop-fixture.sh) for the assertion helpers,
@@ -20,7 +20,9 @@
 #   14  Signal handling — the SIGTERM cleanup writes INTERRUPTED=true
 #   15  --max-runtime wall-clock bound, and setsid --wait availability
 #   16  scan-health.sh test-runtime probe
-#   17  Loop context on a dirty tree — git status is bounded in the supervisor
+#   17  commit_changes sweep scope — worker logs, node_modules and nested git
+#       repositories are never swept into the leftover commit
+#   18  Loop context on a dirty tree — git status is bounded in the supervisor
 #       prompt, and the prompt travels on stdin (added here, not split out)
 
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
@@ -315,9 +317,69 @@ assert_contains "$out" "exit code: 1" "task records the suite exit code"
 fi
 
 
+# ═══════════════════════════════════════════════════════════════════════
+# TEST SUITE 17: commit_changes sweep scope
+# ═══════════════════════════════════════════════════════════════════════
+# The leftover sweep committed every path `git status` listed. In one business
+# repository that was 13,053 files of logs/claude-tasks/shadow/*.git, the bare
+# repositories worker-checkpoint.sh keeps per task, swept into main and pushed
+# (TODO.md: e03bb70c, reverted by fa81f743). A worker's own output must still be swept;
+# worker logs, dependency trees and any repository nested in the checkout must
+# not be. The two near-misses (a file NAMED node_modules.md, a file named HEAD)
+# pin that the exclusions match directories, not substrings.
+
+if should_run "sweep"; then
+section "commit_changes sweep scope"
+
+SWEEP_SCOPE_REPO=$(setup_test_repo)
+cd "$SWEEP_SCOPE_REPO" || exit 1
+mkdir -p .claude logs/loop logs/claude-tasks/shadow node_modules/pkg web/node_modules/pkg scratch notes release vendor/nested
+git init -q --bare logs/claude-tasks/shadow/task-1.git
+git init -q --bare scratch/ckpt.git
+echo checkpoint | git --git-dir=scratch/ckpt.git hash-object -w --stdin >/dev/null
+( cd vendor/nested && git init -q && echo lib > lib.txt && git add lib.txt \
+    && git -c user.name=T -c user.email=t@example.com commit -qm init )
+echo dep > node_modules/pkg/index.js
+echo dep > web/node_modules/pkg/index.js
+echo note > notes/node_modules.md
+echo ref > release/HEAD
+printf '# Goal: sweep scope\n\n- [x] already done\n' > goal-sweep.md
+export MOCK_CLAUDE_RESPONSE='[{"description": "Touch swept.txt: verify the sweep scope", "model": "haiku", "files": ["swept.txt"]}]'
+export MOCK_CLAUDE_EXIT=0
+export MOCK_CLAUDE_TOUCH="$SWEEP_SCOPE_REPO/swept.txt"
+output=$(
+  exec 3>&- 4>&- 5>&- 6>&- 7>&- 8>&- 9>&- 2>/dev/null
+  timeout --kill-after=5s 90s bash "$SCRIPTS_DIR/loop-runner.sh" goal-sweep.md --max-iter 3 --max-workers 1 --state .claude/loop-state --log-dir logs/loop 2>&1
+) || true
+unset MOCK_CLAUDE_TOUCH
+tracked_now=$(git ls-files)
+assert_contains "$output" "CONVERGED" "sweep-scope run converges"
+assert_contains "$tracked_now" "swept.txt" "a worker-created file is still swept"
+assert_contains "$tracked_now" "notes/node_modules.md" "a file merely named node_modules.md is still swept"
+assert_contains "$tracked_now" "release/HEAD" "a directory holding only a HEAD file is not taken for a git dir"
+assert_not_contains "$tracked_now" "logs/claude-tasks/" "worker logs and their shadow checkpoint repos are never swept"
+# Two cases, because the two patterns are separate: `*/node_modules/*` needs a
+# `/` before node_modules, so it never matches the root tree, the common layout.
+assert_eq "0" "$(printf '%s\n' "$tracked_now" | grep -c '^node_modules/')" \
+  "a node_modules tree at the checkout root is never swept"
+assert_not_contains "$tracked_now" "web/node_modules/" "a node_modules tree in a subdirectory is never swept"
+assert_not_contains "$tracked_now" "vendor/nested" "a nested clone is never swept, not even as a gitlink"
+assert_not_contains "$tracked_now" "scratch/ckpt.git" "a bare repository anywhere in the checkout is never swept"
+# The exact warning, not the bare path: the old sweep's own commit output
+# ("create mode 160000 vendor/nested") also carried the path.
+assert_contains "$output" "Not sweeping vendor/nested/: a nested git repository" \
+  "the sweep names each nested clone it left uncommitted"
+assert_contains "$output" "Not sweeping scratch/ckpt.git/: a nested git repository" \
+  "the sweep names each bare repository it left uncommitted"
+assert_contains "$output" "Sweep skipped" "the sweep reports how many paths it left"
+# Once per repository, not once per file in it: a shadow repo is thousands.
+assert_eq "1" "$(printf '%s\n' "$output" | grep -c 'Not sweeping scratch/ckpt.git/')" \
+  "the sweep warns once per nested repository, not once per file"
+cd "$ORIG_DIR" || exit 1
+fi
 
 # ═══════════════════════════════════════════════════════════════════════
-# TEST SUITE 17: Loop context on a dirty tree
+# TEST SUITE 18: Loop context on a dirty tree
 # ═══════════════════════════════════════════════════════════════════════
 # A converge run whose tree held 13,094 `git status` lines never reached its
 # supervisor: the prompt rode on argv, and Linux refuses any one exec argument

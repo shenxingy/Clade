@@ -44,7 +44,8 @@ def _rewrite(command: str) -> dict:
     }
 
 
-# Kept deliberately in step with configs/hooks/pre-tool-guardian.sh.
+# Kept deliberately in step with configs/hooks/pre-tool-guardian.sh and the libs
+# it sources (configs/hooks/lib/: rm-guard.sh, rm-targets.sh, force-push-walk.sh).
 # configs/codex-migration.json records the two as a parity pair, and
 # tests/test-pre-tool-guardian.sh now feeds one command to both hooks and fails
 # when their verdicts differ — which is how the drift below was found. Until
@@ -70,8 +71,8 @@ def _statements(command: str) -> list[str]:
     """Split the way the shell hook does — on ; | & — not on newlines.
 
     Per-line matching was too coarse in both directions; the reasoning is
-    recorded at length in pre-tool-guardian.sh. Matching per statement means
-    every condition has to be met by the same statement.
+    recorded at length in configs/hooks/lib/rm-guard.sh. Matching per
+    statement means every condition has to be met by the same statement.
     """
     return re.split(r"[;|&\n]", command)
 
@@ -120,10 +121,11 @@ def _delete_targets(statement: str) -> list[str]:
 
 
 # Which targets the catastrophic rule exists for. Mirrors rm_operand_is_deep in
-# pre-tool-guardian.sh, where the measurement behind it is recorded: the text
-# match is depth-blind, so every recursive delete under a home directory or
-# /var/tmp was refused. A statement is exempt only when EVERY operand is a
-# literal, anchored path proven deep; anything unproven keeps the old verdict.
+# configs/hooks/lib/rm-targets.sh, where the measurement behind it is recorded:
+# the text match is depth-blind, so every recursive delete under a home
+# directory or /var/tmp was refused. A statement is exempt only when EVERY
+# operand is a literal, anchored path proven deep; anything unproven keeps the
+# old verdict.
 _GLOB_CHARS = frozenset("*?[{")
 _NEVER_DEEP = re.compile(r"^/(?:etc|usr|boot|sys|proc|var)(?:/|$)")
 CATASTROPHIC_SCOPE = (
@@ -287,7 +289,7 @@ def _unresolved_delete(command: str) -> tuple[str, str] | None:
 
 
 # ─── Force push ──────────────────────────────────────────────────────────
-# Same walk as the awk in configs/hooks/pre-tool-guardian.sh, step for step;
+# Same walk as the awk in configs/hooks/lib/force-push-walk.sh, step for step;
 # the reasoning is recorded there. Positions count from 0 here and from 1
 # there. Quotes ('…', "…", $"…", and $'…' with its escapes decoded),
 # backslashes, comments and heredocs are honoured; statements split on

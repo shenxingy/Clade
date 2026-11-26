@@ -14,7 +14,7 @@
 #   [LLM] verify            — explicit final-state pass
 #   [DET] holdout           — --holdout scenarios outside the repository
 #   [DET] reconcile_goal    — coordinator ticks task-bound goal items
-#   [DET] commit_changes    — commits all worker output
+#   [DET] commit_changes    — commits worker output (never logs, node_modules, nested repos)
 #   [DET] convergence_check — CONVERGED? max_iter? 3x no-commits?
 #
 # Usage:
@@ -674,7 +674,27 @@ node_record_attempts() {
 # ────────────────────────────────────────────────────────────────────
 
 # ─── [DET] NODE: COMMIT CHANGES ─────────────────────────────────
-# Commits all uncommitted changes via committer script. No LLM calls.
+# _nested_git_root PATH → 0, with NESTED_GIT_ROOT set, when the repo-relative
+# PATH is or lies inside another git repository: a directory holding a .git
+# entry (a clone, a submodule, a worktree) or a bare git dir (HEAD, objects/
+# and refs/, the shape of worker-checkpoint.sh's shadow repos). Checks PATH's
+# own directories up to, not including, the checkout root. No subshell: the
+# sweep calls it once per porcelain line, and one shadow repo is thousands.
+_nested_git_root() {
+  local d="${1%/}"
+  if [ ! -d "$d" ]; then
+    case "$d" in */*) d="${d%/*}" ;; *) return 1 ;; esac
+  fi
+  while :; do
+    if [ -e "$d/.git" ] || { [ -f "$d/HEAD" ] && [ -d "$d/objects" ] && [ -d "$d/refs" ]; }; then
+      NESTED_GIT_ROOT="$d"
+      return 0
+    fi
+    case "$d" in */*) d="${d%/*}" ;; *) return 1 ;; esac
+  done
+}
+
+# Commits the workers' uncommitted changes via committer script. No LLM calls.
 # Echoes the number of commits created by workers or the sweep.
 node_commit_changes() {
   log_info "[DET] commit_changes"
@@ -693,13 +713,29 @@ node_commit_changes() {
   # iteration "commit something" and defeat the consecutive-no-commit stuck
   # detection. cut strips the 2-char status + space; sed handles renames
   # ("old -> new" keeps new) and strips porcelain quoting.
-  local changed_files="" f
+  # What workers leave that is not work is never swept either: run-tasks*.sh's
+  # own log dir (logs/claude-tasks, which holds the shadow checkpoint repos),
+  # node_modules trees, and any git repository nested in the checkout. The
+  # sweep once committed 13,053 shadow-repo files into a project's main and
+  # pushed them (TODO.md, business e03bb70c, reverted by fa81f743).
+  local changed_files="" f nested="" skipped=0
   local uncommitted=0
   while IFS= read -r f; do
     [ -n "$f" ] || continue
     case "$f" in
       "${LOG_DIR%/}"/*|"$STATE_FILE"|.claude/*) continue ;;
+      logs/claude-tasks/*|node_modules/*|*/node_modules/*)
+        skipped=$((skipped + 1)); continue ;;
     esac
+    if [ -n "$nested" ]; then
+      case "$f" in "$nested"/*) skipped=$((skipped + 1)); continue ;; esac
+    fi
+    if _nested_git_root "$f"; then
+      nested=$NESTED_GIT_ROOT
+      log_warn "Not sweeping $nested/: a nested git repository is left uncommitted"
+      skipped=$((skipped + 1))
+      continue
+    fi
     # Skip staged-then-deleted transients (run-tasks.sh checkpoints via
     # `git add -A`, cleanup then rm's the files — porcelain still lists the
     # phantom index entry and `git add` on the dead pathspec would abort the
@@ -711,6 +747,7 @@ node_commit_changes() {
     changed_files="${changed_files}${f} "
     uncommitted=$((uncommitted + 1))
   done < <(git status --porcelain -uall 2>/dev/null | cut -c4- | sed -e 's/.* -> //' -e 's/^"\(.*\)"$/\1/')
+  [ "$skipped" -eq 0 ] || log_info "Sweep skipped $skipped path(s): worker logs, node_modules, nested git repositories"
 
   if [ "$uncommitted" -eq 0 ]; then
     log_info "No uncommitted changes"
