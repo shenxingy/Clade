@@ -170,6 +170,9 @@ DECLARED_RESOURCES = {
     "artifact": (
         (REPO_ROOT / "configs/scripts/artifact-lint.py", Path("scripts/artifact-lint.py")),
         (REPO_ROOT / "configs/scripts/design-lint.py", Path("scripts/design-lint.py")),
+        # design-lint.py imports both from beside it.
+        (REPO_ROOT / "configs/scripts/design_lint_common.py", Path("scripts/design_lint_common.py")),
+        (REPO_ROOT / "configs/scripts/design_lint_source.py", Path("scripts/design_lint_source.py")),
     ),
     "green": (
         (

@@ -315,7 +315,8 @@ echo "  Installed: $(ls "$SCRIPT_DIR/configs/scripts/"*.sh "$SCRIPT_DIR/configs/
 # Explicit named install for design-lint.py: the frontend-design skill's
 # completion checklist requires `design-lint html <artifact>` before
 # reporting done, so its presence at this path is load-bearing, not
-# incidental to the generic *.py sweep above.
+# incidental to the generic *.py sweep above. It imports design_lint_common.py
+# and design_lint_source.py from beside itself; that sweep installs both.
 if [[ -f "$SCRIPT_DIR/configs/scripts/design-lint.py" ]]; then
   cp "$SCRIPT_DIR/configs/scripts/design-lint.py" "$CLAUDE_DIR/scripts/design-lint.py"
   chmod +x "$CLAUDE_DIR/scripts/design-lint.py"
