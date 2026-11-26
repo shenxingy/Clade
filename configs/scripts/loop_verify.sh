@@ -187,7 +187,12 @@ Only fix syntax errors. Do not change logic or add features."
 
   # Fixer edits files + commits → keeps user hooks deliberately (no PURE_JUDGE_FLAGS);
   # its stdout is only tee'd to the log, never parsed.
-  _timeout "$SUPERVISOR_TIMEOUT" claude --model "$SUPERVISOR_MODEL" -p "$fix_prompt" \
+  # CLADE_WORKER_TASK_ID, as for the workers (loop-runner node_run_workers):
+  # committer never pushes under it and adds the X-Clade-Task trailer. This
+  # call runs straight from the loop, so without it the fixer's committer
+  # pushed HEAD — every worker commit of the run — to the same-named branch.
+  CLADE_WORKER_TASK_ID="loop-iter${ITERATION:-0}-fix" \
+    _timeout "$SUPERVISOR_TIMEOUT" claude --model "$SUPERVISOR_MODEL" -p "$fix_prompt" \
     2>&1 | tee -a "$LOG_DIR/loop.log" || {
       log_warn "Fix syntax attempt failed or timed out"
     }
