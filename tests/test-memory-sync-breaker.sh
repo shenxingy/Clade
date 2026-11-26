@@ -114,19 +114,27 @@ poll() {
   return 1
 }
 
+# pid_gone PID — PID has exited. bash reaps a finished background child by
+# itself (its SIGCHLD handler, and the waitpid(-1) behind each foreground
+# `sleep`), so a finished reader is not left as a zombie kill -0 still finds.
+pid_gone() { ! kill -0 "$1" 2>/dev/null; }
+
 # The hook detaches sync-push and exits, so its exit says nothing about the
-# push. Every process it starts inherits fd 7, the write end of a pipe; the
-# reader marks hook.done at EOF, i.e. once the hook AND everything it detached
-# have exited. Waiting on that event replaced a fixed 0.3 s sleep, which a slow
-# push outlasts: a "spawned nothing" check then passed with the spawn still due.
+# push. Every process it starts inherits fd 7, the write end of a pipe whose
+# reader copies the hook's exit status into hook.rc and exits at EOF, i.e. once
+# the hook AND everything it detached have exited. Waiting on that event
+# replaced a fixed 0.3 s sleep, which a slow push outlasts: a "spawned nothing"
+# check then passed with the spawn still due. The wait polls the reader's own
+# pid, never a file, so nothing an earlier call left behind can end it early and
+# hand the case to an unbounded `wait`; hook.rc is rewritten by this call's
+# reader and read only after it exits.
 # Neither side of that pipe keeps the suite's stdout or stderr: a hung process
 # holding them would keep a caller that reads the suite through a pipe (ci-local,
 # `| tail`) waiting long after the bound below failed the case. HOOK_WAIT_TRIES
 # (default 200, 10 s) is that bound; t_harness lowers it.
 # Empty HOOK_BASE/HOOK_MAX/now pass empty overrides, so the hook's defaults apply.
 run_hook() {
-  local now="$1" input="$2" tries="${HOOK_WAIT_TRIES:-200}"
-  rm -f "$H/hook.rc" "$H/hook.done"
+  local now="$1" input="$2" tries="${HOOK_WAIT_TRIES:-200}" reader
   {
     printf '%s' "$input" | HOME="$H" BASH_ENV="${HOOK_BASH_ENV:-}" \
       CLADE_SYNC_PUSH_LOCK="$H/.claude/push.lock" \
@@ -135,10 +143,11 @@ run_hook() {
       CLADE_SYNC_PUSH_BACKOFF_BASE_SECONDS="${HOOK_BASE-60}" \
       CLADE_SYNC_PUSH_BACKOFF_MAX_SECONDS="${HOOK_MAX-240}" \
       bash "$HOOK" 7>&1 > "$H/hook.out" 2> "$H/hook.err"
-    printf '%s\n' "$?" > "$H/hook.rc"
-  } 2>/dev/null | { cat > /dev/null; : > "$H/hook.done"; } >/dev/null 2>&1 &
-  if poll "$tries" test -e "$H/hook.done"; then
-    wait "$!" 2>/dev/null
+    printf '%s\n' "$?"
+  } 2>/dev/null | cat > "$H/hook.rc" 2>/dev/null &
+  reader=$!
+  if poll "$tries" pid_gone "$reader"; then
+    wait "$reader" 2>/dev/null
     HOOK_RC=$(cat "$H/hook.rc")
   else
     HOOK_RC=unfinished
@@ -751,11 +760,21 @@ hung_fire() {
   kill "$(cat "$H/sleeper.pid" 2>/dev/null)" 2>/dev/null || true
 }
 
+# prior_write — a normal write that finishes, so the hung run after it is not
+# the store's first: whatever an earlier run_hook leaves behind must not end
+# the next one's wait and hand it to an unbounded `wait`.
+prior_write() {
+  install_stub
+  fire_write 8999 "$H/.claude/skills/demo/SKILL.md"
+  assert_eq "$HOOK_RC" "0" "$1: an earlier write in the same store finishes first"
+}
+
 t_harness() {
   section "run_hook's bound fails a hung run without holding the suite's output"
 
   # The detached push hangs: only the reader is left on the pipe.
   new_store harness-push
+  prior_write harness-push
   cat > "$H/.claude/scripts/sync-push.sh" <<EOF
 #!/usr/bin/env bash
 printf '%s\n' "\$\$" > '$H/sleeper.pid'
@@ -769,7 +788,7 @@ EOF
 
   # The hook itself hangs, so the writer side of the pipe is still running too.
   new_store harness-hook
-  install_stub
+  prior_write harness-hook
   printf 'printf "%%s\\n" "$$" > "%s/sleeper.pid"; exec sleep 16\n' "$H" > "$H/hang.env"
   HOOK_BASH_ENV="$H/hang.env" hung_fire
   assert_eq "$HUNG_RC" "unfinished" "a hook that outlives the bound fails the case"
@@ -846,10 +865,19 @@ if [[ -z "$MSB_MUTANT" && -z "${MSB_SKIP_MUTATIONS:-}" ]]; then
   # its own line below from matching it.
   mutation red self "run_hook waiting for the push it detached" gate \
     'bash "$HOOK" 7>&''1 >' 'bash "$HOOK" >'
-  mutation red self "the reader's /dev/null redirect" harness \
-    '"$H/hook.done"; } >/dev/null 2>&''1 &' '"$H/hook.done"; } &'
+  mutation red self "the reader's stderr redirect" harness \
+    'cat > "$H/hook.rc" 2>/dev/''null &' 'cat > "$H/hook.rc" &'
   mutation red self "the writer's stderr redirect" harness \
-    '} 2>/dev/''null | {' '} | {'
+    '} 2>/dev/''null | cat' '} | cat'
+  mutation red self "the bound on run_hook's wait" harness \
+    'if poll "$tries" pid_''gone "$reader"; then' 'if wait "$reader"; then'
+  # The old marker file with nothing clearing it, and no other change: red only
+  # because prior_write leaves a marker behind (without it this mutant is green).
+  mutation red self "waiting on the reader's pid, not a marker an earlier call leaves" harness \
+    'cat > "$H/hook.rc" 2>/dev/''null &' '{ cat > "$H/hook.rc"; : > "$H/hook.done"; } >/dev/null 2>&1 &' \
+    'poll "$tries" pid_''gone "$reader"' 'poll "$tries" test -e "$H/hook.done"'
+  mutation red self "each call rewriting its own status file" gate \
+    '| cat ''> "$H/hook.rc" 2>' '| cat >> "$H/hook.rc" 2>'
   mutation red push "rejected-push failure recording" failures \
     'sync_push_record_failure push-failed' ':'
   mutation red push "success clearing the breaker" failures \
