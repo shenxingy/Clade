@@ -505,7 +505,9 @@ build metadata.
 ## CI (GitHub Actions)
 
 Gate before every push with `python3 configs/scripts/ci-local.py` (`--list`
-shows what runs here and why; `--json` is for `/green`). Every workflow and
+shows what runs here and why; `--json` is for `/green`). It exits 1 on a
+failure and 2 when nothing failed but the run is not green (PARTIAL, FLAKY,
+NOTHING RAN); `--no-strict` makes that 2 a 0. Every workflow and
 gate, why each exists, how to run one by hand, and why stacked PRs get no CI
 are in [docs/ci-gates.md](docs/ci-gates.md). A new CI step needs its
 explanation there in the same commit; `check-ci-checklist.py` fails otherwise.

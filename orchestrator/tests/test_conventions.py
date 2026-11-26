@@ -19,6 +19,9 @@ Covers:
      only in config.py (_MODEL_ALIASES / HAIKU_MODEL etc.) — everywhere else
      imports them or has them threaded in (documented leaf modules), so a
      model rotation is a one-line change instead of a repo-wide grep.
+  5. Global CLAUDE.md ceiling: configs/CLAUDE.md, installed as every session's
+     global instruction file, stays at or under a recorded byte ceiling that
+     only moves down.
 """
 
 from __future__ import annotations
@@ -349,6 +352,81 @@ def test_dated_model_ids_live_only_in_config() -> None:
         "rotate. Import HAIKU_MODEL/SONNET_MODEL/OPUS_MODEL from config "
         "(leaf modules: thread it in from worker.py instead):\n"
         + "\n".join(violations)
+    )
+
+
+# ─── 5. Global CLAUDE.md ceiling ─────────────────────────────────────────────
+
+# install.sh copies configs/CLAUDE.md to ~/.claude/CLAUDE.md and appends the
+# owner's private "## Cross-Project Rules" tail after it. Claude Code loads that
+# file whole into every session and every subagent, and on a 200k-context model
+# it warns (it does not truncate) past 40,000 chars per file. The template grew
+# from 20,322 chars at 5aac2b3 (2026-10-17) to 24,078 at 9f988b5 (2026-10-24)
+# and to 32,376 chars (32,555 bytes) at e82c0c8 (2026-11-26), and nothing stopped
+# it: auto-audit.sh's budget (claude_md_budget in configs/hooks/lib/rule-utils.sh)
+# refuses promotions only.
+#
+# **The ceiling shrinks and never grows.** A change that adds guidance tightens
+# something else in the same diff. Raising CLAUDE_MD_CEILING_BYTES is an edit to
+# this line, so a reviewer sees it. A cut that frees more than
+# CLAUDE_MD_CEILING_SLACK bytes must lower the ceiling with it, or the room it
+# freed is re-spent by the next addition without anyone deciding to.
+#
+# Bytes rather than characters, as claude_md_budget counts: `wc -c` agrees on
+# GNU and BSD, and bytes over-count non-ASCII, so the gate trips early, never late.
+CLAUDE_MD_TEMPLATE = REPO_ROOT / "configs" / "CLAUDE.md"
+CLAUDE_MD_CEILING_BYTES = 32_555
+CLAUDE_MD_CEILING_SLACK = 1_000
+CLAUDE_CODE_PER_FILE_WARNING_CHARS = 40_000
+# The private tail as installed on the author's host on 2026-11-26: the bytes
+# of ~/.claude/CLAUDE.md from the newline before "## Cross-Project Rules" to the
+# end (15,872 chars). A recorded figure, not a reading — CI has no private tail.
+PRIVATE_TAIL_BYTES = 16_073
+
+
+def _template_bytes() -> int:
+    return len(CLAUDE_MD_TEMPLATE.read_bytes())
+
+
+def test_global_claude_md_is_the_file_install_sh_ships() -> None:
+    """The ceiling below measures configs/CLAUDE.md only because install.sh
+    copies that file. If the deploy source moves, the gate must move with it."""
+    install_sh = (REPO_ROOT / "install.sh").read_text(encoding="utf-8")
+    assert re.search(
+        r'^\s*cp "\$SCRIPT_DIR/configs/CLAUDE\.md" "\$CLAUDE_DIR/CLAUDE\.md"$',
+        install_sh,
+        re.MULTILINE,
+    ), (
+        "install.sh no longer copies configs/CLAUDE.md to ~/.claude/CLAUDE.md, so "
+        "CLAUDE_MD_TEMPLATE measures a file nobody installs. Point it at the file "
+        "install.sh ships as the global CLAUDE.md."
+    )
+
+
+def test_global_claude_md_stays_under_its_ceiling() -> None:
+    size = _template_bytes()
+    installed = size + PRIVATE_TAIL_BYTES
+    assert size <= CLAUDE_MD_CEILING_BYTES, (
+        f"configs/CLAUDE.md is {size:,} bytes, {size - CLAUDE_MD_CEILING_BYTES:,} "
+        f"over its ceiling of {CLAUDE_MD_CEILING_BYTES:,} (CLAUDE_MD_CEILING_BYTES "
+        "in orchestrator/tests/test_conventions.py). install.sh installs it as the "
+        "global ~/.claude/CLAUDE.md, which Claude Code loads into every session and "
+        f"subagent and warns about past {CLAUDE_CODE_PER_FILE_WARNING_CHARS:,} chars "
+        "per file on a 200k-context model. With the owner's private Cross-Project "
+        f"Rules tail ({PRIVATE_TAIL_BYTES:,} bytes, measured 2026-11-26) the "
+        f"installed file comes to {installed:,} bytes. Tighten something else in "
+        "this change, or raise the ceiling in this same diff so a reviewer sees it."
+    )
+
+
+def test_global_claude_md_ceiling_is_lowered_after_a_cut() -> None:
+    size = _template_bytes()
+    assert size >= CLAUDE_MD_CEILING_BYTES - CLAUDE_MD_CEILING_SLACK, (
+        f"configs/CLAUDE.md is {size:,} bytes, {CLAUDE_MD_CEILING_BYTES - size:,} "
+        f"under its ceiling of {CLAUDE_MD_CEILING_BYTES:,}. The ceiling only moves "
+        f"down: set CLAUDE_MD_CEILING_BYTES = {size:_} in "
+        "orchestrator/tests/test_conventions.py in this change, so the room the cut "
+        "freed is not re-spent by the next addition."
     )
 
 

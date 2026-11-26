@@ -17,7 +17,7 @@
 #   - a step that hit the step timeout is not rerun, and its failure names
 #     --timeout; the default timeout is 900 s scaled by load per CPU (1x-4x),
 #     printed at the start, with --timeout overriding it;
-#   - --no-rerun makes the flake a plain failure; --strict exits 2 on FLAKY;
+#   - --no-rerun makes the flake a plain failure; FLAKY exits 2 (--no-strict: 0);
 #   - verdict order fail > none > partial > flaky > pass, with the flaky steps
 #     still listed when the run reads PARTIAL or fails.
 # Each fixture step counts its own attempts in a file, so the assertions read
@@ -99,7 +99,7 @@ PY
 
 section "a step that passes only on its rerun is FLAKY, not green"
 OUT="$(flaky_ci --job "Flaky Job")"; RC=$?
-assert_eq "$RC" "0" "report-only rollout: a FLAKY run exits 0 without --strict"
+assert_eq "$RC" "2" "a FLAKY run exits 2: nothing failed, and it is not green"
 assert_eq "$(attempts "$FLAKY" flaky)" "2" "the failed step ran exactly twice"
 assert_contains "$OUT" "ci-local: FLAKY: 1/1 job(s) passed" \
   "the summary line says FLAKY, and the job is not counted as failed"
@@ -110,9 +110,9 @@ assert_contains "$OUT" "FLAKY is not green" "the output says what FLAKY means"
 assert_lacks "$OUT" "FAILED  " "no job is reported failed"
 if [[ -e "$FLAKY/.after-flake-ran" ]]; then pass "the step after a flaky step still runs"
 else fail "the step after a flaky step still runs" "the .after-flake-ran marker is missing"; fi
-OUT="$(flaky_ci --job "Flaky Job" --strict)"; RC=$?
-assert_eq "$RC" "2" "--strict exits 2 on FLAKY"
-assert_contains "$OUT" "ci-local: FLAKY:" "and it is the FLAKY verdict that made it 2"
+OUT="$(flaky_ci --job "Flaky Job" --no-strict)"; RC=$?
+assert_eq "$RC" "0" "--no-strict exits 0 on FLAKY, as in the report-only week"
+assert_contains "$OUT" "ci-local: FLAKY:" "and the verdict still says FLAKY"
 CHECK=$(check_json "$(flaky_json --job "Flaky Job")" '
 if d.get("verdict") != "flaky":
     problems.append("verdict=%r" % d.get("verdict"))
@@ -194,13 +194,13 @@ if d.get("step_timeout") != 77:
 assert_eq "$CHECK" "ok" "JSON: --timeout overrides the default"
 
 section "the verdict order: fail > partial > flaky, the flaky steps always listed"
-OUT="$(flaky_ci --job "Flaky Job" --job "Unproven Lane")"; RC=$?
-assert_eq "$RC" "0" "PARTIAL with a flaky step exits 0 without --strict"
+OUT="$(flaky_ci --job "Flaky Job" --job "Unproven Lane" --no-strict)"; RC=$?
+assert_eq "$RC" "0" "PARTIAL with a flaky step exits 0 under --no-strict"
 assert_contains "$OUT" "ci-local: PARTIAL: 2/2 job(s) passed" "an unproven lane outranks a flaky step: PARTIAL"
 assert_contains "$OUT" "1 step(s) flaky" "the summary line still counts the flaky step"
 assert_contains "$OUT" "  flaky: Flaky Job › Passes on rerun (first exit 4)" "and the flaky line still names it"
-flaky_ci --job "Flaky Job" --job "Unproven Lane" --strict >/dev/null; RC=$?
-assert_eq "$RC" "2" "--strict exits 2 on PARTIAL with a flaky step"
+flaky_ci --job "Flaky Job" --job "Unproven Lane" >/dev/null; RC=$?
+assert_eq "$RC" "2" "and exits 2 on PARTIAL with a flaky step by default"
 CHECK=$(check_json "$(flaky_json --job "Flaky Job" --job "Unproven Lane")" '
 if d.get("verdict") != "partial":
     problems.append("verdict=%r" % d.get("verdict"))
@@ -237,7 +237,7 @@ ci_local_flaky_mutations() {
     'failed = [r for r in ran if r.status == "fail"]' \
     'failed = [r for r in ran if r.status == "fail" or r.flaky_steps]'
   mutation red "--no-rerun being honoured" 'rerun=not args.no_rerun))' 'rerun=True))'
-  mutation red "--strict exiting 2 on FLAKY" \
+  mutation red "exiting 2 on FLAKY" \
     'exit_code = 1 if failed else (2 if verdict != "pass" and args.strict else 0)' \
     'exit_code = 1 if failed else (2 if verdict not in ("pass", "flaky") and args.strict else 0)'
   mutation red "the steps after a flaky step running" \
