@@ -91,6 +91,16 @@ a second time. Existing groups stay at their original indices, a no-op reinstall
 does not rewrite the file, and new or configuration-changed entries still
 require the owner's review in `/hooks`.
 
+`./uninstall.sh` takes that wiring out again: every handler whose command starts
+with the quoted `"$HOME/.codex/clade-hooks/decision-to-codex.sh"`, in
+`~/.codex/hooks.json` and in each `~/.codex-profiles/*/hooks.json` that is a
+file of its own, then any group or event list the removal emptied, then
+`~/.codex/clade-hooks/` once no hooks.json names the adapter. User groups keep
+their order and fields, a file holding nothing of Clade's is not rewritten, and
+a file it cannot parse (or a machine with no working Python) is left as it was,
+together with the adapter it still runs. `config.toml` is not edited, so trust
+entries for the removed handlers stay there unused.
+
 Codex loads executable workflow instructions from `SKILL.md`, while Clade's
 original Claude distribution executes `prompt.md`. The generator combines both
 canonical sources and applies Codex compatibility rules:

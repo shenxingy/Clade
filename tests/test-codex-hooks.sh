@@ -1,16 +1,18 @@
 #!/usr/bin/env bash
-# test-codex-hooks.sh — Codex 0.169.0 user-hook discovery and Clade's adapter.
+# test-codex-hooks.sh — Codex 0.169.0 user-hook discovery, Clade's adapter, and
+# uninstall.sh taking the wiring out again.
 # Every runtime case executes the exact command installed in hooks.json. HOME,
 # CODEX_HOME, project, runtime, sync state and git repositories are temporary.
 # No Codex/Kimi process, network, credential or real user file is used.
 #
-# CODEX_SRC_ROOT/CODEX_INSTALL_SH point at an old tree for the RED control.
+# CODEX_SRC_ROOT/CODEX_INSTALL_SH/CODEX_UNINSTALL_SH point at an old tree for the RED control.
 # CODEX_ADAPTER_OVERRIDE/CODEX_MERGER_OVERRIDE support guard-ablation controls.
 
 set -uo pipefail
 
 SRC_ROOT="${CODEX_SRC_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 INSTALL_SH="${CODEX_INSTALL_SH:-$SRC_ROOT/install.sh}"
+UNINSTALL_SH="${CODEX_UNINSTALL_SH:-$SRC_ROOT/uninstall.sh}"
 MERGER="${CODEX_MERGER_OVERRIDE:-$SRC_ROOT/configs/scripts/codex-hooks-merge.py}"
 TMP_ROOT=$(mktemp -d)
 trap 'rm -rf "$TMP_ROOT"' EXIT
@@ -897,6 +899,247 @@ PY
     fail "merger mutation $name goes red" "mutant survived $probe"
   else
     pass "merger mutation $name goes red"
+  fi
+done
+
+section "uninstall.sh takes out Clade's Codex wiring and nothing else"
+uninstall_home() {  # uninstall_home HOME LOG [UNINSTALL_SH] [PATH_PREFIX]
+  local home="$1" log="$2" script="${3:-$UNINSTALL_SH}" path_prefix="${4:-$FAKE_BIN}"
+  HOME="$home" CODEX_HOME="$home/.codex" PATH="$path_prefix:$PATH" PYTHONDONTWRITEBYTECODE=1 \
+    bash "$script" </dev/null > "$log" 2>&1
+}
+# One real install seeds every case: the amsg fixture plus a user event list
+# that is empty on purpose, then the edits a user makes AFTER installing — a
+# group behind Clade's, a handler added INTO Clade's SessionEnd group, and a
+# profile holding its own copy of a Clade group beside its own.
+UN_T="$TMP_ROOT/uninstall-template"
+amsg_fixture "$UN_T"
+python3 - "$UN_T/.codex/hooks.json" <<'PY'
+import json, sys
+from pathlib import Path
+path = Path(sys.argv[1])
+document = json.loads(path.read_text(encoding="utf-8"))
+document["hooks"]["PermissionRequest"] = []
+path.write_text(json.dumps(document, indent=1) + "\n", encoding="utf-8")
+PY
+cp "$UN_T/.codex/hooks.json" "$TMP_ROOT/un-before.json"
+printf '[hooks.state."/fake/hooks.json:session_start:0:0"]\ntrusted_hash = "fixture"\n' > "$UN_T/.codex/config.toml"
+cp "$UN_T/.codex/config.toml" "$TMP_ROOT/un-config-before.toml"
+install_home "$UN_T" "$TMP_ROOT/un-install.log"
+UN_INSTALL_RC=$?
+python3 - "$UN_T" "$TMP_ROOT/un-before.json" "$TMP_ROOT/un-expected.json" "$TMP_ROOT/un-profile-expected.json" <<'PY'
+import copy, json, sys
+from pathlib import Path
+home, before = Path(sys.argv[1]), json.loads(Path(sys.argv[2]).read_text(encoding="utf-8"))
+path = home / ".codex" / "hooks.json"
+document = json.loads(path.read_text(encoding="utf-8"))
+def clade(group):
+    return any("clade-hooks/decision-to-codex.sh" in h.get("command", "") for h in group["hooks"])
+after_install = {"hooks": [{"type": "command", "command": "/fake/user/after-install"}]}
+shared = {"type": "command", "command": "/fake/user/shared-group", "timeout": 2}
+clade_stop = next(g for g in document["hooks"]["Stop"] if clade(g))
+clade_end = next(g for g in document["hooks"]["SessionEnd"] if clade(g))
+document["hooks"]["Stop"].append(after_install)
+clade_end["hooks"].append(shared)
+path.write_text(json.dumps(document, indent=2) + "\n", encoding="utf-8")
+expected = copy.deepcopy(before)
+expected["hooks"]["Stop"].append(after_install)
+expected["hooks"]["SessionEnd"].append({"matcher": clade_end.get("matcher"), "hooks": [shared]})
+Path(sys.argv[3]).write_text(json.dumps(expected) + "\n", encoding="utf-8")
+own = home / ".codex-profiles" / "own"
+own.mkdir(parents=True)
+profile_user = {"hooks": [{"type": "command", "command": "/fake/profile/own"}]}
+(own / "hooks.json").write_text(json.dumps(
+    {"description": "own profile", "hooks": {"Stop": [profile_user, clade_stop]}}, indent=2) + "\n", encoding="utf-8")
+Path(sys.argv[4]).write_text(json.dumps({"description": "own profile", "hooks": {"Stop": [profile_user]}}) + "\n", encoding="utf-8")
+PY
+mkdir -p "$UN_T/.codex-profiles/linked" "$TMP_ROOT/un-seed/.codex-profiles"
+ln -s "$UN_T/.codex/hooks.json" "$UN_T/.codex-profiles/linked/hooks.json"
+cp -R "$UN_T/.codex" "$TMP_ROOT/un-seed/"
+cp -R "$UN_T/.codex-profiles/own" "$TMP_ROOT/un-seed/.codex-profiles/"
+
+seed_codex_home() {  # seed_codex_home DEST — the template's installed state, re-rooted at DEST
+  python3 - "$TMP_ROOT/un-seed" "$1" "$UN_T" <<'PY'
+import os, shutil, sys
+from pathlib import Path
+seed, dest, old = Path(sys.argv[1]), Path(sys.argv[2]), sys.argv[3]
+for rel in (".codex/hooks.json", ".codex/config.toml", ".codex-profiles/own/hooks.json"):
+    target = dest / rel
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text((seed / rel).read_text(encoding="utf-8").replace(old, str(dest)), encoding="utf-8")
+link = dest / ".codex-profiles" / "linked" / "hooks.json"
+link.parent.mkdir(parents=True, exist_ok=True)
+os.symlink(dest / ".codex" / "hooks.json", link)
+adapter = dest / ".codex" / "clade-hooks" / "decision-to-codex.sh"
+adapter.parent.mkdir(parents=True, exist_ok=True)
+shutil.copy2(seed / ".codex" / "clade-hooks" / "decision-to-codex.sh", adapter)
+PY
+}
+
+codex_uninstalled() {  # codex_uninstalled HOME — empty when only Clade's wiring is gone
+  python3 - "$1" "$TMP_ROOT/un-expected.json" "$TMP_ROOT/un-profile-expected.json" "$TMP_ROOT/un-config-before.toml" <<'PY'
+import json, sys
+from pathlib import Path
+home = Path(sys.argv[1])
+errors = []
+def load(path):
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        errors.append(f"{path}: {exc}")
+for rel, want in ((".codex/hooks.json", sys.argv[2]), (".codex-profiles/own/hooks.json", sys.argv[3])):
+    got = load(home / rel)
+    if got is not None and got != json.loads(Path(want).read_text(encoding="utf-8")):
+        errors.append(f"{rel} is not exactly the user's own groups: {json.dumps(got)[:400]}")
+if not (home / ".codex-profiles" / "linked" / "hooks.json").is_symlink():
+    errors.append("the linked profile hooks.json is no longer a link")
+if (home / ".codex" / "clade-hooks").exists():
+    errors.append("~/.codex/clade-hooks/ was left behind")
+if (home / ".codex" / "config.toml").read_text(encoding="utf-8") != Path(sys.argv[4]).read_text(encoding="utf-8"):
+    errors.append("config.toml trust state changed")
+print("; ".join(errors))
+PY
+}
+
+# Each probe is also an oracle for the mutation controls below.
+probe_codex_uninstall() {
+  local script="$1" probe="$2" d rc errors=""
+  d=$(mktemp -d "$TMP_ROOT/probe-uninstall.XXXXXX") || return 1
+  case "$probe" in
+    roundtrip)
+      seed_codex_home "$d"
+      uninstall_home "$d" "$d/log" "$script"
+      rc=$?
+      errors=$(codex_uninstalled "$d")
+      [[ "$rc" == 0 ]] || errors="uninstall exited $rc $errors"
+      ;;
+    untouched)
+      amsg_fixture "$d"
+      cp "$d/.codex/hooks.json" "$d/before"
+      uninstall_home "$d" "$d/log" "$script"
+      rc=$?
+      cmp -s "$d/.codex/hooks.json" "$d/before" || errors="a hooks.json holding nothing of Clade's was rewritten"
+      [[ "$rc" == 0 ]] || errors="uninstall exited $rc $errors"
+      ;;
+    invalid|no-python)
+      seed_codex_home "$d"
+      [[ "$probe" == no-python ]] || printf 'garbage\n' >> "$d/.codex/hooks.json"
+      cp "$d/.codex/hooks.json" "$d/before"
+      if [[ "$probe" == invalid ]]; then
+        warning='WARNING: Codex hooks unchanged'
+        uninstall_home "$d" "$d/log" "$script"
+      else
+        warning='(no working Python)'
+        uninstall_home "$d" "$d/log" "$script" "$NO_PY_BIN:$FAKE_BIN"
+      fi
+      rc=$?
+      cmp -s "$d/.codex/hooks.json" "$d/before" || errors="a hooks.json the uninstaller could not clean was changed"
+      [[ -f "$d/.codex/clade-hooks/decision-to-codex.sh" ]] || errors="$errors; the adapter was deleted while hooks.json still runs it"
+      grep -qF "$warning" "$d/log" || errors="$errors; no '$warning' line"
+      [[ "$rc" == 0 ]] || errors="uninstall exited $rc $errors"
+      ;;
+    external-link)
+      seed_codex_home "$d"
+      mkdir -p "$d/.codex-profiles/ext" "$d/elsewhere"
+      cp "$d/.codex-profiles/own/hooks.json" "$d/elsewhere/hooks.json"
+      cp "$d/elsewhere/hooks.json" "$d/before"
+      ln -s "$d/elsewhere/hooks.json" "$d/.codex-profiles/ext/hooks.json"
+      uninstall_home "$d" "$d/log" "$script"
+      rc=$?
+      cmp -s "$d/elsewhere/hooks.json" "$d/before" || errors="a profile link's target outside ~/.codex was edited"
+      [[ -f "$d/.codex/clade-hooks/decision-to-codex.sh" ]] || errors="$errors; the adapter was deleted while a linked file still runs it"
+      [[ $(grep -c 'clade-hooks/decision-to-codex.sh' "$d/.codex/hooks.json") == 0 ]] || errors="$errors; ~/.codex/hooks.json was not cleaned"
+      [[ "$rc" == 0 ]] || errors="uninstall exited $rc $errors"
+      ;;
+    symlink-main)
+      seed_codex_home "$d"
+      mkdir -p "$d/actual"
+      mv "$d/.codex/hooks.json" "$d/actual/hooks.json"
+      chmod 640 "$d/actual/hooks.json"
+      ln -s "$d/actual/hooks.json" "$d/.codex/hooks.json"
+      uninstall_home "$d" "$d/log" "$script"
+      rc=$?
+      mode=$(stat -c %a "$d/actual/hooks.json" 2>/dev/null || stat -f %Lp "$d/actual/hooks.json")
+      [[ -L "$d/.codex/hooks.json" && "$mode" == 640 ]] || errors="the link or its target's mode changed: mode=$mode"
+      [[ $(grep -c 'clade-hooks/decision-to-codex.sh' "$d/actual/hooks.json") == 0 ]] || errors="$errors; the link target was not cleaned"
+      [[ "$rc" == 0 ]] || errors="uninstall exited $rc $errors"
+      ;;
+    *) errors="unknown uninstall probe" ;;
+  esac
+  rm -rf "$d"
+  [[ -z "$errors" ]] || { printf '%s\n' "$errors"; return 1; }
+  return 0
+}
+
+uninstall_home "$UN_T" "$TMP_ROOT/un-uninstall.log"
+UN_RC=$?
+assert_eq "$UN_INSTALL_RC|$UN_RC" "0|0" "install.sh then uninstall.sh both succeed against the temporary HOME"
+assert_probe codex_uninstalled "$UN_T" unused \
+  "after a real install: every user group, field and empty list is back exactly, the own profile too, the adapter is gone and trust state is untouched"
+assert_contains "$(cat "$TMP_ROOT/un-uninstall.log")" "Codex hooks: 10 removed from $UN_T/.codex/hooks.json" \
+  "uninstall.sh reports the ten wirings it took out"
+assert_contains "$(cat "$TMP_ROOT/un-uninstall.log")" "Codex hooks: 1 removed from $UN_T/.codex-profiles/own/hooks.json" \
+  "uninstall.sh cleans a profile that holds its own hooks.json"
+cp "$UN_T/.codex/hooks.json" "$TMP_ROOT/un-after.json"
+uninstall_home "$UN_T" "$TMP_ROOT/un-uninstall-2.log"
+UN_RC=$?
+cmp -s "$UN_T/.codex/hooks.json" "$TMP_ROOT/un-after.json"
+assert_eq "$UN_RC|$?" "0|0" "a second uninstall leaves hooks.json byte-identical"
+for probe in roundtrip untouched invalid no-python external-link symlink-main; do
+  assert_probe probe_codex_uninstall "$UNINSTALL_SH" "$probe" "uninstall probe: $probe"
+done
+
+# Guard ablations: a source tree whose uninstall.sh or merger is a mutant, and
+# whose other files link to the real ones. Rows are one line each — `read` stops
+# at a newline, and a row cut short there leaves the probe name empty, which
+# "goes red" without running anything — and a mutant must still parse, so red
+# means the guard is missed, not that the file broke.
+uninstall_tree() {  # uninstall_tree DIR UNINSTALL_SH MERGER
+  local dir="$1" item
+  mkdir -p "$dir/configs/scripts"
+  cp "$2" "$dir/uninstall.sh"
+  for item in "$SRC_ROOT/configs/"*; do
+    [[ "$(basename "$item")" == scripts ]] || ln -s "$item" "$dir/configs/"
+  done
+  for item in "$SRC_ROOT/configs/scripts/"*; do
+    [[ "$(basename "$item")" == codex-hooks-merge.py ]] || ln -s "$item" "$dir/configs/scripts/"
+  done
+  cp "$3" "$dir/configs/scripts/codex-hooks-merge.py"
+}
+uninstall_tree "$TMP_ROOT/un-control" "$UNINSTALL_SH" "$MERGER"
+assert_probe probe_codex_uninstall "$TMP_ROOT/un-control/uninstall.sh" roundtrip "no-op uninstall tree control remains green"
+UNINSTALL_MUTATIONS=(
+  $'uninstall\tprofile-links-skipped\t[[ "$_codex_hooks" == "$CODEX_DIR/hooks.json" || ! -L "$_codex_hooks" ]] || continue\t:\texternal-link'
+  $'uninstall\tprofiles-cleaned\t[[ "$_codex_hooks" == "$CODEX_DIR/hooks.json" || ! -L "$_codex_hooks" ]] || continue\t[[ "$_codex_hooks" == "$CODEX_DIR/hooks.json" ]] || continue\troundtrip'
+  $'uninstall\tadapter-kept\tif [[ -n "$_codex_still" ]]; then\tif false; then\tinvalid'
+  $'merger\tno-op-write\tif removed:\tif True:\tuntouched'
+  $'merger\tempty-group\tif not handlers:\tif False:\troundtrip'
+  $'merger\tshared-group\tgroup["hooks"] = handlers\tcontinue\troundtrip'
+  $'merger\tuser-empty-event\tif event_removed and not kept_groups:\tif not kept_groups:\troundtrip'
+  $'merger\temptied-event\tif event_removed and not kept_groups:\tif False:\troundtrip'
+  $'merger\tadapter-prefix\t.startswith(prefix)]\t.startswith("")]\troundtrip'
+)
+for mutation in "${UNINSTALL_MUTATIONS[@]}"; do
+  IFS=$'\t' read -r kind name old new probe <<< "$mutation"
+  [[ -n "$probe" ]] || { fail "uninstall mutation $name is one well-formed row" "$mutation"; continue; }
+  tree="$TMP_ROOT/un-mut-$name"
+  mkdir -p "$tree"
+  if [[ "$kind" == uninstall ]]; then
+    mutate "$UNINSTALL_SH" "$tree/uninstall.mutant" "$old" "$new" \
+      && uninstall_tree "$tree" "$tree/uninstall.mutant" "$MERGER"
+  else
+    mutate "$MERGER" "$tree/merger.mutant" "$old" "$new" \
+      && uninstall_tree "$tree" "$UNINSTALL_SH" "$tree/merger.mutant"
+  fi || { fail "uninstall mutation $name removes its intended guard" "mutation text not found"; continue; }
+  if ! bash -n "$tree/uninstall.sh" 2>/dev/null \
+     || ! python3 -c 'import ast, sys; ast.parse(open(sys.argv[1]).read())' "$tree/configs/scripts/codex-hooks-merge.py" 2>/dev/null; then
+    fail "uninstall mutation $name still parses" "a mutant that cannot run goes red for the wrong reason"
+    continue
+  fi
+  if probe_codex_uninstall "$tree/uninstall.sh" "$probe" >/dev/null 2>&1; then
+    fail "uninstall mutation $name goes red" "mutant survived $probe"
+  else
+    pass "uninstall mutation $name goes red"
   fi
 done
 

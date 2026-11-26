@@ -75,6 +75,15 @@ linter 配置保护、secret/correction 检测、correction-pairing 状态、sto
 session cleanup 与 memory sync。它不会重复安装 plugin 已有的两个 hook，也不会
 重排用户条目或修改 trust state；新增条目仍需在 `/hooks` 中检查。
 
+`./uninstall.sh` 会把这些 wiring 再取出来：在 `~/.codex/hooks.json` 以及每个自带
+独立文件的 `~/.codex-profiles/*/hooks.json` 中，删除 command 以带引号的
+`"$HOME/.codex/clade-hooks/decision-to-codex.sh"` 开头的 handler，再删除因此变空的
+group 或 event 列表；当没有任何 hooks.json 再引用 adapter 时，才删除
+`~/.codex/clade-hooks/`。用户条目保持原有顺序与字段；不含 Clade 条目的文件不会被
+重写；无法解析的文件（或没有可用 Python 的机器）保持原样，它仍在调用的 adapter
+也一并保留。`config.toml` 不会被修改，所以已删除 handler 的 trust 条目会留在那里，
+不再被使用。
+
 Codex 从 `SKILL.md` 加载可执行 workflow；Clade 原来的 Claude distribution
 执行 `prompt.md`。Generator 会合并两份 canonical source，并应用 Codex
 compatibility rules：
