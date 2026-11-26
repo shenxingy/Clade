@@ -216,6 +216,20 @@ python3 configs/scripts/harness-usage.py --self-test
 #     stay green, are in orchestrator/tests/can_fire/task_eta.py.
 python3 configs/scripts/task-eta.py --self-test
 
+# 2i. Global CLAUDE.md ceiling (pytest job, test_conventions.py section 5).
+#     install.sh installs configs/CLAUDE.md as ~/.claude/CLAUDE.md, which Claude
+#     Code loads into every session and subagent and warns about past 40,000
+#     chars per file on a 200k-context model. The template grew from 20,322
+#     chars (5aac2b3, 2026-10-17) to 32,555 bytes (e82c0c8, 2026-11-26) with
+#     nothing to stop it; auto-audit.sh's budget refuses promotions only. With
+#     the owner's private Cross-Project Rules tail (16,073 bytes on the author's
+#     host that day) the installed file is 48,628 bytes, already past the
+#     warning. CLAUDE_MD_CEILING_BYTES only moves down: the test fails over it,
+#     and fails more than 1,000 bytes under it until a cut lowers it, so raising
+#     it is always a visible edit in the same diff. A third case fails if
+#     install.sh stops copying that file, so the gate cannot watch a stale one.
+cd orchestrator && .venv/bin/python -m pytest tests/test_conventions.py -q -k global_claude_md
+
 # 3. Shell syntax check (hooks, scripts, installer). One file per `bash -n`: it
 #    parses only its first argument, so `bash -n a.sh b.sh` never reads b.sh.
 for f in configs/hooks/*.sh configs/hooks/lib/*.sh configs/codex-hooks/*.sh \
