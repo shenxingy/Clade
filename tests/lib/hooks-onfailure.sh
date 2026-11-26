@@ -8,17 +8,29 @@
 # A hook that fails — cannot start, times out, exits other than 0 or 2, prints
 # output that does not parse — is a non-blocking error by default: the action
 # goes ahead. For pre-tool-guardian that ran the command with no check at all:
-# on Claude Code 2.1.331, 7 guardian timeouts on 2026-11-26 19:04-19:18Z (load
-# ~180 on 32 cores, 7 of 585 Bash calls) each ran the command unchecked.
-# "onFailure": "block" (Claude Code 2.1.295+; an older CLI ignores the key, as
-# it ignores id and description) refuses the call instead. secret-scanner stays
-# fail-open on purpose: it only ever adds a note and never blocks a prompt, so
-# a failure that blocked one would stop work the hook exists not to stop
-# (docs/research/2026-11-26-claude-code-2.1.331-rechecks.md).
+# on 2026-11-26 19:04-19:18Z, 7 of the 283 Bash calls of one Claude Code 2.1.331
+# Workflow run hit the guardian's 5 s timeout, and each command ran unchecked.
+# None of the 858 other Bash calls on the host in that window did: that run's
+# agents ran their builds in the session's own cgroup scope, where its hooks run
+# too, and starved them. "onFailure": "block" (Claude Code 2.1.295+; an older
+# CLI ignores the key, as it ignores id and description) refuses the call
+# instead. secret-scanner stays fail-open on purpose: it only ever adds a note
+# and never blocks a prompt, so a failure that blocked one would stop work the
+# hook exists not to stop (docs/research/2026-11-26-claude-code-2.1.331-rechecks.md).
 jq -e '.hooks.PreToolUse[].hooks[] | select(.id=="pre-tool-guardian") | .onFailure == "block"' \
   "$SETTINGS" >/dev/null 2>&1 \
   && pass "pre-tool-guardian fails closed (onFailure: block)" \
   || fail "pre-tool-guardian fails closed (onFailure: block)"
+
+# Once a timeout refuses the call, the limit decides how often a starved
+# guardian turns into a refusal. A normal run takes about 0.05 s; in the starved
+# run above, 30 of 82 trivially fast Bash calls took 5 s or more end to end and
+# 2 took 15 s or more. No other hook fails closed, so their limits stay as set.
+jq -e '.hooks.PreToolUse[].hooks[] | select(.id=="pre-tool-guardian")
+       | (.timeout | type) == "number" and .timeout >= 15' \
+  "$SETTINGS" >/dev/null 2>&1 \
+  && pass "pre-tool-guardian's timeout leaves a starved guardian room (>= 15 s)" \
+  || fail "pre-tool-guardian's timeout leaves a starved guardian room (>= 15 s)"
 
 jq -e '[.hooks.UserPromptSubmit[].hooks[] | select(.id=="secret-scanner")] | length == 1
        and (.[0].onFailure // "continue") == "continue"' \

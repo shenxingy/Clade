@@ -13,15 +13,16 @@ summary: >
   use is one 2.1.331 knows, so the unknown-model 1M default reaches no session;
   and the 2.1.318 three-minute move does not reach Workflow subagents, so the
   270 s wait warning stays. One changed: pre-tool-guardian is now wired with
-  "onFailure": "block", because on 2.1.331 a guardian timeout still ran the
-  command unchecked (7 times in 15 minutes on 2026-11-26). secret-scanner was
-  left fail-open on purpose.
+  "onFailure": "block" and a 15 s timeout, because on 2.1.331 a guardian
+  timeout still ran the command unchecked (on 2026-11-26, 7 of the 283 Bash
+  calls of one Workflow run whose own builds starved its cgroup scope).
+  secret-scanner was left fail-open on purpose.
 integrated_items:
-  - "configs/settings-hooks.json: pre-tool-guardian carries \"onFailure\": \"block\"; pinned by tests/lib/hooks-onfailure.sh (sourced by tests/test-hooks.sh)"
+  - "configs/settings-hooks.json: pre-tool-guardian carries \"onFailure\": \"block\" and a 15 s timeout; pinned by tests/lib/hooks-onfailure.sh (sourced by tests/test-hooks.sh)"
 needs_work_items:
   - "context-policy.json verified_through_cc_version is still 2.1.283; the trigger formula and precedence were not re-read in the 2.1.331 binary"
 reference_items:
-  - "Watch: guardian timeouts under host load now refuse the call (7 of 585 Bash calls in the worst 15 minutes measured)"
+  - "Watch: a guardian timeout now refuses the call. At the old 5 s limit that was 7 of the 283 Bash calls of one Workflow run whose builds starved its cgroup scope, and 0 of the 858 other Bash calls on the host in the same 15 minutes (2026-11-26 19:04-19:19Z); the limit is now 15 s"
   - "Not run live: no Claude Code session was started to watch onFailure block a call; the evidence is the official hooks reference, the 2.1.295 changelog line and the 2.1.331 binary's strings"
 ---
 
@@ -35,7 +36,7 @@ reference_items:
 | b | 2.1.323: a permission error after a PreToolUse "allow" is decided as if no hook answered | **Does not apply.** The guardian's rewrite carries no `permissionDecision` | none |
 | c | 2.1.325: scheduled tasks and `/loop` ask before a skill with `allowed-tools` or hooks | **Does not apply** to `radar-cron.sh`, for two separate reasons | none |
 | d | 2.1.323: an unrecognised model ID is assumed to have 1M, not 200K | **Reaches no session on aries.** The policy's reasoning holds | none |
-| e | 2.1.288 fail-closed PreToolUse matching, and `onFailure: "block"` (2.1.295) | **Field honoured.** Guardian timeouts still ran commands unchecked | `pre-tool-guardian` gets `"onFailure": "block"`; `secret-scanner` deliberately does not |
+| e | 2.1.288 fail-closed PreToolUse matching, and `onFailure: "block"` (2.1.295) | **Field honoured.** Guardian timeouts still ran commands unchecked | `pre-tool-guardian` gets `"onFailure": "block"` and a 15 s timeout; `secret-scanner` deliberately does not |
 | f | 2.1.318 moves a background subagent's shell command to the background after 3 minutes | **Does not reach Workflow subagents.** 103 foreground calls ran past 270 s | none; the 270 s warning stays |
 
 Nothing is needed from the owner. Two things to watch: guardian timeouts now
@@ -150,28 +151,78 @@ validation. It has no effect on Stop, SubagentStop, TaskCompleted, TeammateIdle,
 or `async`/`asyncRewake` hooks. The 2.1.331 binary carries the runtime message
 `blocking because onFailure is "block"`.
 
-**Why it matters on this host.** On 2.1.331 the guardian still failed open. In
-the 15 minutes from 2026-11-26 19:04Z, at a load average near 180 on 32 cores, 7
-of 585 Bash calls hit the guardian's 5 s timeout (recorded as `hook_cancelled`,
-5.5–8.4 s). Every one of the 7 commands ran, unchecked. Since 2026-10-27 there
-are 12 such timeouts in 426,136 Bash calls, counted at about 19:50Z on
-2026-11-26. 5 were on 2.1.283, all on 2026-11-22 between 00:14Z and 00:30Z
-(9–153 s), and the 7 above were on 2.1.331. Guardian runs that printed
-output took 44–932 ms on 2.1.331, and runs on a typical command took 78–147 ms
-at load ~110. So a timeout means a host stall, not a slow check.
+**Why it matters on this host.** On 2.1.331 the guardian still failed open, and
+every timeout came from one Workflow run. In the 15 minutes from 2026-11-26
+19:04Z (load average 141–178 on 32 cores, `sar -q`), the host ran 1,141 Bash
+calls: 585 on 2.1.331 and 556 on 2.1.283. 7 hit the guardian's 5 s timeout
+(recorded as `hook_cancelled`, 5.5–8.4 s), and all 7 were among the 283 calls
+of one 2.1.331 Workflow run, in a session of profile main2. The other 302 calls
+on 2.1.331 had none, and 286 of them came from a second Workflow run on the same
+profile and version at the same time. The 556 calls on 2.1.283 had none. Every
+one of the 7 commands ran, unchecked. Up to 20:29Z that run made 1,567 Bash
+calls and had no timeout outside those 15 minutes.
+
+**Why that run.** A hook is a child of the Claude Code process, so it runs in
+that process's cgroup scope: here the tmux scope the session was started in.
+That run's agents ran their builds and tests in the same scope. Read at 20:26Z,
+the scope had used 36,888 CPU-seconds and recorded 1,443 s of CPU pressure
+(`cpu.pressure` "some", over the scope's life; its CLI process started at
+18:44Z). The concurrent 2.1.331 run's scope had used 2,689 CPU-seconds and
+recorded 229 s. The cpu controller is enabled down to `app.slice` and every
+scope there has weight 100, so under contention all the processes of a busy
+scope share one scope's portion of the CPU. In the window, trivially fast
+commands (`ls`, `cat`, `git status` and the like, timed from tool_use to
+tool_result) took a median 4.3 s and a p90 8.7 s in that run (82 calls),
+against 2.0 s and 4.2 s in the concurrent 2.1.331 run (95 calls). Replayed now,
+the guardian takes 0.05 s on each of the 7 commands; its runs that printed
+output on 2.1.331 took 44–932 ms, and runs on a typical command 78–147 ms at
+load ~110. So a timeout here means the hook's own scope was starved. It was not
+a slow check and not a host-wide stall. Nor is it shown to be a 2.1.331 effect:
+the second 2.1.331 run had none.
+
+**The earlier timeouts.** Since 2026-10-27 there have been 12 guardian
+timeouts, counted at about 19:50Z on 2026-11-26: the 7 above, in 23,855 Bash
+calls on 2.1.331, and 5 in 402,281 on 2.1.283. Those 5 were all on 2026-11-22
+between 00:14Z and 00:30Z, and they look host-wide. Both Workflow runs that
+made Bash calls then had them (4 of 46 and 1 of 29 Bash calls, profiles main2
+and main3), the load average was 345–590 on 32 cores, and each lasted 9–153 s
+against the 5 s limit. That suggests Claude Code itself was stalled past its
+own timer (an inference).
 
 **Change.** `configs/settings-hooks.json` gives `pre-tool-guardian` the line
-`"onFailure": "block"`. `install.sh` replaces `.hooks` wholesale from that file,
-so the next install carries it. `templates/settings.json` holds no hooks and
-needs nothing. A CLI older than 2.1.295 ignores the key. The evidence is that
-every deployed hook entry already carries `id` and `description`, which Claude
-Code does not define. Those entries have run on 2.1.283 throughout, and the
-guardian's own outputs appear in its transcripts.
+`"onFailure": "block"` and raises its `timeout` from 5 to 15 s. `install.sh`
+replaces `.hooks` wholesale with the hooks it builds from that file, so the next
+install carries both. `templates/settings.json` does carry hooks, on six events
+(SessionStart, PostToolUse, Stop, Notification, TaskCompleted,
+UserPromptSubmit), but it has no PreToolUse entry, and install.sh never uses
+them: its merge path and its fresh-install path (step 8) both set
+`.hooks = $hooks`. So the template needs nothing. A CLI older than 2.1.295
+ignores the key. The evidence is that every deployed hook entry already carries
+`id` and `description`, which Claude Code does not define. Those entries have
+run on 2.1.283 throughout, and the guardian's own outputs appear in its
+transcripts.
 
-**The cost.** Under a stall like the one above, those 7 calls are now refused,
-and the agent sees `timed out; blocking because onFailure is "block"`. A crash
-blocks every call, safe ones included. That is why the guardian still runs
-without `set -e`.
+**The cost.** A timeout now refuses the call, and the agent sees `timed out;
+blocking because onFailure is "block"`. At the old 5 s limit that would have
+refused 7 of the 283 calls the starved run made in those 15 minutes (2.5%), and
+none of the 858 other Bash calls on the host. A crash blocks every call, safe
+ones included. That is why the guardian still runs without `set -e`.
+
+**Why 15 s.** While a timeout failed open, the limit only bounded how long a
+hung guardian could delay a call, and a timeout lost the check and nothing else.
+Now a timeout refuses the call, so the limit decides how often a starved
+guardian becomes a refusal. A normal run takes well under a second (above), so
+15 s changes nothing on a normal call. In the starved run, 30 of the 82
+trivially fast calls took 5 s or more end to end, 5 took 10 s or more and 2 took
+15 s or more, and the guardian is only part of that time. How many of the 7 a
+15 s limit would have let through is not measured: each was killed at 5 s. On a
+CLI that still fails open (one fleet host runs 2.1.287), the longer limit lets a
+starved guardian finish its check instead of being skipped. The price is that a
+guardian that hangs holds the call 15 s before refusing it. The starvation
+itself is avoided by running heavy agent work in its own scope
+(`systemd-run --user --scope`). The Workflow run that produced this branch tells
+its agents to do that, and it had no timeout in its 467 calls in the window, on
+2.1.283.
 
 **Why `secret-scanner.sh` stays fail-open.** TODO.md named it as guardian-class.
 Its own contract says otherwise: "Never blocks — false positives must not stop
@@ -184,9 +235,10 @@ names it). A test pins it as fail-open, so making it fail closed has to be a
 deliberate change.
 
 **Pinned.** `tests/lib/hooks-onfailure.sh`, sourced by `tests/test-hooks.sh`,
-checks three things. The guardian carries `"block"`. `secret-scanner` carries
-none, or `"continue"`. And every `onFailure` in the file sits where Claude Code
-honours it, with a fixture as the negative control.
+checks four things. The guardian carries `"block"`, and a timeout of at least
+15 s. `secret-scanner` carries none, or `"continue"`. And every `onFailure` in
+the file sits where Claude Code honours it, with a fixture as the negative
+control.
 
 ## f. The 270 s subagent-wait warning and the 2.1.318 three-minute move
 
@@ -238,3 +290,13 @@ window.
   "Files".
 - Binary: `~/.local/share/claude/versions/2.1.331`, read with `strings`.
 - Fleet versions: each host's `~/.local/bin/claude` link target, read 2026-11-26.
+- Per-run Bash counts and guardian timeouts: every Bash `tool_use` and every
+  guardian `hook_cancelled` in the window, keyed by the transcript's profile,
+  session and `workflows/wf_*` directory, deduplicated on the tool_use id.
+- Host load: `sar -q` over `/var/log/sysstat/sa26` (2026-11-26 11:00–11:20 PST)
+  and `sa21` (2026-11-21 16:00–16:40 PST, which is 2026-11-22 00:00–00:40Z).
+- cgroup figures: `cpu.stat` `usage_usec`, `cpu.pressure` and `cpu.weight` of
+  each session's scope under `user@<uid>.service/app.slice`, and
+  `cgroup.subtree_control` up that path, read 2026-11-26 20:26Z.
+- Guardian replay: the 7 timed-out `tool_input`s fed to
+  `configs/hooks/pre-tool-guardian.sh` under `/usr/bin/time`, load ~44.
