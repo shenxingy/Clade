@@ -3504,9 +3504,15 @@ owner); none is a regression on main.
 - [ ] 🟡 **The privacy notice for a tracked `history.jsonl` is invisible** (#214).
   It goes only to `~/.claude/.sync-conflicts.log`, and `sync-health.sh` surfaces
   only REFUSED lines from that file, so no session start shows it.
-- [ ] 🔵 **Next-TODO selection edge cases** (#204): a column-0 `#` inside a fenced
+- [x] 🔵 **Next-TODO selection edge cases** (#204): a column-0 `#` inside a fenced
   block ends an owner section early; the inline owner check reads only an item's
   first line; the markers are listed in two places.
+  Done 2026-11-25 (#279): a fenced block is code, an item is its whole body
+  up to where CommonMark ends it, and each list is written once. The
+  differences from CommonMark it keeps are listed in the PR. On this
+  repository's TODO.md the old and new hooks pick the same item. The one
+  open item it newly skipped (the task-eta survival model, whose wrapped
+  "(owner: only what is needed)" is an attribution) is ticked here (#275).
 - [ ] 🔵 **The `.corrupt` self-heal backup lives on tmpfs** (#205): the runtime
   dir is cleared at reboot, and the backup goes with it.
 - [ ] 🔵 **Radar probe fallbacks are unpinned** (#206): no test pins `merge-tree`
@@ -4121,7 +4127,7 @@ radar branch conflicts with `main` in TODO.md (see the first item).
 
 Found while porting and landing the four radar branches (#247-#256 and this PR).
 
-- [ ] 🟠 **`ci-local.py` runs a workflow's `npm install -g` against the host's
+- [x] 🟠 **`ci-local.py` runs a workflow's `npm install -g` against the host's
   global npm.** The "Validate Plugin Manifest" job's "Install Claude Code CLI"
   step installs `@anthropic-ai/claude-code` globally. Two gates running at once
   on one host raced in that directory: one failed with npm `ENOTEMPTY`
@@ -4131,6 +4137,23 @@ Found while porting and landing the four radar branches (#247-#256 and this PR).
   `PATH`. `ci-local.py` should do that itself for every step, so that a local
   gate never mutates host-global package state. Acceptance: two concurrent runs
   on one host both pass, and the global prefix's mtime is unchanged.
+  Done 2026-11-25 (#278): every job gets its own empty npm global prefix,
+  its bins first on PATH. Two concurrent runs of "Validate Plugin Manifest"
+  both passed and left the host prefix's mtime and size unchanged. Still
+  outside it: a prefix the workflow names, `sudo npm install -g`,
+  `npm config set prefix`, and a step that loads nvm (which refuses the
+  variable; it runs without it, listed under `no_npm_prefix`).
+- [ ] 🔵 **Two nvm shapes `ci-local.py`'s npm prefix still gets wrong** (#278).
+  A step that hides nvm's stderr and has no `-e` runs with the job's prefix
+  on another node and prints no note. A step that loads nvm where its text
+  does not show it (a script it calls) and is not safe to run twice fails
+  here and passes on a runner: the redo meets its first attempt's side
+  effects. No workflow under `~/projects` hits either (213 scanned,
+  2026-11-25). Candidate (round-5 review): put the job prefix under
+  `$NVM_DIR`, where nvm does not refuse it, at the cost of a job directory a
+  crash leaves in `~/.nvm`.
+  Also unverified: the Windows prefix-root PATH entry (alexxe unreachable),
+  and pnpm/yarn globals, which the prefix does not cover.
 - [ ] 🟡 **The catastrophic-rm guard over-blocks `rm` inside a hyphenated word.**
   `\brm\b` and `(^|[^A-Za-z0-9_])rm([^A-Za-z0-9_]|$)` both treat a hyphen as a
   word boundary. So a command that only names a branch like `fix/x-rm-first-word`,
