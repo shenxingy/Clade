@@ -239,9 +239,11 @@ python3 configs/scripts/regen-cc-plugin.py --check      # regenerate without --c
 #    (how many scripts, skills, hooks). ADDING A FILE MAKES THEM STALE and
 #    fails CI, which is how this list grew: red-phase-audit.py moved the
 #    Python-script count 21 → 22 while the READMEs still said 21.
-#    sync names any rewritten row that carries a date ("re-verify, then update its
-#    date"); it never changes the date. Its --self-test runs in the pytest job
-#    (test_self_tests_can_fire.py, mutations in can_fire/doc_align.py).
+#    sync never bumps a row's date to match a fix: it names any rewritten row
+#    that carries a date ("re-verify, then update its date"). A fact whose value
+#    is itself a date is rewritten like any other value, and is not listed
+#    unless its line carries another date. Its --self-test runs in the pytest
+#    job (test_self_tests_can_fire.py, mutations in can_fire/doc_align.py).
 python3 configs/scripts/doc-align.py verify             # doc-align.py sync to fix
 
 # 8. Skill registry validation

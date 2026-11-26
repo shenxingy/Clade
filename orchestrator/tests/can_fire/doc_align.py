@@ -1,8 +1,9 @@
 """doc-align.py's mutations, loaded into test_self_tests_can_fire.py's MUTATIONS.
 
 Each one removes one guard of the dated-row report (apply/sync name a row they
-rewrote when it carries a YYYY-MM-DD, and never bump that row's date), or of the
-no-mode refusal, and the script's --self-test must turn red. The self-test
+rewrote when it carries a YYYY-MM-DD besides the rewritten value, and never bump
+that row's date), or of the no-mode refusal, and the script's --self-test must
+turn red. The self-test
 drives main() on fixture repositories built in a temporary directory; nothing
 reads the real docs.
 
@@ -47,6 +48,9 @@ MUTATIONS: dict[str, list[tuple[str, str, str]]] = {S: [
     ("the row named is where the match starts, not where the value is",
      '"row_line": content.count("\\n", 0, m.start(1)) + 1,',
      '"row_line": content.count("\\n", 0, m.start()) + 1,'),
+    ("a last line with no trailing newline loses its final character",
+     "                    row_end = len(content) if row_end == -1 else row_end\n",
+     ""),
     ("a row with two fixes is named twice",
      'if not d["dated"] or d["row_line"] in seen:',
      'if not d["dated"]:'),

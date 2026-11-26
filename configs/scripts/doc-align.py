@@ -60,8 +60,10 @@ EXCLUDE_DIRS = {"node_modules", "__pycache__", ".venv", ".git", "dist", "build",
 
 # A row that carries a date records a check made on that day. On 2026-10-23 a
 # sync rewrote the hook count in VERIFY.md H6/SH1 to 35 under a 2026-07-13
-# date, a day the 33rd hook did not exist. The tool never bumps the date (it
-# would date a check it never ran); apply/sync name the row instead.
+# date, a day the 33rd hook did not exist. The tool never bumps a row's date to
+# match a fix (it would date a check it never ran); apply/sync name the row
+# instead. A fact whose value is itself a date is rewritten like any other
+# value, and is not listed unless its line carries another date.
 DATE_RE = re.compile(r"(?<!\d)\d{4}-\d{2}-\d{2}(?!\d)")
 
 
@@ -324,6 +326,18 @@ def self_test() -> int:
         if code != 0 or _listed(out) != [1] or "re-verify, then update its date" not in out:
             problems.append(f"apply rewrote a dated row and did not name it (exit {code})\n{out}")
 
+        # The last line has no trailing newline and its date comes after the
+        # value: the row runs to the end of the file, not one character short
+        # of it (which cuts 2026-07-13 to 2026-07-1, no longer a date).
+        md = _fixture(Path(tmp) / "eof", [dict(hooks, value=3)], "all 2 hooks pass, checked 2026-07-13")
+        code, out = _run(["apply", "--root", str(md.parent)])
+        if md.read_text(encoding="utf-8") != "all 3 hooks pass, checked 2026-07-13":
+            problems.append(f"apply did not rewrite a last line with no trailing newline: "
+                            f"{md.read_text(encoding='utf-8')!r}")
+        if code != 0 or _listed(out) != [1]:
+            problems.append(f"apply rewrote a dated last line with no trailing newline and named rows "
+                            f"{_listed(out)}, want [1] (exit {code})\n{out}")
+
         # Nothing dated was rewritten: no report at all.
         md = _fixture(Path(tmp) / "undated", [dict(hooks, value=3)], "Undated prose: all 2 hooks pass.\n")
         code, out = _run(["apply", "--root", str(md.parent)])
@@ -346,7 +360,8 @@ def self_test() -> int:
             print(f"SELF-TEST FAILED: {line}")
         return 1
     print("SELF-TEST PASSED: sync and apply rewrite a count under an unchanged date and name each dated row "
-          "they rewrote, once, on the line holding the value; an undated row, an untouched dated row and a "
+          "they rewrote, once, on the line holding the value, a last line with no trailing newline "
+          "included; an undated row, an untouched dated row and a "
           "date that is itself the value are not named (that date is still rewritten), a run with no dated "
           "rewrite prints no report, and a run with no mode exits 2.")
     return 0
