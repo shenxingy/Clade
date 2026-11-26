@@ -22,7 +22,9 @@ One tick:
   3. Runs the gate (default `python3 <this dir>/ci-local.py --json`) in the
      dedicated worktree <state>/worktree, reset to that commit and cleaned.
      Green is exit 0 and, when the output is ci-local JSON, a verdict other than
-     fail or none (nothing ran is not green).
+     fail or none (nothing ran is not green). ci-local's own exit 2 (nothing
+     failed; partial, flaky or none) is classed by that verdict: partial is
+     green here (the hosted run proves its lanes), flaky is flaky, none is red.
   4. Red: runs it once more. Green then: `flaky`, exit 3, no bisect: a failure
      nobody explained, never a culprit.
   5. Still red: bisects the first-parent commits after the newest green record
@@ -174,7 +176,11 @@ def run_gate(repo: Path, state: Path, sha: str, gate: str, timeout: int, role: s
     summary, verdict = summarize(stdout)
     if code == 124 and stderr.startswith("timed out"):
         summary = stderr
-    if code != 0 or verdict in ("fail", "none"):
+    # ci-local exits 2 when nothing failed but its verdict is partial, flaky or
+    # none; the verdict says which, so exit 2 alone is not red. Read as red, a
+    # flaky run was rerun and bisected, and a partial one on every tick.
+    not_green_only = code == 2 and verdict in ("partial", "flaky")
+    if (code != 0 and not not_green_only) or verdict in ("fail", "none"):
         status = "red"
     elif verdict == "flaky":
         status = "flaky"

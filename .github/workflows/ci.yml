@@ -249,19 +249,26 @@ jobs:
       - name: Sibling facts (report only)
         # On a PUSH to main, actions/checkout leaves origin/main at the pushed
         # SHA, so `origin/main...HEAD` is empty and this reported a clean tree
-        # on every commit it was supposed to examine. `${{ github.event_name }}`
-        # picks the range that has content, and `|| true` is gone: the script
-        # exits 0 on findings by design, and the only thing `|| true` was
-        # hiding was the RuntimeError a broken range now raises on purpose.
+        # on every commit it was supposed to examine. The event name picks the
+        # range that has content, and `|| true` is gone: the script exits 0 on
+        # findings by design, and the only thing `|| true` was hiding was the
+        # RuntimeError a broken range now raises on purpose.
+        # It reads the runner's $GITHUB_EVENT_NAME and $GITHUB_BASE_REF, not the
+        # github.* expressions: ci-local.py cannot evaluate an expression, so
+        # this step was the one lane every local run of this repository left
+        # unproven, and ci-local exits 2 on an unproven lane. A local run sets
+        # neither variable and takes the push branch: the last commit.
         run: |
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            git fetch --no-tags --depth=50 origin "${{ github.base_ref }}"
-            python3 configs/scripts/check-sibling-facts.py --range "origin/${{ github.base_ref }}...HEAD"
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+            git fetch --no-tags --depth=50 origin "$GITHUB_BASE_REF"
+            python3 configs/scripts/check-sibling-facts.py --range "origin/$GITHUB_BASE_REF...HEAD"
           else
             # actions/checkout is shallow by default, so HEAD~1 is not present
             # and the script — correctly — refuses to call an unresolvable
-            # range a clean tree.
-            git fetch --no-tags --deepen=1 || true
+            # range a clean tree. Deepen only then: a full clone, which is what
+            # a local run has, already holds HEAD~1 and needs no network.
+            git rev-parse -q --verify 'HEAD~1^{commit}' >/dev/null \
+              || git fetch --no-tags --deepen=1 || true
             python3 configs/scripts/check-sibling-facts.py --range 'HEAD~1..HEAD'
           fi
 

@@ -24,7 +24,7 @@ this list has twice:
 
 ```bash
 python3 configs/scripts/ci-local.py --list   # what runs here, what cannot, why
-python3 configs/scripts/ci-local.py          # 5/5 jobs in ~180s on a 32-core box, PARTIAL (below)
+python3 configs/scripts/ci-local.py          # 5/5 jobs in ~180s on a 32-core box; exit 2 if not green (below)
 python3 configs/scripts/ci-local.py --json   # machine-readable, for /green
 ```
 
@@ -91,10 +91,15 @@ names each one as `Job › Step (first exit N)`, and the JSON lists it under
 the first failure final. The step timeout is 900 s scaled by the host's load per
 CPU at the start (1x-4x, so 3,600 s at most); the run prints it, and
 `--timeout N` sets it: a fixed 900 s killed this repository's pytest step, which
-took 1,914 s at load ~80 on 32 cores. `--strict` exits 2 on PARTIAL, FLAKY or NOTHING RAN
-(the default flips after a report-only week, see TODO.md). Here the unproven
-lane is one step: `Syntax Check › Sibling facts (report only)` picks its diff
-range with `${{ github.event_name }}`, so a local run does not execute it. Both `pull_request_target` workflows
+took 1,914 s at load ~80 on 32 cores. A run that is PARTIAL, FLAKY or NOTHING RAN
+exits 2 (a failure is 1); `--no-strict` exits 0 there, as every run did through
+the report-only week of 2026-11-06 to 11-13. This repository has no unproven
+lane. Its one was `Syntax Check › Sibling facts (report only)`, which picked its
+diff range with `${{ github.event_name }}` and was skipped on every local run;
+it reads the runner's `$GITHUB_EVENT_NAME` and `$GITHUB_BASE_REF` now. A local
+run sets neither, so it takes the push branch (`HEAD~1..HEAD`), and it skips
+the `git fetch --deepen=1` that only a shallow checkout needs, so it needs no
+network. Both `pull_request_target` workflows
 (`honeypot-check`, `vouch-gate`) have no push or pull_request trigger and are
 skipped as GitHub-side, and the four key-gated tiers, the only steps here that
 use a secret, gate on `schedule`/`workflow_dispatch`, which is harmless.
@@ -102,7 +107,8 @@ use a secret, gate on `schedule`/`workflow_dispatch`, which is harmless.
 `tests/lib/ci-local-flaky.sh`, the labels, tag tiers and runner files in
 `tests/lib/ci-local-runner.sh`, the skipped-unsafe steps in
 `tests/lib/ci-local-host-mutation.sh`, the record's head, dirty flag and clean
-stdout in `tests/lib/ci-local-record.sh`, all of which it sources) and removes each
+stdout in `tests/lib/ci-local-record.sh`, the default exit 2 and `--no-strict`
+in `tests/lib/ci-local-strict.sh`, all of which it sources) and removes each
 guard from a copy of the runner to show the suite notices.
 
 The list below is the EXPLANATION — why each gate exists and what it caught.

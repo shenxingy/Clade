@@ -61,9 +61,9 @@ start, which is the larger saving on a public repo where the minutes are free.
 
 ```bash
 python3 ~/.claude/scripts/ci-local.py --list   # what runs here, what cannot, and why
-python3 ~/.claude/scripts/ci-local.py          # run them; exit 1 on a failure, PARTIAL names unproven lanes, FLAKY names steps green only on rerun
-python3 ~/.claude/scripts/ci-local.py --json   # machine-readable, for an automatic fixer
-python3 ~/.claude/scripts/ci-local.py --strict # exit 2 on PARTIAL, FLAKY or NOTHING RAN, not only on a failure
+python3 ~/.claude/scripts/ci-local.py          # run them; exit 1 on a failure, 2 on PARTIAL (unproven lanes), FLAKY (green only on rerun) or NOTHING RAN
+python3 ~/.claude/scripts/ci-local.py --json   # machine-readable, for an automatic fixer; read its verdict, not the exit code
+python3 ~/.claude/scripts/ci-local.py --no-strict # exit 0, not 2, on PARTIAL, FLAKY or NOTHING RAN (the report-only week's exit)
 ```
 
 It parses `.github/workflows/*.yml` and executes the same `run:` blocks, so it
@@ -116,9 +116,9 @@ runs them, on a throwaway VM only. The fifth class and the sixth's gate steps
 are **unproven**: the summary line reads `PARTIAL`, names each one, and the JSON lists them under
 `unproven`. A run in which no job ran at all reads `NOTHING RAN` (JSON
 `verdict: none`). **Neither is green** — prove those lanes hosted (or where
-their services exist) before reading a local run as a merge signal. `--strict`
-exits 2 on both; the default exit code is still 0 during a one-week
-report-only rollout.
+their services exist) before reading a local run as a merge signal. Either
+exits 2 (a failure is 1); `--no-strict` exits 0 there, as the report-only week
+of 2026-11-06 to 11-13 did.
 
 **A pass on rerun is FLAKY, not green.** A step that exits non-zero runs once
 more, with the same command, env and directory. Red again, it failed. Green the
@@ -128,8 +128,8 @@ lists them under `flaky`. Its job does not count as failed, and the run is not
 green: the first failure is real and unexplained, so investigate it, and never
 read the rerun as the fix. A step that hit the step timeout is not rerun (a hang
 is not a flake, and a second wait doubles the cost). A run with an unproven lane
-as well reads `PARTIAL` and still lists the flaky steps. `--strict` exits 2 on
-FLAKY too; `--no-rerun` makes the first failure final. The step timeout scales
+as well reads `PARTIAL` and still lists the flaky steps. FLAKY exits 2 too
+(`--no-strict`: 0); `--no-rerun` makes the first failure final. The step timeout scales
 with load (900-3,600 s) and is printed; `--timeout N` sets it.
 
 **Cross-platform work goes to the machine that has the platform.** A macOS job
