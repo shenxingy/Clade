@@ -16,9 +16,11 @@
 #              key another origin's migration wants), and on chained profile
 #              links (through a migrated link, under a symlinked HOME, through an
 #              adopted directory, into a recreated entry, through a pruned link,
-#              a cycle), a dry run changes no byte and then the real run adopts,
-#              migrates, prunes, links, records and conflicts exactly as the dry
-#              run said
+#              a cycle), on links at another slug into entries the run creates,
+#              and on several projects in one run (two aries-shaped ones, two
+#              adopted from two profiles each), a dry run changes no byte and then
+#              the real run adopts, migrates, prunes, links, records and
+#              conflicts exactly as the dry run said
 #   identity   remote/key mismatches are left alone in link and prune; repo
 #              subdirectories and linked worktrees keep path keys
 #
@@ -30,9 +32,11 @@
 # destinations, their glob order, entry status and origin, planned checkout paths
 # read and recorded, a planned path key's owner recorded and read, a planned
 # migration's marker, its prune and valid target, dry prunes recorded and freeing
-# the slug, dry links recorded, seen, and already right), each part of an
-# adoption's preview (its copy, recorded checkout and link, adopting into a
-# planned entry and checking its planned copies), a planned destination's origin
+# the slug, dry links recorded, seen, and already right; a planned entry in the
+# prune pass; and each table read by its own key: planned checkout paths, copies,
+# entries and migrations), each part of an adoption's preview (its copy,
+# recorded checkout and link, adopting into a planned entry and checking its
+# planned copies), a planned destination's origin
 # in migration, each step of following a chained link through the dry run's
 # links (the call, a hop's spelling, a hop linked, a hop pruned, a planned entry
 # at the end), link and prune remote/key checks, and the repository-root
@@ -117,9 +121,16 @@ plan_of() {
 # migrated, so the new key claimed the project in the link pass. The caller
 # gives SECOND its .project-path (path-keyed) or leaves it a basename entry.
 parity_fixture() {
-  local name=$1 slug pd
   new_home
-  PM="$H/store/projects-memory"; P="$H/projects/$name"
+  PM="$H/store/projects-memory"
+  parity_project "$@"
+}
+
+# parity_project NAME SECOND — parity_fixture's project, added to the current HOME,
+# so that one run can hold several such projects.
+parity_project() {
+  local name=$1 slug pd
+  P="$H/projects/$name"
   git_repo "$P"; git -C "$P" remote add origin "git@github.com:owner/$name.git"
   RK=$(remote_key_of "github.com/owner/$name"); E="$PM/$RK"
   L1="$PM/projects-$name"; L2="$PM/$2"
@@ -568,6 +579,33 @@ mkdir -p "$H/.claude-profiles/p1/projects/$(slug_of "$P")"
 ln -s "$E" "$H/.claude-profiles/p1/projects/$(slug_of "$P")/memory"
 assert_parity "dangling link into a recreated entry" 0
 
+section "dry-run parity — dangling links at another slug into entries this run creates"
+# Two profiles link ~/projects/qq's slug to entries missing from the store; this
+# run creates one by migrating ink and one by adopting foo. The prune pass then
+# retires both links (neither origin has a checkout at qq's slug) and the link
+# pass links the slug to qq's own entry, so the dry run must not call either
+# link dangling, keep it for a human, and report qq's entry as claiming it.
+new_home
+PM="$H/store/projects-memory"
+P="$H/projects/ink"; git_repo "$P"; git -C "$P" remote add origin git@github.com:owner/ink.git
+L1="$PM/projects-ink"; mkdir -p "$L1" "$H/.claude/projects/$(slug_of "$P")"
+printf 'projects/ink\n' > "$L1/.project-path"; printf 'x\n' > "$L1/MEMORY.md"
+ln -s "$L1" "$H/.claude/projects/$(slug_of "$P")/memory"
+P="$H/projects/foo"; git_repo "$P"; git -C "$P" remote add origin git@github.com:owner/foo.git
+M=$(memdir "$H" "$P"); mkdir -p "$M"; printf 'local\n' > "$M/MEMORY.md"
+Q="$H/projects/qq"; git_repo "$Q"; git -C "$Q" remote add origin git@github.com:owner/qq.git
+E="$PM/$(remote_key_of github.com/owner/qq)"; mkdir -p "$E"
+printf 'github.com/owner/qq\n' > "$E/.project-remote"; printf 'test-host\tprojects/qq\n' > "$E/.project-paths"
+for p in p1:ink p2:foo; do
+  mkdir -p "$H/.claude-profiles/${p%%:*}/projects/$(slug_of "$Q")"
+  ln -s "$PM/$(remote_key_of "github.com/owner/${p#*:}")" "$H/.claude-profiles/${p%%:*}/projects/$(slug_of "$Q")/memory"
+done
+assert_parity "dangling links into entries this run creates" 0
+for p in p1 p2; do
+  assert_eq "$(target_of "$H/.claude-profiles/$p/projects/$(slug_of "$Q")/memory")" "$E" \
+    "$p's link at qq's slug is relinked to qq's own entry"
+done
+
 section "dry-run parity — a chain through a link the prune removes"
 # ~/projects/hop's slug chains to a slug no checkout produces, whose link into the
 # same entry the prune removes; by the link pass the chain leads nowhere, which
@@ -594,6 +632,28 @@ for p in p1 p2; do mkdir -p "$H/.claude-profiles/$p/projects/$(slug_of "$P")"; d
 ln -s "$H/.claude-profiles/p2/projects/$(slug_of "$P")/memory" "$H/.claude-profiles/p1/projects/$(slug_of "$P")/memory"
 ln -s "$H/.claude-profiles/p1/projects/$(slug_of "$P")/memory" "$H/.claude-profiles/p2/projects/$(slug_of "$P")/memory"
 assert_parity "a cycle of links" 2
+
+section "dry-run parity — two aries-shaped projects in one run"
+# #209's run migrated 15 entries at once. The dry tables are keyed per entry: a
+# checkout one project's new key would record is not read as the other's.
+new_home
+PM="$H/store/projects-memory"
+parity_project ink ink
+parity_project zap zap
+assert_parity "two aries-shaped projects" 5
+
+section "dry-run parity — two projects, each adopted from two profiles"
+# Each project's second copy is compared with the copy planned into its own key,
+# never with the other project's, whose MEMORY.md differs.
+new_home
+PM="$H/store/projects-memory"
+for n in aa bb; do
+  P="$H/projects/$n"; git_repo "$P"; git -C "$P" remote add origin "git@github.com:owner/$n.git"
+  for pd in "$H/.claude/projects" "$H/.claude-profiles/p1/projects"; do
+    mkdir -p "$pd/$(slug_of "$P")/memory"; printf '%s\n' "$n" > "$pd/$(slug_of "$P")/memory/MEMORY.md"
+  done
+done
+assert_parity "two projects, each adopted from two profiles" 0
 }
 
 t_identity() {
@@ -767,6 +827,20 @@ mutation "recording dry-run links" "dryrun" \
   '  DRY_LINKS="$DRY_LINKS$2"$'"'"'\t'"'"'"$3"$'"'"'\n'"'"'' '  :'
 mutation "a dry-run link to the same entry is already right" "dryrun" \
   '          [[ "$DRY_VALUE" == "$key" ]] \' '          false \'
+mutation "a planned entry in the prune pass" "dryrun" \
+  '    if ! entry_exists "$key"; then
+      note "$where/memory: dangling link' \
+  '    if [[ ! -d "$entry" ]]; then
+      note "$where/memory: dangling link'
+mutation "planned checkout paths read per entry" "dryrun" \
+  '    [[ "$host" == "${1##*/}" && -n "$rel" ]] || continue' '    [[ -n "$rel" ]] || continue'
+mutation "planned copies compared per entry" "dryrun" "'\$1 == key {" "'1 {"
+mutation "a planned entry matched by its key" "dryrun" \
+  '  case "$DRY_NEW" in *$'"'"'\n'"'"'"$1"$'"'"'\t'"'"'*) return 0 ;; esac' \
+  '  case "$DRY_NEW" in *$'"'"'\t'"'"'*) return 0 ;; esac'
+mutation "a planned migration matched by its key" "dryrun" \
+  '  case "$DRY_MIGRATED" in *$'"'"'\n'"'"'"$1"$'"'"'\t'"'"'*) return 0 ;; esac' \
+  '  case "$DRY_MIGRATED" in *$'"'"'\t'"'"'*) return 0 ;; esac'
 mutation "the link remote/key check" "identity" \
   '    if [[ "$key" != "$(key_of_remote "$remote")" ]]; then
       note "projects-memory/$key: .project-remote does not match its key"' \

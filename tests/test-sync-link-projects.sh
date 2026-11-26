@@ -1213,7 +1213,7 @@ mutation red "the pass-2 legacy keep" $L "prune" \
         continue' '      elif false; then
         continue'
 mutation red "the dangling-link skip" $L "prune" \
-  '    if [[ ! -d "$entry" ]]; then
+  '    if ! entry_exists "$key"; then
       note "$where/memory: dangling' '    if false; then
       note "$where/memory: dangling'
 mutation red "the pass-3 memory-root check" $L "legacy" \

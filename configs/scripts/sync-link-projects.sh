@@ -930,7 +930,9 @@ for pd in "${PROJECTS_DIRS[@]}"; do
     slugdir=${mem%/memory}
     slug=${slugdir##*/}
     where="$label$slug"
-    if [[ ! -d "$entry" ]]; then
+    # Under --dry-run, an entry an adoption or migration would have created is
+    # there by now, and its link is judged like any other.
+    if ! entry_exists "$key"; then
       note "$where/memory: dangling link to projects-memory/$key, left for a human"; continue
     fi
 
