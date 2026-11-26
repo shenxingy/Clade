@@ -4607,10 +4607,14 @@ and the reviews of the units the sweep closed. Each item names its evidence.
   in #PR:kimi-matcher-anchor ends one at any table header, so a column-0
   `event`/`matcher`/`command` key after an indented header can make the two
   disagree. The file is contrived, and the behaviour is as before that PR.
-- [ ] 🔵 **`uninstall.sh` writes the fixed path `/tmp/claude-settings-clean.json`.**
+- [x] 🔵 **`uninstall.sh` writes the fixed path `/tmp/claude-settings-clean.json`.**
   Concurrent runs race on it, and per-user scratch belongs under
   `configs/hooks/lib/runtime-dir.sh` or a `mktemp` beside the target. Found
-  reviewing #PR:uninstall-codex-kimi.
+  reviewing #PR:uninstall-codex-kimi. Done (#PR:uninstall-tmp): a `mktemp`
+  beside the target, written back through the file so its mode and a link
+  survive; the alias block's `sed -i`, which BSD sed rejects, went the same
+  way, and a `settings.json` jq cannot parse no longer ends the run.
+  `tests/test-uninstall.sh`.
 - [ ] 🔵 **`empty-task loop reports max iterations` failed once, then passed
   (FLAKY).** `tests/test-loop.sh:690`, on its first run at a load average of about
   58: `Max iterations` was missing from the output while
