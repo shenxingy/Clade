@@ -1186,8 +1186,9 @@ mutation red "the .git exclusion" $L "adopt legacy prune" \
 mutation red "the repository-subdirectory rule" $L "prune" \
   '[[ "$(cd "$top" 2>/dev/null && pwd -P)" == "$here" ]] || return 1' ':'
 mutation red "the dry-run guard on adopt" $L "dryrun" \
-  '      say "adopt $where -> projects-memory/$key ($nfiles files, ~/$rel$extra)"
-      continue' '      say "adopt $where -> projects-memory/$key ($nfiles files, ~/$rel$extra)"'
+  '    if [[ "$DRY_RUN" -eq 1 ]]; then
+      say "adopt' '    if false; then
+      say "adopt'
 mutation red "the dry-run guard on detach" $L "dryrun" \
   '  if [[ "$DRY_RUN" -eq 1 ]]; then
     say "detach' '  if false; then
@@ -1281,10 +1282,10 @@ mutation red "remote-origin ownership in migration" $L "remote" \
 mutation red "the active-destination migration guard" $L "remote" \
   '    if [[ ! -d "$dst" || -f "$dst/.migrated-to" ]]; then' '    if false; then'
 mutation red "the migration clash check" $L "remote" \
-  '    if [[ -n "$clash" ]]; then
-      conflict "projects-memory/$key is not migrated' \
-  '    if false; then
-      conflict "projects-memory/$key is not migrated'
+  '  if [[ -n "$clash" ]]; then
+    conflict "projects-memory/$key is not migrated' \
+  '  if false; then
+    conflict "projects-memory/$key is not migrated'
 mutation red "migration copy verification" $L "remote" \
   '  if [[ -n "$bad" ]]; then
     echo "  error: migration copy' \
