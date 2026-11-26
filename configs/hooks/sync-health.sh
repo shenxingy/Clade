@@ -28,8 +28,14 @@
 set -euo pipefail
 
 HOOK_LIBDIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib"
+# A missing or broken library must not abort the hook: the declare -F checks
+# below fail open. errexit is off for the source itself because
+# `source … || true` is not enough — bash 3.2 (macOS /bin/bash) exits under
+# set -e when source fails, inside || or if too; bash 5 does not.
+set +e
 # shellcheck source=/dev/null
-source "$HOOK_LIBDIR/sync-push-backoff.sh" 2>/dev/null || true
+source "$HOOK_LIBDIR/sync-push-backoff.sh" 2>/dev/null
+set -e
 
 _sync_epoch_local() {
   python3 -c 'from datetime import datetime; import sys; print(datetime.fromtimestamp(int(sys.argv[1])).astimezone().strftime("%Y-%m-%d %H:%M:%S %Z"))' \

@@ -48,10 +48,13 @@ source "$SYNC_CONFIG"
 # the memory-sync hook's push is silently dead. $CLAUDE_DIR is $HOME-private and
 # is the fallback when no runtime root resolves.
 _SP_RUNTIME_LIB="$(cd "$(dirname "$0")" 2>/dev/null && pwd)/../hooks/lib/runtime-dir.sh"
-if [[ -f "$_SP_RUNTIME_LIB" ]]; then
-  # shellcheck source=/dev/null
-  . "$_SP_RUNTIME_LIB" 2>/dev/null || true
-fi
+# errexit is off for the source: bash 3.2 (macOS /bin/bash) exits under set -e
+# when a source fails, even inside || or if, so `. lib || true` cannot keep a
+# missing, unreadable or broken library from killing this script there.
+set +e
+# shellcheck source=/dev/null
+. "$_SP_RUNTIME_LIB" 2>/dev/null
+set -e
 if [[ -n "${CLADE_SYNC_PUSH_LOCK:-}" ]]; then
   LOCK_FILE="$CLADE_SYNC_PUSH_LOCK"
 elif declare -f clade_runtime_dir >/dev/null 2>&1 && _SP_RT=$(clade_runtime_dir 2>/dev/null); then
@@ -83,14 +86,19 @@ fi
 # and before any merge so project paths from two hosts union before a pull can
 # conflict. A read or append failure leaves the old scan and merge behavior to
 # decide the push; it must not abort this async job under set -e.
+# Not `if source …`: bash 3.2 exits there too (see the runtime-dir source above).
 _SYNC_STORE_HEAL="$(cd "$(dirname "$0")" 2>/dev/null && pwd)/sync-store-heal.sh"
+set +e
 # shellcheck source=/dev/null
-if source "$_SYNC_STORE_HEAL" 2>/dev/null; then
+source "$_SYNC_STORE_HEAL" 2>/dev/null
+_sp_heal_rc=$?
+set -e
+if [[ "$_sp_heal_rc" -eq 0 ]]; then
   sync_store_heal_gitignore "$SYNC_DIR/.gitignore" || true
   printf '%s\n' 'projects-memory/*/.project-paths merge=union' \
     | sync_store_append_missing_lines "$SYNC_DIR/.gitattributes" || true
 fi
-unset _SYNC_STORE_HEAL
+unset _SYNC_STORE_HEAL _sp_heal_rc
 
 # NEVER stage a file carrying conflict markers. This is not hygiene — it is the
 # bug that ate the correction log. `git pull --rebase --autostash` leaves marker

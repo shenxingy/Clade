@@ -1098,13 +1098,20 @@ else
 fi
 
 FI_MUT=$(mktemp)
-sed 's/^SSH_OPTS="-n /SSH_OPTS="/' "$REPO_ROOT/configs/scripts/fleet-install.sh" > "$FI_MUT"
-if bash "$FI_MUT" --self-test >/dev/null 2>&1; then
-  fail "dropping 'ssh -n' turns the fleet-install self-test red" \
-       "it stayed green — the stdin-drain control is not reproducing the bug"
-else
-  pass "dropping 'ssh -n' turns the fleet-install self-test red"
-fi
+fi_mutation() {  # SED-EXPR LABEL WHY — the mutant must differ, and fail the self-test
+  sed "$1" "$REPO_ROOT/configs/scripts/fleet-install.sh" > "$FI_MUT"
+  if cmp -s "$FI_MUT" "$REPO_ROOT/configs/scripts/fleet-install.sh"; then
+    fail "$2 turns the fleet-install self-test red" "its anchor no longer matches"
+  elif bash "$FI_MUT" --self-test >/dev/null 2>&1; then
+    fail "$2 turns the fleet-install self-test red" "it stayed green — $3"
+  else
+    pass "$2 turns the fleet-install self-test red"
+  fi
+}
+fi_mutation 's/^SSH_OPTS="-n /SSH_OPTS="/' "dropping 'ssh -n'" \
+  "the stdin-drain control is not reproducing the bug"
+fi_mutation 's/if \[ -r \(~[^ ]*kit-checksum\.sh\) \]; then \. [^;]*; fi/. \1 2>\/dev\/null || true/' \
+  "sourcing kit-checksum.sh with '|| true'" "a POSIX sh and bash 3.2 exit there under set -e"
 rm -f "$FI_MUT"
 
 # ─── sync-push must refuse to commit conflict markers ────────────────
