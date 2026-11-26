@@ -566,6 +566,39 @@ OUT=$(todo_ctx)
 assert_line "$OUT" "Next TODO: - [ ] 🔴 Agent red item is eligible" \
   "control: an item ends at the next column-0 line"
 
+# Only the owner check reads the whole item. The tier, the pick and the fallback
+# read its first line, so a body that mentions a marker cannot promote it and a
+# wrapped body is not appended to the printed line. Every eligible item above is
+# one line long, so none of these three uses was pinned. Unbolded titles on
+# purpose: the "**" trim would cut an appended body off a bold one.
+cat > "$TODO_PROJ/TODO.md" <<'EOF'
+- [ ] 🔵 Blue item whose body
+  mentions a 🔴 marker in passing
+- [ ] 🟠 Orange item
+EOF
+OUT=$(todo_ctx)
+# Control: passes on HEAD too (it read one line); it pins that the whole item stays out of the tier.
+assert_line "$OUT" "Next TODO: - [ ] 🟠 Orange item" \
+  "an item's tier comes from its first line, not a marker in its body"
+
+cat > "$TODO_PROJ/TODO.md" <<'EOF'
+- [ ] 🟠 Orange item whose body
+  wraps onto a second line
+EOF
+OUT=$(todo_ctx)
+# Control: passes on HEAD too; it pins that the pick prints the first line only.
+assert_line "$OUT" "Next TODO: - [ ] 🟠 Orange item whose body" \
+  "a picked item that wraps prints its first line only"
+
+cat > "$TODO_PROJ/TODO.md" <<'EOF'
+- [ ] Unmarked item whose body
+  wraps onto a second line
+EOF
+OUT=$(todo_ctx)
+# Control: passes on HEAD too; it pins that the fallback prints the first line only.
+assert_line "$OUT" "Next TODO: - [ ] Unmarked item whose body" \
+  "an unmarked fallback that wraps prints its first line only"
+
 # ─── Next TODO: one marker list (#204 residue) ────────────────────────
 # The four markers were written twice, in the awk tiers and again in a sed that
 # trims the title, so a marker added to one was half-supported. Prepend a new
