@@ -96,6 +96,7 @@ python3 "$DELIVERY_PY" start \
   --branch "<owned-topic-branch>" \
   --base "<resolved-base-ref>" \
   [--create-branch] [--parent "<stack-parent>"] [--attempt-id "<attempt-id>"] \
+  [--issue "<ABC-123|#123>"] \
   [--push-authority task-request|repository-policy] \
   [--pr-authority task-request|repository-policy] \
   [--merge-authority task-request|repository-policy] \
@@ -113,6 +114,14 @@ projection without importing controller internals:
 ```bash
 python3 "$DELIVERY_PY" evidence --id "<id>"
 ```
+
+When the work comes from a tracker issue (a Linear or Jira key such as
+`ABC-123`, or a GitHub `#123`), pass it once with `--issue` and use
+`--task-source issue`. The key is stored upper-case, kept across resumes like
+the branch, and shown by `show` and `evidence`; `/create-pr` writes it into the
+PR body. Put the lower-case key at the start of the branch name
+(`abc-123-short-slug`) only when this delivery finishes the issue: Linear
+treats a branch-name link like `Fixes` and moves the issue when the PR merges.
 
 For work claimed through `/tasks`, also pass `--project-id`, `--task-id` and
 `--session-id` together at START. These immutable fields form `task_ref` in
