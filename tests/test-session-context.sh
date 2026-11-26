@@ -548,14 +548,84 @@ assert_line "$OUT" "Next TODO: - [ ] 🟠 Agent orange item is eligible" \
 cat > "$TODO_PROJ/TODO.md" <<'EOF'
 - [ ] 🔴 **Item with a code sample**
   ```bash
-# a column-0 comment inside the item's own fence
+  # an indented comment inside the item's own fence
   ```
   Owner: decide this first.
 - [ ] 🟠 Agent orange item is eligible
 EOF
 OUT=$(todo_ctx)
 assert_line "$OUT" "Next TODO: - [ ] 🟠 Agent orange item is eligible" \
-  "a column-0 line inside the item's own fence does not end the item"
+  "an owner phrase after the item's own closed fence skips the item"
+
+cat > "$TODO_PROJ/TODO.md" <<'EOF'
+- [ ] 🔴 **Add an owner field to the manifest**
+  ```yaml
+
+  owner: alice
+  ```
+- [ ] 🟠 Orange item
+EOF
+OUT=$(todo_ctx)
+# Control: passes on HEAD too (it read one line); it pins that an item's own fence is
+# code, and that a blank line inside it neither closes the fence nor ends the item.
+assert_line "$OUT" "Next TODO: 🔴 Add an owner field to the manifest" \
+  "an owner phrase inside the item's own fence is code, not an owner marker"
+
+# A fence opened inside a list item ends when the item does, at the next column-0
+# line (CommonMark; markdown-it agrees on every fixture below). Kept open, one
+# unclosed sample hid every later item and heading until EOF.
+cat > "$TODO_PROJ/TODO.md" <<'EOF'
+- [ ] 🟡 **Fix the parser** for lines that open with
+  ``` three backticks and never close them
+- [ ] 🔴 Red item later in the file
+EOF
+OUT=$(todo_ctx)
+assert_line "$OUT" "Next TODO: - [ ] 🔴 Red item later in the file" \
+  "an unclosed fence inside an item ends with the item"
+
+cat > "$TODO_PROJ/TODO.md" <<'EOF'
+## Needs the owner
+- [ ] 🔴 Owner item with an unclosed sample
+  ```bash
+## Agent work
+- [ ] 🟠 Agent orange item is eligible
+EOF
+OUT=$(todo_ctx)
+assert_line "$OUT" "Next TODO: - [ ] 🟠 Agent orange item is eligible" \
+  "an unclosed fence inside a skipped owner item ends with it, so the next heading is read"
+
+for opener in '- [x] Done item' '1. Numbered step' '* Plain bullet'; do
+  printf '%s\n' "$opener with an unclosed sample" '   ```bash' '- [ ] 🔴 Red item after it' \
+    > "$TODO_PROJ/TODO.md"
+  OUT=$(todo_ctx)
+  assert_line "$OUT" "Next TODO: - [ ] 🔴 Red item after it" \
+    "an unclosed fence inside a '$opener' list item ends with that item"
+done
+
+cat > "$TODO_PROJ/TODO.md" <<'EOF'
+- [ ] 🟡 Yellow item
+  ```bash
+  code
+```
+- [ ] 🔴 Red item inside the fence the column-0 run opens
+EOF
+OUT=$(todo_ctx)
+# The column-0 run ends the item, so it opens a top-level fence, not closes this one.
+assert_line "$OUT" "Next TODO: - [ ] 🟡 Yellow item" \
+  "a column-0 fence run after an item's fence ends the item and opens a new fence"
+
+cat > "$TODO_PROJ/TODO.md" <<'EOF'
+## Needs the owner
+  ```bash
+# a column-0 comment in an indented fence that is in no list item
+  ```
+- [ ] 🔴 Owner red item after the fence is skipped
+## Agent work
+- [ ] 🟠 Agent orange item is eligible
+EOF
+OUT=$(todo_ctx)
+assert_line "$OUT" "Next TODO: - [ ] 🟠 Agent orange item is eligible" \
+  "an indented fence outside a list item is top-level: a column-0 line does not end it"
 
 cat > "$TODO_PROJ/TODO.md" <<'EOF'
 - [ ] 🔴 Agent red item is eligible

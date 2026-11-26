@@ -193,6 +193,9 @@ fi
 # it, up to the next column-0 line, so a phrase wrapped onto line two counts.
 # Fenced blocks (``` or ~~~, closed by a run of the same character at least as
 # long) are code: a `#` or `- [ ]` inside one is neither a heading nor an item.
+# A fence opened inside any list item ends with that item, at the next column-0
+# line, as in CommonMark, so an unclosed sample in one item cannot hide the items
+# after it. A top-level fence (in no list item) runs to its closer or EOF.
 # Each list is written once; the tiers and the title trim both read the markers.
 TODO_PRIORITY_MARKERS='🔴 🟠 🟡 🔵'   # highest first, space-separated
 TODO_OWNER_PHRASES='needs the owner|owner decision|owner:'   # lowercase ERE
@@ -219,15 +222,20 @@ NEXT_TODO=$(awk -v markers="$TODO_PRIORITY_MARKERS" -v owner_re="$TODO_OWNER_PHR
       run = substr(rest, 1, RLENGTH)
       rest = substr(rest, RLENGTH + 1)
     }
+    top = ($0 ~ /^[^[:space:]]/)
     if (fence != "") {
-      if (substr(run, 1, 1) == substr(fence, 1, 1) && length(run) >= length(fence) &&
-          rest !~ /[^[:space:]]/) fence = ""
-      next
+      if (!(top && in_list)) {
+        if (substr(run, 1, 1) == substr(fence, 1, 1) && length(run) >= length(fence) &&
+            rest !~ /[^[:space:]]/) fence = ""
+        next
+      }
+      fence = ""   # this line ends the list item, so the fence inside it ends too
     }
+    if (top) in_list = ($0 ~ /^([-*+]|[0-9]+[.)])[[:space:]]/)   # a list item starts, or one ends
     # ```json``` at a line start is inline code: a backtick fence has none after its run.
     opens = length(run) >= 3 && !(run ~ /^`/ && index(rest, "`"))
     if (pending) {
-      if ($0 ~ /^[^[:space:]]/) flush()
+      if (top) flush()
       else { if (opens) fence = run; else item = item " " $0; next }
     }
     if (opens) { fence = run; next }
