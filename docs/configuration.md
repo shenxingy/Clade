@@ -643,7 +643,9 @@ content local, whichever writer slips:
   so the linker starts no new directory after `CLADE_SYNC_LINK_BUDGET` seconds
   (default 10) and the next session resumes; to move a long backlog at once,
   run `CLADE_SYNC_LINK_BUDGET=0 bash ~/.claude/scripts/sync-link-projects.sh`.
-  `sync-link-projects.sh --dry-run` lists what would move.
+  `sync-link-projects.sh --dry-run` lists what would move, including the links
+  and link conflicts its own planned adoptions and migrations would cause, also
+  through a profile link that chains to `~/.claude/projects`.
 - **Private sessions.** A personal-mode skill can mark a session wherever it was
   started: `touch ~/.claude/private-sessions/$CLAUDE_CODE_SESSION_ID`. The
   correction hook then treats it like a conversation-mode project.

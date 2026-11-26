@@ -1186,8 +1186,9 @@ mutation red "the .git exclusion" $L "adopt legacy prune" \
 mutation red "the repository-subdirectory rule" $L "prune" \
   '[[ "$(cd "$top" 2>/dev/null && pwd -P)" == "$here" ]] || return 1' ':'
 mutation red "the dry-run guard on adopt" $L "dryrun" \
-  '      say "adopt $where -> projects-memory/$key ($nfiles files, ~/$rel$extra)"
-      continue' '      say "adopt $where -> projects-memory/$key ($nfiles files, ~/$rel$extra)"'
+  '    if [[ "$DRY_RUN" -eq 1 ]]; then
+      say "adopt' '    if false; then
+      say "adopt'
 mutation red "the dry-run guard on detach" $L "dryrun" \
   '  if [[ "$DRY_RUN" -eq 1 ]]; then
     say "detach' '  if false; then
@@ -1212,7 +1213,7 @@ mutation red "the pass-2 legacy keep" $L "prune" \
         continue' '      elif false; then
         continue'
 mutation red "the dangling-link skip" $L "prune" \
-  '    if [[ ! -d "$entry" ]]; then
+  '    if ! entry_exists "$key"; then
       note "$where/memory: dangling' '    if false; then
       note "$where/memory: dangling'
 mutation red "the pass-3 memory-root check" $L "legacy" \
@@ -1281,10 +1282,10 @@ mutation red "remote-origin ownership in migration" $L "remote" \
 mutation red "the active-destination migration guard" $L "remote" \
   '    if [[ ! -d "$dst" || -f "$dst/.migrated-to" ]]; then' '    if false; then'
 mutation red "the migration clash check" $L "remote" \
-  '    if [[ -n "$clash" ]]; then
-      conflict "projects-memory/$key is not migrated' \
-  '    if false; then
-      conflict "projects-memory/$key is not migrated'
+  '  if [[ -n "$clash" ]]; then
+    conflict "projects-memory/$key is not migrated' \
+  '  if false; then
+    conflict "projects-memory/$key is not migrated'
 mutation red "migration copy verification" $L "remote" \
   '  if [[ -n "$bad" ]]; then
     echo "  error: migration copy' \
@@ -1317,7 +1318,7 @@ mutation red "excluding remote metadata from private copies" $L "remote" \
 mutation red "the .migrated-to key guard" $L "remote" \
   '  case "$key" in '"'"''"'"'|*[!A-Za-z0-9-]*) return 0 ;; esac' '  :'
 mutation red "the invalid migration-target guard" $L "remote" \
-  '      if [[ -z "$migrated" || ! -d "$PROJECTS_MEMORY_DIR/$migrated" ]]; then' \
+  '      if [[ -z "$migrated" ]] || ! entry_exists "$migrated"; then' \
   '      if false; then'
 mutation red "sync-health.sh's conflict notice" hooks/sync-health.sh "conflict" \
   'if [[ -s "$MEM_CONFLICTS" ]]; then' 'if false; then'
