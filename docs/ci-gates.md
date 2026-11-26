@@ -107,7 +107,8 @@ use a secret, gate on `schedule`/`workflow_dispatch`, which is harmless.
 `tests/lib/ci-local-flaky.sh`, the labels, tag tiers and runner files in
 `tests/lib/ci-local-runner.sh`, the skipped-unsafe steps in
 `tests/lib/ci-local-host-mutation.sh`, the record's head, dirty flag and clean
-stdout in `tests/lib/ci-local-record.sh`, all of which it sources) and removes each
+stdout in `tests/lib/ci-local-record.sh`, the default exit 2 and `--no-strict`
+in `tests/lib/ci-local-strict.sh`, all of which it sources) and removes each
 guard from a copy of the runner to show the suite notices.
 
 The list below is the EXPLANATION — why each gate exists and what it caught.
