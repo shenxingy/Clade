@@ -868,6 +868,9 @@ for mutation in "${ADAPTER_MUTATIONS[@]}"; do
   fi
 done
 
+# One line per row: `read` stops at a newline, and a row cut there has an empty
+# probe, which "goes red" as unknown without running. A statement a mutant adds
+# joins its line with `;`.
 MERGER_MUTATIONS=(
   $'append-order\t.append(spec["group"])\t.insert(0, spec["group"])\tpreserve-append'
   $'idempotence\tif not present(document, spec):\t\tif True:\tidempotent'
@@ -876,11 +879,12 @@ MERGER_MUTATIONS=(
   $'symlink\ttarget.resolve() if target.is_symlink() else target\ttarget\tsymlink-mode'
   $'file-mode\tos.chmod(temporary, mode)\t:\tsymlink-mode'
   $'hooks-type\tif not isinstance(hooks, dict):\t\tif False:\twrong-type'
-  $'unknown-fields\tadditions = []\tdocument = {"hooks": document["hooks"]}\n    additions = []\tpreserve-append'
+  $'unknown-fields\tadditions = []\tdocument = {"hooks": document["hooks"]}; additions = []\tpreserve-append'
   $'path-quoting\tcustom function replacement\tcustom function replacement\tspace-command'
 )
 for mutation in "${MERGER_MUTATIONS[@]}"; do
   IFS=$'\t' read -r name old new probe <<< "$mutation"
+  [[ -n "$probe" ]] || { fail "merger mutation $name is one well-formed row" "$mutation"; continue; }
   mutant="$TMP_ROOT/merger-$name.py"
   if [[ "$name" == path-quoting ]]; then
     python3 - "$MERGER" "$mutant" <<'PY'
@@ -909,9 +913,11 @@ uninstall_home() {  # uninstall_home HOME LOG [UNINSTALL_SH] [PATH_PREFIX]
     bash "$script" </dev/null > "$log" 2>&1
 }
 # One real install seeds every case: the amsg fixture plus a user event list
-# that is empty on purpose, then the edits a user makes AFTER installing — a
-# group behind Clade's, a handler added INTO Clade's SessionEnd group, and a
-# profile holding its own copy of a Clade group beside its own.
+# and a user Stop group that are empty on purpose, then the edits a user makes
+# AFTER installing — a group behind Clade's, a handler added INTO Clade's
+# SessionEnd group, and a profile holding its own copy of a Clade group beside
+# its own. Codex numbers an empty group too (codex-rs/hooks/src/engine/
+# discovery.rs), so dropping the user's would shift every later Stop key.
 UN_T="$TMP_ROOT/uninstall-template"
 amsg_fixture "$UN_T"
 python3 - "$UN_T/.codex/hooks.json" <<'PY'
@@ -920,6 +926,7 @@ from pathlib import Path
 path = Path(sys.argv[1])
 document = json.loads(path.read_text(encoding="utf-8"))
 document["hooks"]["PermissionRequest"] = []
+document["hooks"]["Stop"].append({"matcher": "", "hooks": []})
 path.write_text(json.dumps(document, indent=1) + "\n", encoding="utf-8")
 PY
 cp "$UN_T/.codex/hooks.json" "$TMP_ROOT/un-before.json"
@@ -1003,14 +1010,16 @@ PY
 
 # Codex keys hook trust as <path>:<event>:<group>:<handler>. In the template
 # two user handlers sit behind one of Clade's: the Stop group added after
-# installing (Stop:2:0) and the handler added into Clade's SessionEnd group
-# (SessionEnd:1:1). Both move up, onto keys they were never trusted under, so
-# the uninstall must name exactly those two, and no handler that kept its key.
+# installing (Stop:3:0, behind the user's empty group at Stop:1 and Clade's at
+# Stop:2) and the handler added into Clade's SessionEnd group (SessionEnd:1:1).
+# Both move up, onto keys they were never trusted under, so the uninstall must
+# name exactly those two, and no handler that kept its key. The empty group
+# keeps its place, so the Stop handler lands on Stop:2:0, not Stop:1:0.
 codex_moved_report() {  # codex_moved_report LOG — empty when exactly the moved handlers are named
   local log="$1" errors="" named
   grep -qF 'WARNING: 2 of your Codex hooks moved' "$log" || errors="no warning naming the 2 moved user hooks"
-  grep -qF 'stop:2:0 -> stop:1:0  /fake/user/after-install' "$log" \
-    || errors="$errors; the Stop group behind Clade's was not named"
+  grep -qF 'stop:3:0 -> stop:2:0  /fake/user/after-install' "$log" \
+    || errors="$errors; the Stop group behind Clade's was not named as stop:3:0 -> stop:2:0"
   grep -qF 'session_end:1:1 -> session_end:1:0  /fake/user/shared-group' "$log" \
     || errors="$errors; the handler behind Clade's in a shared SessionEnd group was not named"
   named=$(grep -c ' -> ' "$log")
@@ -1133,6 +1142,7 @@ UNINSTALL_MUTATIONS=(
   $'uninstall\tadapter-kept\tif [[ -n "$_codex_still" ]]; then\tif false; then\tinvalid'
   $'merger\tno-op-write\tif removed:\tif True:\tuntouched'
   $'merger\tempty-group\tif not handlers:\tif False:\troundtrip'
+  $'merger\tuser-empty-group\tif dropped:\tif True:\troundtrip'
   $'merger\tshared-group\tgroup["hooks"] = [handler for _, handler in handlers]\tcontinue\troundtrip'
   $'merger\tuser-empty-event\tif event_removed and not kept_groups:\tif not kept_groups:\troundtrip'
   $'merger\temptied-event\tif event_removed and not kept_groups:\tif False:\troundtrip'
