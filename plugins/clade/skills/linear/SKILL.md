@@ -42,7 +42,7 @@ first use):
 
 | Runtime | Setup, once |
 |---|---|
-| Codex | the claude.ai Linear connector, or `claude mcp add --transport http linear-server https://mcp.linear.app/mcp` |
+| Claude Code | the claude.ai Linear connector, or `claude mcp add --transport http linear-server https://mcp.linear.app/mcp` |
 | Codex | `codex mcp add linear --url https://mcp.linear.app/mcp` |
 | Kimi Code | `"linear": {"url": "https://mcp.linear.app/mcp"}` under `mcpServers` in `~/.kimi-code/mcp.json` |
 
