@@ -486,6 +486,15 @@ jobs:
       - name: Run hook provenance tests
         run: bash tests/test-hook-provenance.sh
 
+      # worker-checkpoint.sh: one shadow commit per agent write, the shadow's
+      # own index untouched by the worker's, and a snapshot holding what
+      # `git add -A` in the worktree would stage — its info/exclude (the
+      # common dir's, on a linked worktree) and core.excludesFile honoured, a
+      # path that became excluded dropped, a tracked forced path kept
+      # (split out of test-hooks.sh when it would have crossed the 1500-line rule)
+      - name: Run worker checkpoint tests
+        run: bash tests/test-worker-checkpoint.sh
+
       # Kimi 2.6.0 hook protocol through the exact installed TOML commands:
       # prompt-part arrays, path→file_path, block/context translation, the
       # correction loop, once-per-session context, and installer migration.

@@ -106,6 +106,22 @@ already gets them there), and a `hooks.json` or `agents/` the installer cannot
 write gets a warning naming it instead of stopping the install. The profile's
 trust state is not touched.
 
+`./uninstall.sh` takes that wiring out again: every handler whose command starts
+with the quoted `"$HOME/.codex/clade-hooks/decision-to-codex.sh"`, in
+`~/.codex/hooks.json` and in each `~/.codex-profiles/*/hooks.json` that is a
+file of its own, then any group or event list the removal emptied, then
+`~/.codex/clade-hooks/` once no hooks.json names the adapter. User groups keep
+their order and fields, a file holding nothing of Clade's is not rewritten, and
+a file it cannot parse (or a machine with no working Python) is left as it was,
+together with the adapter it still runs. `config.toml` is not edited. Codex
+keys hook trust by position (`<hooks.json path>:<event>:<group>:<handler>`), so a
+user handler that sat behind a removed Clade group or handler in the same event
+moves up onto a key it was never trusted under, and Codex does not run it until
+it is reviewed again in `/hooks`. The uninstall names each such handler with its
+old and new position. Trust entries for positions no handler holds any more stay
+there unused. Clade's agents and `AGENTS.md` blocks, in `~/.codex` and in each
+profile, are not removed yet.
+
 Codex loads executable workflow instructions from `SKILL.md`, while Clade's
 original Claude distribution executes `prompt.md`. The generator combines both
 canonical sources and applies Codex compatibility rules:
