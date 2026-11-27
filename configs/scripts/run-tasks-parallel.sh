@@ -343,16 +343,18 @@ run_task_in_worktree() {
 
   echo "[$task_idx] Starting: $task_name [$model]"
 
-  # Create worktree (clean up any leftover from previous failed runs first)
+  # Create worktree (clean up any leftover from previous failed runs first).
+  # No `git worktree prune` here: tasks set up concurrently, and a prune deletes
+  # the entry another task's `git worktree add` has made but not yet locked, so
+  # that add dies. The one prune runs before any task starts (see the launch).
   if [[ -d "$wt_dir" ]]; then
     git worktree remove "$wt_dir" --force 2>/dev/null || rm -rf "$wt_dir"
   fi
-  git worktree prune 2>/dev/null || true
   git branch -D "$branch_name" 2>/dev/null || true
   git branch "$branch_name" "$MAIN_BRANCH" 2>/dev/null
-  git worktree add "$wt_dir" "$branch_name" 2>/dev/null
-  if [[ $? -ne 0 ]]; then
-    echo "[$task_idx] FAILED: Could not create worktree"
+  local add_err
+  if ! add_err=$(git worktree add "$wt_dir" "$branch_name" 2>&1 >/dev/null); then
+    echo "[$task_idx] FAILED: Could not create worktree: ${add_err//$'\n'/ }"
     return 1
   fi
 
@@ -506,6 +508,16 @@ fi
 
 update_progress "starting" 0 "$TOTAL" 0 0
 mkdir -p "$WORKTREE_BASE"
+
+# Prune once, before any task starts, never while one is setting up. `git
+# worktree add` makes .git/worktrees/<name> and only then writes the `locked`
+# file that keeps prune away; a prune in that gap deletes the entry and the add
+# dies with "could not open .git/worktrees/<name>/locked". Each task used to
+# prune its own way in, concurrently with its siblings' adds: measured
+# 2026-11-27, 3 of 200 adds raced by two prunes on one core failed that way,
+# and under load tests/test-loop-goal.sh lost a task to "Could not create
+# worktree" in 3 of 56 runs, a lost attempt toward parking its goal item.
+git worktree prune 2>/dev/null || true
 
 # Results dir: subshells write "success"/"failed" files here (avoids bash subshell variable loss)
 RESULTS_DIR=$(mktemp -d /tmp/claude-results-XXXXXX)

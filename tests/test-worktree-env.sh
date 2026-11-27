@@ -200,6 +200,53 @@ assert_contains "$OUT" "WARNING: Env bootstrap failed" "run 3: failed bootstrap 
 assert_contains "$OUT" "SUCCESS" "run 3: task still spawns and succeeds"
 assert_contains "$MARKER" "venv-symlink" "run 3: symlinks still applied after bootstrap failure"
 
+# ── Run 4: concurrent tasks never prune while a sibling sets up ──
+# A `git worktree prune` between a sibling's `git worktree add` making its entry
+# and locking it deletes the entry, and that add fails. The race itself is too
+# narrow to hit on demand, so assert the property that rules it out, through a
+# git shim that logs each call: one prune per run, before the first add. (Each
+# task pruned on its way in before; three concurrent tasks often all pruned
+# ahead of every add, so "before the first add" alone passed on the old code.)
+REAL_GIT=$(command -v git)
+mkdir -p "$TMP/gitshim"
+cat > "$TMP/gitshim/git" << EOF
+#!/usr/bin/env bash
+[[ "\$1" == worktree ]] && echo "worktree \$2" >> "$TMP/git-calls"
+exec "$REAL_GIT" "\$@"
+EOF
+chmod +x "$TMP/gitshim/git"
+TASKS3="$TMP/tasks3.txt"
+for n in 1 2 3; do
+  printf '===TASK===\nmodel: haiku\ntimeout: 60\nretries: 0\n---\nRecord worktree env state %s\n' "$n"
+done > "$TASKS3"
+: > "$TMP/git-calls"
+MARKER_FILE="$TMP/marker-4"
+OUT=$( cd "$WTREPO" && env PATH="$TMP/gitshim:$TMP/bin:$PATH" MARKER_FILE="$MARKER_FILE" \
+         WORKTREE_BASE="$TMP/wt4" MAX_WORKERS=3 timeout 180 bash "$RUNNER" "$TASKS3" 2>&1 )
+CALLS=$(cat "$TMP/git-calls")
+last_prune=$(grep -n '^worktree prune$' <<< "$CALLS" | tail -1 | cut -d: -f1)
+first_add=$(grep -n '^worktree add$' <<< "$CALLS" | head -1 | cut -d: -f1)
+assert_eq "3" "$(grep -c '^worktree add$' <<< "$CALLS")" "run 4: three tasks, three worktree adds"
+assert_eq "1" "$(grep -c '^worktree prune$' <<< "$CALLS")" "run 4: one worktree prune for the whole run"
+TESTS_RUN=$((TESTS_RUN + 1))
+if [[ -n "$last_prune" && -n "$first_add" && "$last_prune" -lt "$first_add" ]]; then
+  pass "run 4: every worktree prune runs before the first add"
+else
+  fail "run 4: every worktree prune runs before the first add" "calls: $(tr '\n' ' ' <<< "$CALLS")"
+fi
+assert_eq "3" "$(grep -c 'SUCCESS:' <<< "$OUT")" "run 4: all three concurrent tasks succeed"
+
+# ── Run 5: a failed worktree add says why ──
+# The add's own message went to /dev/null, so a lost task read only "Could not
+# create worktree". A file where the worktree goes makes the add fail.
+mkdir -p "$TMP/wt5"
+echo "not a worktree" > "$TMP/wt5/task-1"
+MARKER_FILE="$TMP/marker-5"
+OUT=$( cd "$WTREPO" && env PATH="$TMP/bin:$PATH" MARKER_FILE="$MARKER_FILE" \
+         WORKTREE_BASE="$TMP/wt5" MAX_WORKERS=1 timeout 180 bash "$RUNNER" "$TASKS" 2>&1 )
+assert_contains "$OUT" "Could not create worktree: " "run 5: the failure line carries git's message"
+assert_contains "$OUT" "already exists" "run 5: the message is git's own"
+
 # ═════════════════════════════════════════════════════════════════════
 # Section 2: post-tool-use-lint.sh per-file fast path
 # ═════════════════════════════════════════════════════════════════════
