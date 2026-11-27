@@ -24,7 +24,7 @@ this list has twice:
 
 ```bash
 python3 configs/scripts/ci-local.py --list   # what runs here, what cannot, why
-python3 configs/scripts/ci-local.py          # 5/5 jobs in ~180s on a 32-core box, PARTIAL (below)
+python3 configs/scripts/ci-local.py          # 5/5 jobs in ~180s on a 32-core box; exit 2 if not green (below)
 python3 configs/scripts/ci-local.py --json   # machine-readable, for /green
 ```
 
@@ -91,10 +91,15 @@ names each one as `Job › Step (first exit N)`, and the JSON lists it under
 the first failure final. The step timeout is 900 s scaled by the host's load per
 CPU at the start (1x-4x, so 3,600 s at most); the run prints it, and
 `--timeout N` sets it: a fixed 900 s killed this repository's pytest step, which
-took 1,914 s at load ~80 on 32 cores. `--strict` exits 2 on PARTIAL, FLAKY or NOTHING RAN
-(the default flips after a report-only week, see TODO.md). Here the unproven
-lane is one step: `Syntax Check › Sibling facts (report only)` picks its diff
-range with `${{ github.event_name }}`, so a local run does not execute it. Both `pull_request_target` workflows
+took 1,914 s at load ~80 on 32 cores. A run that is PARTIAL, FLAKY or NOTHING RAN
+exits 2 (a failure is 1); `--no-strict` exits 0 there, as every run did through
+the report-only week of 2026-11-06 to 11-13. This repository has no unproven
+lane. Its one was `Syntax Check › Sibling facts (report only)`, which picked its
+diff range with `${{ github.event_name }}` and was skipped on every local run;
+it reads the runner's `$GITHUB_EVENT_NAME` and `$GITHUB_BASE_REF` now. A local
+run sets neither, so it takes the push branch (`HEAD~1..HEAD`), and it skips
+the `git fetch --deepen=1` that only a shallow checkout needs, so it needs no
+network. Both `pull_request_target` workflows
 (`honeypot-check`, `vouch-gate`) have no push or pull_request trigger and are
 skipped as GitHub-side, and the four key-gated tiers, the only steps here that
 use a secret, gate on `schedule`/`workflow_dispatch`, which is harmless.
@@ -102,7 +107,8 @@ use a secret, gate on `schedule`/`workflow_dispatch`, which is harmless.
 `tests/lib/ci-local-flaky.sh`, the labels, tag tiers and runner files in
 `tests/lib/ci-local-runner.sh`, the skipped-unsafe steps in
 `tests/lib/ci-local-host-mutation.sh`, the record's head, dirty flag and clean
-stdout in `tests/lib/ci-local-record.sh`, all of which it sources) and removes each
+stdout in `tests/lib/ci-local-record.sh`, the default exit 2 and `--no-strict`
+in `tests/lib/ci-local-strict.sh`, all of which it sources) and removes each
 guard from a copy of the runner to show the suite notices.
 
 The list below is the EXPLANATION — why each gate exists and what it caught.
@@ -216,6 +222,20 @@ python3 configs/scripts/harness-usage.py --self-test
 #     stay green, are in orchestrator/tests/can_fire/task_eta.py.
 python3 configs/scripts/task-eta.py --self-test
 
+# 2i. Global CLAUDE.md ceiling (pytest job, test_conventions.py section 5).
+#     install.sh installs configs/CLAUDE.md as ~/.claude/CLAUDE.md, which Claude
+#     Code loads into every session and subagent and warns about past 40,000
+#     chars per file on a 200k-context model. The template grew from 20,322
+#     chars (5aac2b3, 2026-10-17) to 32,555 bytes (e82c0c8, 2026-11-26) with
+#     nothing to stop it; auto-audit.sh's budget refuses promotions only. With
+#     the owner's private Cross-Project Rules tail (16,073 bytes on the author's
+#     host that day) the installed file is 48,628 bytes, already past the
+#     warning. CLAUDE_MD_CEILING_BYTES only moves down: the test fails over it,
+#     and fails more than 1,000 bytes under it until a cut lowers it, so raising
+#     it is always a visible edit in the same diff. A third case fails if
+#     install.sh stops copying that file, so the gate cannot watch a stale one.
+cd orchestrator && .venv/bin/python -m pytest tests/test_conventions.py -q -k global_claude_md
+
 # 3. Shell syntax check (hooks, scripts, installer). One file per `bash -n`: it
 #    parses only its first argument, so `bash -n a.sh b.sh` never reads b.sh.
 for f in configs/hooks/*.sh configs/hooks/lib/*.sh configs/codex-hooks/*.sh \
@@ -239,6 +259,11 @@ python3 configs/scripts/regen-cc-plugin.py --check      # regenerate without --c
 #    (how many scripts, skills, hooks). ADDING A FILE MAKES THEM STALE and
 #    fails CI, which is how this list grew: red-phase-audit.py moved the
 #    Python-script count 21 → 22 while the READMEs still said 21.
+#    sync never bumps a row's date to match a fix: it names any rewritten row
+#    that carries a date ("re-verify, then update its date"). A fact whose value
+#    is itself a date is rewritten like any other value, and is not listed
+#    unless its line carries another date. Its --self-test runs in the pytest
+#    job (test_self_tests_can_fire.py, mutations in can_fire/doc_align.py).
 python3 configs/scripts/doc-align.py verify             # doc-align.py sync to fix
 
 # 8. Skill registry validation
@@ -381,11 +406,12 @@ python3 configs/scripts/check-sibling-facts.py
 #     here used to be neither: it ran one file, and did not run at all.
 bash configs/scripts/checks.sh shellcheck configs/hooks/*.sh configs/hooks/lib/*.sh configs/codex-hooks/*.sh configs/kimi-hooks/*.sh configs/scripts/*.sh install.sh uninstall.sh .claude/pre-commit.sh
 
-# 12. Every suite the `shell-tests` job runs — all 38, not a convenient subset
+# 12. Every suite the `shell-tests` job runs — all 39, not a convenient subset
 #     (`loop` also runs test-loop-holdout.sh, and sources test-loop-env.sh, through
 #     tests/lib/loop-fixture.sh — neither has a step of its own)
 for t in loop checks commit-archeology skill-routing pr-scope-policy audit worktree-env \
          rule-injector mailbox-drain correction-pairing sync-store hooks hook-provenance \
+         worker-checkpoint \
          kimi-hooks codex-hooks uninstall sync-link-projects sync-link-projects-remote sync-health memory-sync-breaker \
          post-edit-check session-context session-scorecard post-compact-reinject \
          memory-staleness \
@@ -461,7 +487,7 @@ added to that script in the same commit too.**
 On push/PR to `main`, four workflow files fire:
 
 - `ci.yml` — `syntax-check` (29 gates), `pytest` (suite + 2 offline evals),
-  `shell-tests` (38 suites), `install-test`. `run_hack_eval.py` scores
+  `shell-tests` (39 suites), `install-test`. `run_hack_eval.py` scores
   `judge_diversity.test_integrity` against the labelled reward-hack corpus in
   `evals/hack_cases/` — read its README before changing either, because that
   gate's floor and ceiling are measured, not chosen.

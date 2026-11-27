@@ -17,6 +17,10 @@ sync_push_backoff_active() {
   IFS=' ' read -r _failed_at _failures _reason _extra < "$_file"
   case "$_failed_at" in ''|*[!0-9]*) return 1 ;; esac
   case "$_failures" in ''|*[!0-9]*) return 1 ;; esac
+  # Decimal whatever zeros lead: bash arithmetic reads 07000 as octal 3584 and
+  # rejects 08000 or 09, dropping this check mid-parse. 10# works in bash 3.2.
+  _failed_at=$((10#$_failed_at))
+  _failures=$((10#$_failures))
   [[ "$_failures" -ge 1 && -n "$_reason" && -z "$_extra" ]] || return 1
 
   local _base="${CLADE_SYNC_PUSH_BACKOFF_BASE_SECONDS:-1800}"

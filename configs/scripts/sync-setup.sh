@@ -135,17 +135,24 @@ projects-memory/*/.project-paths merge=union
 ATTRS
 
 # Preserve existing ignore lines and comments; append only absent defaults.
+# errexit is off for the source, not `source … || { …; }`: bash 3.2 (macOS
+# /bin/bash) exits under set -e when a source fails, even inside || or if, so
+# the message below never printed there.
 _SYNC_STORE_HEAL="$(cd "$(dirname "$0")" 2>/dev/null && pwd)/sync-store-heal.sh"
+set +e
 # shellcheck source=/dev/null
-source "$_SYNC_STORE_HEAL" 2>/dev/null || {
+source "$_SYNC_STORE_HEAL" 2>/dev/null
+_ss_heal_rc=$?
+set -e
+if [[ "$_ss_heal_rc" -ne 0 ]]; then
   echo "sync-setup: could not load $_SYNC_STORE_HEAL for $SYNC_DIR/.gitignore; no initial commit was made." >&2
   exit 1
-}
+fi
 sync_store_heal_gitignore "$SYNC_DIR/.gitignore" || {
   echo "sync-setup: could not write $SYNC_DIR/.gitignore; no initial commit was made." >&2
   exit 1
 }
-unset _SYNC_STORE_HEAL
+unset _SYNC_STORE_HEAL _ss_heal_rc
 
 # Add/update GitHub remote if we have a URL
 if [[ -n "$SYNC_REPO_URL" ]]; then

@@ -5,7 +5,8 @@
 # It moved here when the hook sat at 1,496 of its 1,500 lines
 # (test_conventions.py), with the recursive-delete rules (rm-guard.sh). It
 # reads the hook's COMMAND and HOOK_CWD and answers through its gd_deny and
-# gd_rewrite, both of which exit.
+# gd_rewrite, both of which exit. A reason quotes GD_CMD, the hook's clipped
+# copy of the command, never COMMAND itself.
 #
 # The hook fails closed without this file: a command that may push is
 # refused, because the walk cannot run. So is one when this file defines no
@@ -633,7 +634,7 @@ gd_push_check() {
         *nested) _why="a wrapped or piped shell command (ssh, bash -c, eval, … | bash) force-pushes main/master" ;;
         *)       _why="it names main/master" ;;
       esac
-      gd_deny "Force push to main/master blocked: ${_why}. This destroys shared history. Use --force-with-lease on a feature branch, or ask the user explicitly. Command: $COMMAND"
+      gd_deny "Force push to main/master blocked: ${_why}. This destroys shared history. Use --force-with-lease on a feature branch, or ask the user explicitly. Command: $GD_CMD"
       ;;
     rewrite*)
       gd_rewrite "${_gp#rewrite$'\n'}" "pre-tool-guardian rewrote a force push to --force-with-lease, which refuses to overwrite the remote branch if someone else updated it since your last fetch. Only the git push statement changed."

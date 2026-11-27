@@ -4,7 +4,8 @@
 # gd_rm_check. They moved here when the hook sat at 1,496 of its 1,500 lines
 # (test_conventions.py), with the force-push walk (force-push-walk.sh). They
 # read the hook's COMMAND and answer through its gd_deny and gd_rewrite, both
-# of which exit.
+# of which exit. A reason quotes GD_CMD, the hook's clipped copy of the
+# command, never COMMAND itself.
 #
 # The hook fails closed without this file: a command with an rm word is
 # refused, because no delete in it can be checked. So is one when this file
@@ -89,7 +90,7 @@ gd_rm_catastrophic() {
     fi
   done <<< "$RM_STATEMENTS"
   if [[ "$CATASTROPHIC_RM" == true ]]; then
-    gd_deny "Catastrophic rm -rf blocked on system/home directory. ${RM_SHALLOW:+Target: $RM_SHALLOW. }Refused: /, a home directory or a directory directly inside one (two levels for a dot-directory such as ~/.claude), and /etc, /usr, /var, /sys, /proc, /boot. Not refused: a literal path two levels below a home directory, or under /tmp or /var/tmp. If this target really must go, it is the owner's to run in their own terminal. Command: $COMMAND"
+    gd_deny "Catastrophic rm -rf blocked on system/home directory. ${RM_SHALLOW:+Target: $RM_SHALLOW. }Refused: /, a home directory or a directory directly inside one (two levels for a dot-directory such as ~/.claude), and /etc, /usr, /var, /sys, /proc, /boot. Not refused: a literal path two levels below a home directory, or under /tmp or /var/tmp. If this target really must go, it is the owner's to run in their own terminal. Command: $GD_CMD"
   fi
 }
 
@@ -169,7 +170,7 @@ gd_rm_unresolved() {
   done <<< "$RM_STATEMENTS"
 
   if [[ -n "$_refuse_reason" ]]; then
-    gd_deny "Recursive delete refused: ${_refuse_reason}. Name the directory explicitly, or run it manually after checking what it expands to. Command: $COMMAND"
+    gd_deny "Recursive delete refused: ${_refuse_reason}. Name the directory explicitly, or run it manually after checking what it expands to. Command: $GD_CMD"
   fi
 
   if [[ -n "$_unresolved_var" ]]; then

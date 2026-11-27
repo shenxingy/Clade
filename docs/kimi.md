@@ -46,8 +46,13 @@ in the 2.6.0 bundle:
 - **Configuration.** `[[hooks]]` accepts only `event`, `matcher`, `command`, and
   `timeout`; timeout is 1–600 seconds and defaults to 30. There is no Claude
   `type: "prompt"`, `async`, or `asyncRewake` field (HT, `HookDefSchema`; RH,
-  `DEFAULT_TIMEOUT_SECONDS`). Matchers are JavaScript regular expressions (MH,
-  `matches$1`).
+  `DEFAULT_TIMEOUT_SECONDS`). Matchers are JavaScript regular expressions,
+  applied unanchored: an empty matcher matches everything, any other is
+  `new RegExp(pattern).test(value)`, and a tool event's value is the tool name
+  (MH, `matches$1`; AH). A bare `Edit|Write` therefore also selects
+  `mcp__notes__Write`, so Clade writes every matcher as `^(…)$`. Read again on
+  2026-11-26 in the installed 2.7.3 binary and the npm 2.0.1 bundle: the same
+  `matches$1`.
 - **Input.** `runMatchedHooks` adds `hookEventName`, `sessionId`, and `cwd`, then
   `toHookInputData` converts keys to snake_case. Thus `hook_event_name` is
   present even though that literal does not appear in the bundle. Tool events
@@ -98,7 +103,7 @@ adapter, including its input normalization and result translation.
 
 | # | Claude event | Claude matcher | Hook wiring | Kimi status | Reason and Kimi source |
 |---:|---|---|---|---|---|
-| 1 | SessionStart | `startup\|clear\|fork` | `session-baseline.sh` | **ported** | Data-only baseline needs no model channel. Kimi wiring uses `startup\|clear`: fork/reclaimed does not emit SessionStart (SH, constructor and `triggerSessionStart`). |
+| 1 | SessionStart | `startup\|clear\|fork` | `session-baseline.sh` | **ported** | Data-only baseline needs no model channel. Kimi wiring uses `^(startup\|clear)$`: fork/reclaimed does not emit SessionStart (SH, constructor and `triggerSessionStart`). |
 | 2 | SessionStart | `startup\|clear\|fork` | `session-context.sh` | **ported with adaptation** | SessionStart results are discarded (SH), so a once-per-session-id runtime sentinel delivers the same text on the first UserPromptSubmit, whose message is injected (UH). Row 8 releases the sentinel at SessionEnd, so a session resumed under the same id gets the context once more on its first prompt; Claude Code does not rerun `session-context.sh` on resume. |
 | 3 | SessionStart | `startup\|clear\|fork` | `memory-staleness.sh` | **not portable** | It requires a transcript path to find memory and SessionStart supplies no context channel. Kimi supplies neither (MH; SH). |
 | 4 | SessionStart | `startup` | `sync-pull.sh` | **not applicable** | Claude dotfiles-store bootstrap and Claude project-memory adoption are outside this hook port. Only the write-triggered `memory-sync.sh` side is in scope. |
@@ -144,15 +149,48 @@ applicable** — 39 wirings accounted for, with 12 installed entries.
 ## Installed behavior
 
 `install.sh` §11c keeps one declarative `(event, matcher, hook, timeout)` list,
-with a once-only mode for session context. It appends an entry only when the
-exact event + matcher + command tuple is absent. This has three important
-consequences:
+with a once-only mode for session context. The list names each matcher's
+alternation (`Edit|Write`), and every non-empty one is written anchored
+(`^(Edit|Write)$`), because Kimi applies a matcher unanchored
+([Protocol evidence](#protocol-evidence)). It appends an entry only when the
+exact event + anchored matcher + command tuple is absent. This has five
+important consequences:
 
 - reinstalling does not duplicate entries;
-- a user-written entry is never rewritten or removed;
+- an entry an earlier install wrote unanchored (same event and command) is
+  anchored in place, not appended beside, and a second copy of it is dropped,
+  so no unanchored copy keeps firing; the rewrite keeps `config.toml`'s mode;
+- that rewrite fails closed, because `config.toml` can hold provider
+  credentials. An entry ends at the next table header, indented or not. A
+  dropped copy loses only its `[[hooks]]` line, its four keys and its blank
+  lines, so a comment or a table after it stays. A copy holding any other
+  line is refused, and so is a result that tomllib (Python 3.11+, where
+  present) does not parse to the original with only that entry changed. A
+  refusal leaves the file as it was, appends no anchored copy beside the old
+  one, and prints a `Skipped: anchoring` line;
+- an entry with any other event or command, such as a user's own hook, is
+  never rewritten or removed, and neither is anything outside a Clade entry;
 - a machine holding only the original guardian command keeps that exact
-  command and gains the other 11 entries, with no replacement or orphaned
-  adapter command.
+  command, now with `^(Bash)$`, and gains the other 11 entries, with no
+  replacement or orphaned adapter command.
+
+`uninstall.sh` §9c takes the entries out again: every `[[hooks]]` table whose
+`command` starts with `"$HOME/.kimi-code/hooks/decision-to-kimi.sh `, from its
+header through its last key line, plus the one blank line install.sh wrote
+before it. Comments, blank lines and tables after it stay, so on a config where
+install.sh appended nothing else, install then uninstall gives back the same
+bytes. Where `tomllib` exists the result must parse to the original minus
+exactly those entries, or the file is left alone with a warning; a check that
+dies before giving a verdict counts as a refusal. The file is left alone too when
+the edited copy cannot be written back (a read-only `config.toml`); the
+uninstall then carries on, and the adapter stays while the file names it. The
+file keeps its mode, and a symlink stays a symlink. An entry the user wrote
+that runs Clade's adapter is removed with the rest, since the two cannot be
+told apart.
+`decision-to-kimi.sh` is deleted once `config.toml` no longer names it;
+`statusline.sh` stays, because `tui.toml` may still run it. The agents, the
+`AGENTS.md` block, the skill view and the other `config.toml` settings
+install.sh writes are not removed yet.
 
 `uninstall.sh` §9c takes the entries out again: every `[[hooks]]` table whose
 `command` starts with `"$HOME/.kimi-code/hooks/decision-to-kimi.sh `, from its
