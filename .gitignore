@@ -20,6 +20,9 @@ orchestrator/caddy.log
 # so it reaches every contributor through `committer` and stays out of the 40+
 # unrelated repositories committer.sh also serves.
 !.claude/pre-commit.sh
+# The merge check land-pr.py runs on each merge result (whole-tree caps two
+# green PRs can break together). Tracked for the same reason as the gate above.
+!.claude/merge-check.sh
 orchestrator/.claude/
 
 # Build artifacts

@@ -81,7 +81,7 @@ jobs:
       - name: Shellcheck gate (shared checks.sh)
         run: |
           command -v shellcheck >/dev/null || { echo "shellcheck is not installed"; exit 1; }
-          bash configs/scripts/checks.sh shellcheck configs/hooks/*.sh configs/hooks/lib/*.sh configs/codex-hooks/*.sh configs/kimi-hooks/*.sh configs/scripts/*.sh install.sh uninstall.sh .claude/pre-commit.sh
+          bash configs/scripts/checks.sh shellcheck configs/hooks/*.sh configs/hooks/lib/*.sh configs/codex-hooks/*.sh configs/kimi-hooks/*.sh configs/scripts/*.sh install.sh uninstall.sh .claude/pre-commit.sh .claude/merge-check.sh
 
       - name: Install test (dry run)
         run: |

@@ -148,9 +148,16 @@ def run_all(cases: list[tuple[str, Case]], script: Path) -> int:
 # ─── land-pr.py ──────────────────────────────────────────────────────────────
 
 def _pr_world(tmp: Path, *, conflict: bool = False, pr: dict[str, Any] | None = None,
-              repo: dict[str, Any] | None = None, **gh: Any) -> tuple[World, Path, str]:
-    """A PR gated on its head, then main moves (a conflicting edit when asked) and the lander's clone is stale."""
+              repo: dict[str, Any] | None = None, check: str | None = None,
+              **gh: Any) -> tuple[World, Path, str]:
+    """A PR gated on its head, then main moves (a conflicting edit when asked) and the lander's clone is stale.
+
+    `check` is a `.claude/merge-check.sh` committed on main before the PR branches, so both sides carry it."""
     w = World(tmp)
+    if check is not None:
+        (w.work / ".claude").mkdir()
+        w.commit({".claude/merge-check.sh": check}, "chore: merge check")
+        w.git(w.work, "push", "-q", "origin", "main")
     lander = w.clone("lander")
     w.git(w.work, "checkout", "-q", "-b", "feat")
     head = w.commit({"shared.txt" if conflict else "feature.txt": "feature\n"}, "feat: the PR")
@@ -259,6 +266,47 @@ def land_needs_the_forge_to_confirm(tmp: Path, script: Path) -> None:
     expect(out.returncode == 18 and "up-to-date" in out.stderr, f"a forge refusal is exit 18: {out.stderr}")
 
 
+# The check sees the MERGE RESULT: the PR's feature.txt and main's other.txt both,
+# which neither side has alone. It leaves a marker so a case can tell it ran.
+_SEES_BOTH = ('test -f feature.txt && test -f other.txt || { echo "not the merge result"; exit 3; }\n'
+              'echo ran > "$MARK"; test "$LAND_PR_HEAD" = "$(git rev-parse HEAD^2)" || exit 4\n')
+
+
+def _worktrees(lander: Path, w: World) -> int:
+    return len([ln for ln in w.git(lander, "worktree", "list", "--porcelain").splitlines() if ln.startswith("worktree ")])
+
+
+def land_runs_the_merge_check_on_the_merge_result(tmp: Path, script: Path) -> None:
+    w, lander, head = _pr_world(tmp, check=_SEES_BOTH)
+    w.env["MARK"] = str(w.root / "mark")
+    out = _land(w, script, lander, _green(head))
+    expect(out.returncode == 0, f"a merge result that passes its check must land: {out.stderr}")
+    expect((w.root / "mark").exists(), "the merge check never ran")
+    expect("merge-check.sh passed on the merge result" in out.stdout, f"the check is reported: {out.stdout}")
+    expect(_worktrees(lander, w) == 1, "the throwaway worktree of the merge result was left behind")
+    plain_w, plain_lander, plain_head = _pr_world(tmp / "plain")
+    out = _land(plain_w, script, plain_lander, _green(plain_head))
+    expect(out.returncode == 0 and "no .claude/merge-check.sh" in out.stdout,
+           f"a repository without a check lands and says so: {out.stdout} {out.stderr}")
+
+
+def land_refuses_a_red_merge_result(tmp: Path, script: Path) -> None:
+    # Each side alone passes; together they break a whole-tree property, as two
+    # PRs that each stay under a line cap do once both have merged.
+    together = 'if test -f feature.txt && test -f other.txt; then echo "over the cap together"; exit 1; fi\n'
+    w, lander, head = _pr_world(tmp, check=together)
+    out = _land(w, script, lander, _green(head))
+    _refused(out, 22, w, "a merge result that fails its check")
+    expect("over the cap together" in out.stderr, f"the check's own output is shown: {out.stderr}")
+    expect(_worktrees(lander, w) == 1, "a failing check left its worktree behind")
+    w2, lander2, head2 = _pr_world(tmp / "dry", check=together)
+    _refused(_land(w2, script, lander2, _green(head2), "--dry-run"), 22, w2, "a dry run of a red merge result")
+    w3, lander3, head3 = _pr_world(tmp / "slow", check="sleep 30\n")
+    out = _land(w3, script, lander3, _green(head3), "--merge-check-timeout", "1")
+    _refused(out, 22, w3, "a merge check that hangs")
+    expect("timed out" in out.stderr, f"a hung check is named as one: {out.stderr}")
+
+
 LAND_CASES: list[tuple[str, Case]] = [
     ("merges after main moved, locked to the head", land_merges_after_main_moved),
     ("accepts ci-local --json as the record", land_accepts_ci_local_json),
@@ -271,6 +319,8 @@ LAND_CASES: list[tuple[str, Case]] = [
     ("refuses a PR into another base", land_refuses_wrong_base),
     ("refuses no record and a disabled method", land_refuses_missing_record_and_method),
     ("needs mergedAt; reports a forge refusal", land_needs_the_forge_to_confirm),
+    ("runs .claude/merge-check.sh on the merge result", land_runs_the_merge_check_on_the_merge_result),
+    ("refuses a merge result its check fails", land_refuses_a_red_merge_result),
 ]
 
 

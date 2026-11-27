@@ -75,8 +75,10 @@ Clade's rule ("Merge, then test: no queue, no re-gate" in `~/.claude/CLAUDE.md`)
 - Gate a PR once, on its head: `python3 ~/.claude/scripts/ci-local.py --json > gate.json`
   on a clean checkout of it, or this repository's own gate script.
 - Merge with `python3 ~/.claude/scripts/land-pr.py <pr> --record gate.json`: a green record
-  for the exact head plus a clean merge into the current default branch. Main moving is
-  never a reason to gate again; a conflict resolution is a new head and needs a new gate.
+  for the exact head plus a clean merge into the current default branch, and the merge
+  result passing `.claude/merge-check.sh` if the repository has one (seconds of whole-tree
+  checks: caps and counts two green PRs can break together). Main moving is never a reason
+  to gate again; a conflict resolution is a new head and needs a new gate.
 - Test main after each merge: `~/.claude/scripts/mainline-ci.py tick` on a timer (examples in
   Clade's `configs/templates/mainline-ci.*.example`) bisects a red tree to its merge; fix forward.
 - Versions are assigned at the release cut from pending notes (changesets, towncrier, scriv,

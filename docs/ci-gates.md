@@ -414,7 +414,7 @@ python3 configs/scripts/check-sibling-facts.py
 #     and the file list must match CI's, which is every hook, adapter and
 #     script plus install.sh, uninstall.sh and .claude/pre-commit.sh. The line
 #     here used to be neither: it ran one file, and did not run at all.
-bash configs/scripts/checks.sh shellcheck configs/hooks/*.sh configs/hooks/lib/*.sh configs/codex-hooks/*.sh configs/kimi-hooks/*.sh configs/scripts/*.sh install.sh uninstall.sh .claude/pre-commit.sh
+bash configs/scripts/checks.sh shellcheck configs/hooks/*.sh configs/hooks/lib/*.sh configs/codex-hooks/*.sh configs/kimi-hooks/*.sh configs/scripts/*.sh install.sh uninstall.sh .claude/pre-commit.sh .claude/merge-check.sh
 
 # 12. Every suite the `shell-tests` job runs — all 40, not a convenient subset
 #     (`loop` also runs test-loop-holdout.sh, and sources test-loop-env.sh, through
