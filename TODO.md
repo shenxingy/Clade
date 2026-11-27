@@ -1345,7 +1345,7 @@ record is wrong**. The four below were reproduced by hand before filing.
   once per nested repository. Not done: task-owned paths only, since the runners do
   not record which paths a task owns.
 - [x] 🟠 脏工作树让 hydrate_context 爆炸——context 含 13,094 行 git status 时 supervisor 传参超 ARG_MAX（`/usr/bin/timeout: Argument list too long`，exit 126）。hydrate 应对 git status 截断/排除未跟踪目录，或 context 经 stdin/文件传入而非 argv。
-  Done 2026-11-26 (#PR:loop-hydrate-argmax): both. The supervisor prompt goes in on
+  Done 2026-11-26 (#302): both. The supervisor prompt goes in on
   stdin (a goal file alone can pass 128 KiB), and the context's `git status` stops at
   200 lines with untracked directories collapsed.
 - [ ] 🟡 goal 复选框无自动勾稽——6 迭代全程 "10 unchecked"，收敛只能靠人工核验后勾。score_and_write 应把已完成 work item 回写 goal（`_From:` 段对账），否则收敛判定恒为 not-done。
@@ -3799,7 +3799,7 @@ was reconciled by hand the same day (12 of 32 files defective). Mostly condition
   needlessly hidden from the model. Fix: treat a SessionStart context injection that
   Kimi delivers through `--once-per-session` as adapted. Keep `iloop` claude-only:
   its Stop hook is not wired in Kimi, and Kimi allows one Stop continuation per turn.
-  Done 2026-11-26 (#PR:kimi-init-profile): as proposed, for hooks Kimi delivers
+  Done 2026-11-26 (#301): as proposed, for hooks Kimi delivers
   `--once-per-session` (`session-context.sh` only); `iloop` stays claude-only.
 - [ ] 🔵 **`stop-check.sh` under headless `kimi -p` workers.** Kimi's single Stop
   continuation could nudge a dispatched worker to commit despite a "do not commit"
@@ -4573,7 +4573,7 @@ and the reviews of the units the sweep closed. Each item names its evidence.
   measured; #290 and #298 put `tests/test-kimi-hooks.sh` at 1,577 lines. Each
   was gated on its exact head and merged within minutes of the other, and
   `land-pr.py` checks only that the merge is textually clean. Main stayed red
-  until the next unit's gate failed on it; fixed forward by #PR:claude-md-trim.
+  until the next unit's gate failed on it; fixed forward by #300.
   Two parts:
   1. **No post-merge run for this repository.** The only `mainline-ci` timer on
      the author's host serves another repository, so the "test every new main
@@ -4585,9 +4585,25 @@ and the reviews of the units the sweep closed. Each item names its evidence.
      result before merging, which catches exactly the additive limits (the
      line cap, the byte ceiling) without re-gating anything. Measure first how
      often a merge crosses one: twice in the 16 merges of 2026-11-26.
+  3. **A stack landed by squash can duplicate a block.** Landing the fix
+     first, with each dependent branch merging the fix branch before its gate,
+     left one dependent with #298's `docs/kimi.md` uninstall paragraph twice:
+     git saw it added once through the squashed main and once through the
+     branch's own history. Its gate would have passed, since no check reads
+     prose twice. It was caught by diffing the branch against main for files
+     the PR never meant to touch. `land-pr.py` could make that check: name
+     each path the head changes against the merge base that no commit
+     unique to the branch touches.
 
 **Tooling residue** (found in this batch's reviews and gates)
 
+- [x] 🔵 **`tests/test-ensure-dev-server.sh` used fixed ports, so two runs on
+  one host shared servers.** Four gates on one host made one FLAKY: its cold
+  start found another run's server on 4501 and reported `STATUS=reused`. The
+  race case's process count also passed on zero servers (`-le 2` only). Done
+  (#PR:devserver-ports): a free port per case per run, refused if it already
+  answers, and a lower bound of one server. Two concurrent copies failed 5 of
+  6 rounds before and 0 of 6 after.
 - [x] 🟠 **`tests/test-hooks.sh` is over the 1,500-line cap on main, so
   `test_conventions.py` fails there.** Two squash merges of this batch, each under
   the cap on its own base, added up: the file was 1,495 lines after
