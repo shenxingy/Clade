@@ -4601,7 +4601,7 @@ and the reviews of the units the sweep closed. Each item names its evidence.
   one host shared servers.** Four gates on one host made one FLAKY: its cold
   start found another run's server on 4501 and reported `STATUS=reused`. The
   race case's process count also passed on zero servers (`-le 2` only). Done
-  (#PR:devserver-ports): a free port per case per run, refused if it already
+  (#303): a free port per case per run, refused if it already
   answers, and a lower bound of one server. Two concurrent copies failed 5 of
   6 rounds before and 0 of 6 after.
 - [x] 🟠 **`tests/test-hooks.sh` is over the 1,500-line cap on main, so
@@ -4647,7 +4647,7 @@ and the reviews of the units the sweep closed. Each item names its evidence.
 - [x] 🔵 **`uninstall.sh` writes the fixed path `/tmp/claude-settings-clean.json`.**
   Concurrent runs race on it, and per-user scratch belongs under
   `configs/hooks/lib/runtime-dir.sh` or a `mktemp` beside the target. Found
-  reviewing #298. Done (#PR:uninstall-tmp): a `mktemp`
+  reviewing #298. Done (#304): a `mktemp`
   beside the target, written back through the file so its mode and a link
   survive; the alias block's `sed -i`, which BSD sed rejects, went the same
   way, and a `settings.json` jq cannot parse no longer ends the run.
