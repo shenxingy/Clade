@@ -493,11 +493,11 @@ def self_test() -> int:
                   "--enable-auto-delete sets delete_branch_on_merge")
         finally:
             os.chdir(old_cwd)
-            for k, v in saved.items():
-                if v is None:
-                    os.environ.pop(k, None)
+            for name, value in saved.items():
+                if value is None:
+                    os.environ.pop(name, None)
                 else:
-                    os.environ[k] = v
+                    os.environ[name] = value
 
     print(f"branch-sweep self-test: {'FAILED ' + str(len(failures)) if failures else 'all passed'}")
     return 1 if failures else 0
