@@ -34,9 +34,9 @@ Phases 1–14 complete.
   that owns it and schedule it weekly, or drop it:
   [§ 2026-10-22 Workflow efficiency audit](#2026-10-22-workflow-efficiency-audit-follow-ups),
   "Owner: schedule the run ledger".
-- Claude Code is 2.1.283 and `RESERVED_CHARS` was measured on 2.1.258, so its
-  re-measure is due. Approve the quota for one `claude -p ok --debug` run and the
-  7-prompt headless Haiku re-run:
+- Claude Code is 2.1.331 (since 2026-11-23) and `RESERVED_CHARS` was measured on
+  2.1.258, so its re-measure is due. Approve the quota for one
+  `claude -p ok --debug` run and the 7-prompt headless Haiku re-run:
   [§ 2026-09-20 skill listing budget](#2026-09-20-skill-listing-budget-follow-ups),
   "`RESERVED_CHARS = 8000`".
 - The context-policy trial is evaluated from 2026-11-12. Its only direct test
@@ -50,8 +50,9 @@ Phases 1–14 complete.
   [§ idea-essay sweep](#2026-11-05-idea-essay-sweep-follow-ups), Jain, "(b) QUEUED".
 - A paired known-answer A/B before a lean `wf-analyst` agent type is built:
   [§ 2026-11-05 context policy](#2026-11-05-context-policy-follow-ups), "PR 4 — a lean `wf-analyst` agent type".
-- Upgrade Claude Code or keep the auto-updater off, and record why; the live
-  checks on the new version follow the choice:
+- Claude Code moved to 2.1.331 on 2026-11-23 with the auto-updater still off
+  (`DISABLE_AUTOUPDATER=1` in every profile), and the upgrade's queued re-checks
+  ran in #289. Record why the updater stays off, or lift it:
   [§ 2026-11-05 context policy](#2026-11-05-context-policy-follow-ups), "Upgrading Claude Code is an owner
   decision" and "Still unverified".
 
@@ -59,12 +60,6 @@ Phases 1–14 complete.
 
 - Retire `doc-align-check.sh`, whose own retire-when condition is met:
   [§ idea-essay sweep](#2026-11-05-idea-essay-sweep-follow-ups), "Owner: retire `doc-align-check.sh`?".
-- Retire `rule-injector.sh`, or only stop it duplicating Claude Code's loader.
-  The agent's re-measure is in (2026-11-16): the hook carried 1,351 of the 1,413
-  rule deliveries in 30 days and overlapped the native loader on 79, so the
-  recommendation is to keep it:
-  [§ 2026-10-05 radar sweep](#2026-10-05-radar-sweep-follow-ups),
-  "Retire `rule-injector.sh` or stop it duplicating Claude Code".
 - Tag and publish v0.3.1, or record that it stays untagged:
   [§ Tech Debt](#tech-debt), "Release drift", sub-item "Owner: tag and publish v0.3.1".
 - Should `committer` refuse to push to the remote's default branch without a flag?
@@ -274,7 +269,7 @@ backlog.
       check, the two ways forward, and the statement that the keyless path for
       the same questions is `/seo` and `/seo geo`.
 
-- [ ] 🟡 **Re-measure the path-scoped rule channel on 2026-11-16, and delete it if
+- [x] 🟡 **Re-measure the path-scoped rule channel on 2026-11-16, and delete it if
       it did not land.** `configs/rules/` shipped 2026-09-17 as the answer to
       "move the review to where the writing happens". It is a BET, not a measured
       result: the evidence behind it is that a prose rule in a context file is
@@ -289,15 +284,21 @@ backlog.
 
       ```bash
       # 1. Is the channel reaching sessions at all? Sentinels are per session per
-      #    rule file and are garbage-collected after 7 days, so this is a 7-day rate.
+      #    rule file, in each PROJECT's .claude/sessions/, not in the transcript
+      #    store. The hook deletes those older than 7 days only in the project it
+      #    runs in, so an idle project keeps old ones: -mtime -7 makes the
+      #    host-wide count a 7-day rate.
       #    Since 2026-10-18 a subagent writes its own <sid>.agent-<id> sentinel,
       #    and the hook also fires on Bash: compare against post-change weeks only.
       #    Sentinels also hold `#<cksum> <size>` body keys now; drop those lines.
-      cat ~/.claude-profiles/*/projects/*/.claude/sessions/*.rules-injected \
-        2>/dev/null | grep -v '^#' | sort | uniq -c | sort -rn
-      # 2. Are the rules still TRUE? Each one states a measured fact. Re-run the
-      #    measurements named inside configs/rules/*.md; a rule whose fact no
-      #    longer holds is worse than no rule.
+      cat <project>/.claude/sessions/*.rules-injected | grep -v '^#' | sort | uniq -c
+      find ~ -maxdepth 7 -path '*/.claude/sessions/*.rules-injected' -mtime -7 \
+        -print0 2>/dev/null | xargs -0 cat 2>/dev/null | grep -v '^#' | sort | uniq -c | sort -rn
+      # 2. Are the rules still TRUE? Each one states a measured fact. This command
+      #    CANNOT answer that: it inventories numbers and cannot judge whether one
+      #    is true, and it does not list every number in configs/rules/ (it misses
+      #    detector.md's "0 of 825" and measured-claims.md's "43%"). Answering
+      #    needs each rule's facts beside the command that re-derives them.
       python3 configs/scripts/check-asserted-numbers.py
       ```
 
@@ -323,6 +324,21 @@ backlog.
         `check-asserted-numbers.py`. Scoring rule *violations* (the 2026-11-07
         note) was not attempted either. Both remain open here.
 
+      Done 2026-11-26 (no PR): re-measured on Claude Code 2.1.331; the channel
+      landed and is kept. Population: the author's host, every profile, threads
+      from 2026-11-24 17:35Z to 11-26 19:35Z (20 main, 678 subagent), one rule
+      per context segment per thread, as on 2026-11-16. Every rule in
+      `~/.claude/rules`: 1,283 hook deliveries into 441 of 698 threads, 6 also
+      native. At a later recount, rules that `configs/rules/` ships had 575 hook
+      deliveries, 5 of them also native. Sentinels: 1,823 files
+      with no mtime filter (62 main thread, 1,761 subagent); a later recount the
+      same day found 1,853 unfiltered and 1,580 with `-mtime -7`. The step-1
+      command as first written read the transcript store and found nothing, so
+      the rule above, followed literally, would have deleted a working channel;
+      it is corrected above. Step 2 cannot judge truth, and violations were not
+      scored: both are in § 2026-11-26 sweep follow-ups.
+      [docs/research/2026-11-26-sweep.md](docs/research/2026-11-26-sweep.md) §2.
+
 - [ ] 🟡 **Convergence is not proven, and round 6 says why.** Rounds 1-5 audited
       the tree and found 61, 25, 34, - and 23; 43% of the last were siblings of
       earlier fixes, which the sibling gate now catches mechanically. Round 6
@@ -335,7 +351,7 @@ backlog.
       established is whether a second pass over the same scope, after fixes,
       returns near zero. Run it before claiming convergence.
 
-- [ ] 🔵 **Three resolve-eval fixtures hard-code `python -m pytest`.**
+- [x] 🔵 **Three resolve-eval fixtures hard-code `python -m pytest`.**
       `evals/resolve_cases/synthetic-*.json` name a bare `python`, whose
       packages resolve through the user site directory computed from $HOME. The
       harness scores them fine on a normal machine and on CI; under a different
@@ -346,6 +362,10 @@ backlog.
       interpreter for BUNDLED cases only — a user-supplied `test_cmd` must
       never be rewritten, the harness promises to run what it is given — or
       state in the fixtures that they assume pytest on the default `python`.
+      Done 2026-11-26 (#285): the first option. Bundled cases
+      carry a `{pytest}` placeholder filled from `worker_utils._pytest_launcher`;
+      a user `test_cmd` runs as given, and the old `resolve_interpreter`, which
+      rewrote a leading `python` in any instance, is gone.
 
 - [x] 🔵 **`templates/CLAUDE.md` is orphaned — confirm deletion.** DONE 2026-09-16: deleted. install.sh
       §10 was the only code that read it and was removed 2026-09-12 as dead
@@ -1319,8 +1339,15 @@ record is wrong**. The four below were reproduced by hand before filing.
 
 ## 2026-09-18 converge-loop 实战暴露的 loop-runner 缺陷（business/artifact 收敛 run 实录）
 
-- [ ] 🟠 `node_commit_changes` 清扫无差别——worker 在 repo 内建的嵌套 git 对象（13,053 个文件，logs/claude-tasks/shadow/*.git）被整体扫进 main 并推送（business `e03bb70c`，已 revert `fa81f743`）。清扫应排除 `.git`、logs/、node_modules/ 或仅限 task-owned paths（与 CODEX_AGENTS.md 的 stage-only-task-owned-paths 同规则）。
-- [ ] 🟠 脏工作树让 hydrate_context 爆炸——context 含 13,094 行 git status 时 supervisor 传参超 ARG_MAX（`/usr/bin/timeout: Argument list too long`，exit 126）。hydrate 应对 git status 截断/排除未跟踪目录，或 context 经 stdin/文件传入而非 argv。
+- [x] 🟠 `node_commit_changes` 清扫无差别——worker 在 repo 内建的嵌套 git 对象（13,053 个文件，logs/claude-tasks/shadow/*.git）被整体扫进 main 并推送（business `e03bb70c`，已 revert `fa81f743`）。清扫应排除 `.git`、logs/、node_modules/ 或仅限 task-owned paths（与 CODEX_AGENTS.md 的 stage-only-task-owned-paths 同规则）。
+  Done 2026-11-26 (#292): the sweep also skips `logs/claude-tasks/`,
+  `node_modules` at any depth and any path inside another git repository, and warns
+  once per nested repository. Not done: task-owned paths only, since the runners do
+  not record which paths a task owns.
+- [x] 🟠 脏工作树让 hydrate_context 爆炸——context 含 13,094 行 git status 时 supervisor 传参超 ARG_MAX（`/usr/bin/timeout: Argument list too long`，exit 126）。hydrate 应对 git status 截断/排除未跟踪目录，或 context 经 stdin/文件传入而非 argv。
+  Done 2026-11-26 (#302): both. The supervisor prompt goes in on
+  stdin (a goal file alone can pass 128 KiB), and the context's `git status` stops at
+  200 lines with untracked directories collapsed.
 - [ ] 🟡 goal 复选框无自动勾稽——6 迭代全程 "10 unchecked"，收敛只能靠人工核验后勾。score_and_write 应把已完成 work item 回写 goal（`_From:` 段对账），否则收敛判定恒为 not-done。
 - [ ] 🟡 loop 在任何 cwd 的 repo 原地跑 `pnpm build` 类门——会打断从该 checkout 服务的生产进程（本次直接把 companyOS 运行中构建的静态资产搞成 503）。goal/loop 文档应要求 worker 门在 worktree 或要求 lead 确认目标 checkout 非生产服务源；或在 loop_args 加 `--worktree` 默认。
 - [ ] 🟡 目标文件必须是 checkbox 列表——纯 prose goal 会让 supervisor 返回 0 任务（stuck_no_tasks）。loop_args 起步检查应直接报 "goal 无 - [ ] 项" 而非跑三轮空转。
@@ -1339,13 +1366,27 @@ record is wrong**. The four below were reproduced by hand before filing.
 
 - [ ] 🟡 `design-lint source` thresholds are the essay's numbers (4-px grid, ≤2 families, 4–6 sizes, 3–4 weights, ≤4 radii, ≤3 shadows, 400 ms, 16 px), not measured fire rates. Measured once on business/company-os (579 files): 643/1950 spacing off-grid (33%), 411 `transition-all` sites, 114/585 durations > 400 ms — a mixed tree, not a clean one. Run it on a tree the owner considers clean, record the WARN counts per check in the script docstring, and only then decide whether any WARN deserves a threshold rather than "each site needs a written reason".
 - [ ] 🟡 The review loop in `design-review.md` asks for captures at 390/768/1280/1440, but nothing in the skill produces them — the agent reaches for Playwright by hand each time. A `design-shots` helper (Playwright, four widths + dark mode, one PNG per width, optional ruler overlay) would make the loop's first step mechanical; `seo-visual` already carries the Playwright pattern to borrow.
-- [ ] 🟠 `configs/scripts/design-lint.py` is at 1,489 of the 1,500-line ceiling after the `source` lane and its runtime checks landed. The next change to it must split first, not trim: the source lane (`# ─── Lane: source` through `lint_source`) is self-contained except for `Report`, `resolve_value`, `custom_properties`, `_STYLE_BLOCK` and `_FOCUS_RESTORE`, which the `html` lane shares — move those five into `design_lint_common.py`, the lane into `design_lint_source.py`, and keep `design-lint.py` as the CLI. `test_design_lint.py` loads the script by path (hyphenated name), so the split module needs the same `spec_from_file_location` treatment; `install.sh` already copies every `configs/scripts/*.py`, so deployment needs no change.
+- [x] 🟠 `configs/scripts/design-lint.py` is at 1,489 of the 1,500-line ceiling after the `source` lane and its runtime checks landed. The next change to it must split first, not trim: the source lane (`# ─── Lane: source` through `lint_source`) is self-contained except for `Report`, `resolve_value`, `custom_properties`, `_STYLE_BLOCK` and `_FOCUS_RESTORE`, which the `html` lane shares — move those five into `design_lint_common.py`, the lane into `design_lint_source.py`, and keep `design-lint.py` as the CLI. `test_design_lint.py` loads the script by path (hyphenated name), so the split module needs the same `spec_from_file_location` treatment; `install.sh` already copies every `configs/scripts/*.py`, so deployment needs no change.
+  Done 2026-11-26 (#284): split as written, with no change in behaviour:
+  `design-lint.py` 818 lines, `design_lint_source.py` 633, `design_lint_common.py` 98.
+  One step the item missed: the Codex plugin's `artifact` skill now declares both
+  modules, without which its copy would fail with `ModuleNotFoundError`.
 
 ## 2026-09-20 skill listing budget follow-ups
 
 - [x] 🟡 ~~Trim the longest model-facing descriptions to bring the fraction back to 0.04~~ **Done 2026-09-20, landing at 0.05 instead of 0.04 — decision recorded:** every named skill was trimmed (radar, localize, codex-orchestrate, frontend-design, banana, plus the next tier: outbound, seo, loop, qa-explore, domain-model, landscape, equip, review, audit, internal-deploy, skill-new, obs-review-loop, converge-loop, go) and the email hub (next item) made email-check name-only. Listing: 38,660 → 33,998 chars; minimum fraction 0.0424. Two things moved the target: (1) the fraction is a CAP, not the cost — what is sent is the listing itself (~8.5k tokens), so the trims are the saving and the fraction is only the ratchet; (2) 0.04 would leave ~zero headroom, so the next skill added would break the gate. 0.05 keeps ~6,000 chars (~15 skills) of headroom, matching the previous commit's headroom convention. Constraint discovered: the Codex plugin carries only `description`, so the platform/Chinese triggers that `test_frontend_design_pipeline.py` requires must live in frontend-design's description, not only in `when_to_use` — and every trim must keep the golden-set phrases in `test_routing_eval.py` literally (substring matching).
 - [x] 🟡 ~~The six `email-*` skills have no hub~~ **Done 2026-09-20:** added the `email` hub (configs/skills/email/SKILL.md, routes check|audit|plan|review|sequence|write like `/blog`), `email-*` are name-only (81 overrides), `email` added to the codex-migration marketing-domain-bundles exclusion, and a golden routing test ("email inbox triage deliverability sequence" → email) wires the hub into `test_routing_eval.py`.
 - [ ] 🟡 `RESERVED_CHARS = 8000` (bundled skills always kept in full) was measured from one session on Claude Code 2.1.258. Re-measure after each Claude Code upgrade: run `claude -p ok --debug` on a 200k model and compare the "Skill listing over budget: N skills, K chars" line with `check-skill-listing.py --no-overrides`. (2026-09-20: still on 2.1.258, no re-measure needed; also pending when quota resets Sep 21 — a headless Haiku re-run of the 7 selection prompts against the trimmed listing, since the weekly limit blocked it today. The live install was verified arithmetically instead: `check-skill-listing.py --skills ~/.claude/skills --overrides ~/.claude/settings.json --usage ~/.claude.json` → fits, 0 dropped.)
+  **2026-11-26: not re-measured as written.** No `claude -p ok --debug` run was made,
+  so the "Skill listing over budget" line was not read on 2.1.331. Read instead
+  from the `skill_listing` attachment of 20 sessions on 2.1.331 (9 headless): no
+  description is truncated, the 81 name-only entries are exactly the override set,
+  and nothing was dropped (listings of 17 to 235 entries, up to 59,405 chars). The
+  listing formula is unchanged in the 2.1.331 binary. Built-in skills took 6,070
+  chars in one listing and 8,149 (20 built-ins) in another, over the 8,000 reserve.
+  `check-skill-listing.py`: 149 skills, 36,784 chars against 40,000, leaving out
+  17,779 chars of plugin skills. Codex 0.172.0 lists all 31 `clade:` skills in full
+  (its overflow notice: 0 of 297 sessions). Still open.
 
 ## 2026-09-20 pace-scale follow-ups
 
@@ -1553,18 +1594,20 @@ that was built has been run.
   --staged` without `--worktree`/`-W`, which change no file and should not
   match `REVERT_PATTERNS` at all (small: exclude in `rd_is_revert_segment` and
   the top-level match, with a test).
-- [ ] 🟠 **Retire `rule-injector.sh` or stop it duplicating Claude Code.**
+- [x] 🟠 **Retire `rule-injector.sh` or stop it duplicating Claude Code.**
   Claude Code loads `~/.claude/rules/*.md` and `.claude/rules/*.md` natively,
   and a `paths:` rule loads when Read/Write/Edit touches a matching file
   (code.claude.com/docs/en/memory, "Path-specific rules"). That is the same
   directory, the same key and the same trigger as the hook. Measured over 2,363
   local transcripts: the hook fired in 10 sessions; in 5 of them the native
   loader delivered the same rule as a `nested_memory` attachment, 10 rule-pairs
-  in all, and in 5 of those 10 the native copy arrived first. The hook's only
+  in all, and in 5 of those 10 the native copy arrived first. ~~The hook's only
   extra reach is basename matching for slash-less patterns (`CLAUDE.md`,
-  `README.md`), which fired the Clade-specific `measured-claims.md` on files in
-  dictation, faceswap and addy repos. Recommended: drop the hook from
-  `settings-hooks.json`, rewrite slash-less patterns as `**/NAME`, move the
+  `README.md`).~~ (Struck 2026-11-26: the native loader matches a slash-less
+  `README.md` pattern in a subdirectory too, in a Read-tool probe on 2.1.283 and
+  on 2.1.331, so it was never a difference. `CLAUDE.md` and project rules were
+  not probed.) Recommended: drop the hook from
+  `settings-hooks.json`, ~~rewrite slash-less patterns as `**/NAME`,~~ move the
   CLAUDE.md "Path-scoped rules" section and the four `tests/test-hooks.sh`
   cases plus `tests/test-rule-injector.sh` to the native mechanism (and
   `check-ci-checklist.py` with them). Not built: it removes a wired hook and a CI
@@ -1574,7 +1617,7 @@ that was built has been run.
   single-file cat, head, tail, sed -n or grep command in the Bash tool"
   (changelog, 2.1.29x). The native loader now also fires on Bash reads, which
   the hook (PostToolUse Edit|Write) never saw, so the native mechanism's reach
-  is a strict superset except for the slash-less basename case. Lands with the
+  is a strict superset ~~except for the slash-less basename case~~. Lands with the
   CLI upgrade below.
   **Changed 2026-10-18:** the hook now also runs on Bash (any command naming an
   existing file, writes included — the native fix covers single-file reads),
@@ -1604,6 +1647,54 @@ that was built has been run.
   - Re-measure after the CLI upgrade below, when native loading covers Bash
     reads. Count rule names out of `[path-scoped rule: NAME (` and match on
     `sessionId|agentId|NAME`.
+
+  **Re-measured 2026-11-16 (radar): keep the hook.** Over the 462 main-thread
+  transcripts of the 30 days to 2026-11-16 (the author's host, every profile,
+  Claude Code 2.1.283), counting each rule once per context segment, the hook made
+  1,351 deliveries and the native loader 141; 79 were made by both. Retiring the
+  hook would leave rule delivery in 76 sessions instead of 193. The hook-only
+  deliveries are what its extra reach predicts (Bash access~~, and the basename
+  match on `README.md` and `CLAUDE.md`, neither covered by the native loader on
+  2.1.283~~; struck 2026-11-26, see above), but the split by trigger was not
+  measured. The 79 duplicates (5.8% of hook deliveries) are not worth a transcript
+  read per hook call to suppress. Re-measure after the Claude Code upgrade, whose
+  native loader also fires on single-file Bash reads. One finding from the same
+  pass is fixed on `radar/2026-11-16`: a subagent's compaction cleared the MAIN
+  thread's sentinel (see § 2026-11-16 radar sweep). (This paragraph sat under an
+  unrelated item until 2026-11-26.)
+
+  **Re-measured 2026-11-26 on Claude Code 2.1.331: keep the hook, and do not
+  narrow it to stop duplicates.** The author's host, every profile; 2.1.331 threads
+  from 2026-11-24 17:35Z to 11-26 19:35Z, 2.1.283 threads from 2026-10-18 to
+  11-23; every rule in `~/.claude/rules`, one rule per context segment per thread:
+
+  | Version · thread | Threads (with a hook delivery) | Hook | Native | Both | Both / hook |
+  |---|---|---|---|---|---|
+  | 2.1.283 · main | 432 (149) | 2,236 | 146 | 94 | 4.2% |
+  | 2.1.283 · subagent | 6,562 (4,455) | 9,631 | 130 | 115 | 1.2% |
+  | 2.1.331 · main | 20 (10) | 74 | 4 | 4 | 5.4% |
+  | 2.1.331 · subagent | 678 (431) | 1,209 | 2 | 2 | 0.2% |
+
+  - Retiring the hook would drop 1,277 of the 1,283 deliveries on 2.1.331, and
+    11,658 of 11,867 (98.2%) on 2.1.283. At a later recount, rules that
+    `configs/rules/` ships had 575 hook deliveries on 2.1.331, 5 also native.
+  - The upgrade did not shrink the overlap: on main threads the share rose from
+    4.2% to 5.4% (n=74), and the subagent drop is composition (two sessions
+    supply 448 of the 678 subagent threads).
+  - A probe of 14 `claude -p` sessions with every hook off, re-run in 7 more,
+    shows what the native loader still misses: a chain with a non-read segment
+    (`cd X && cat f`), a pipe, several files in one command, Bash writes, and
+    files outside the session's primary directory (at a later recount 887 of
+    1,296 hook deliveries were in worktrees, where Workflow agents work). A chain
+    made only of reads (`cat a && cat b`) does fire natively.
+  - Hook latency on the 930 delivering calls: p50 41 ms, p90 173 ms, p99 896 ms.
+    Silent calls leave no record, so their latency is not measured.
+  - Watch: re-measure if the native loader starts covering a chain with `cd` or
+    a pipe, or reads outside the primary directory, or if a Workflow agent with
+    `isolation: "worktree"` gets user-level rules natively (§ 2026-11-26 sweep
+    follow-ups).
+  Done 2026-11-26 (no PR): kept, which closes its entry in § Needs the owner.
+  [docs/research/2026-11-26-sweep.md](docs/research/2026-11-26-sweep.md) §2.
 - [ ] 🟡 **The compaction note's queued "owner's last words" must keep role
   provenance (radar 2026-11-02).** Compaction Laundering (arXiv:2610.29869,
   2026-10-21) shows the risk. Harnesses that flatten turns into text labels let
@@ -1645,20 +1736,6 @@ that was built has been run.
   So any miner needs a with/without check before it proposes a script. First
   slice, read-only: cluster `Bash` command shapes per project across sessions,
   and list the sequences seen in 3+ sessions.
-
-  **Re-measured 2026-11-16 (radar): keep the hook.** Over the 462 main-thread
-  transcripts of the 30 days to 2026-11-16 (aries, every profile, Claude Code
-  2.1.283), counting each rule once per context segment, the hook made 1,351
-  deliveries and the native loader 141; 79 were made by both. Retiring the hook
-  would leave rule delivery in 76 sessions instead of 193. The hook-only
-  deliveries are what its extra reach predicts (Bash access, and the basename
-  match on `README.md` and `CLAUDE.md`, neither covered by the native loader on
-  2.1.283), but the split by trigger was not measured. The 79 duplicates (5.8%
-  of hook deliveries) are not worth a transcript read per hook call to suppress.
-  Re-measure after the Claude Code upgrade, whose native loader also fires on
-  single-file Bash reads. One finding from the same pass is fixed on
-  `radar/2026-11-16`: a subagent's compaction cleared the MAIN thread's sentinel
-  (see § 2026-11-16 radar sweep).
 - [ ] 🟡 **`/equip` scans each skill alone; ColluSkill splits a payload across
   skills.** arXiv:2608.09732 (August 2026) reports 96.0% attack success against
   six per-skill scanners. Sub-payloads sit in separately packaged skills joined
@@ -1696,7 +1773,7 @@ that was built has been run.
   mode would run `git status` itself anyway, so the hooks only make it fire
   earlier. Fix shape: one `clade_git` wrapper in `hooks/lib` passing
   `-c core.fsmonitor=false`, used by every hook.
-- [ ] 🟡 **Claude Code is at 2.1.283; 2.1.288 fixed PreToolUse hooks being
+- [x] 🟡 **Claude Code is at 2.1.283; 2.1.288 fixed PreToolUse hooks being
   SKIPPED** "when matching failed or tool input couldn't serialize to JSON".
   The call is now blocked instead. `pre-tool-guardian.sh` is a PreToolUse hook,
   so on this host it fails open in that case until the CLI updates. 2.1.287 also
@@ -1721,6 +1798,13 @@ that was built has been run.
   commands that...') allowing what they should block" (2.1.294). Ours are
   phrased as conditions (`stop-completeness-check` judges MET / NOT MET), so
   that one is `have it`; re-read both prompt hooks after the upgrade anyway.
+  Done 2026-11-26 (#289): the host runs 2.1.331. `pre-tool-guardian`
+  carries `"onFailure": "block"` and a 15 s timeout (was 5 s), since on 2.1.331 a
+  guardian timeout still ran the command. `secret-scanner.sh` is left fail-open on
+  purpose: its contract is that it never blocks. Prompt hooks re-read:
+  `stop-completeness-check` is a condition, so 2.1.294 does not change it;
+  `precompact-state-save` is written as instructions but blocks nothing, and its
+  removal is already an owner decision. Mods: no enabled plugin ships `modules`.
 
 ## 2026-09-23 artifact standard follow-ups (PR feat/artifact-skill)
 
@@ -1891,6 +1975,14 @@ uncommitted edits sat in the checkout of an unrelated branch for four days. Queu
   ledgered 2026-11-05). Opt-in spend. The global file has grown back from 38,458
   to 45,907 chars since the consolidation: lessons are still added faster than
   they are retired. See `docs/research/2026-11-14-harness-weight.md`.
+  **2026-11-26:** the plan has no Codex arm. `configs/CODEX_AGENTS.md` is 9,804
+  chars and the installed `~/.codex/AGENTS.md` 12,789 bytes, and arXiv:2611.27112
+  ("Markdown Is Not a Firewall", 2026-11-20) found one 278-word rules file cut
+  Codex CLI's hidden-test pass rate from 99.0% to 67.7% over its 36 steps on 12
+  small repositories (one study; two of the rules clashed with the tasks by
+  design). Add the arm: the same tasks under `codex exec` in a copied
+  `CODEX_HOME`, with the installed AGENTS.md and with an empty one, after an A/A
+  calibration. Opt-in spend, like the Claude Code arms.
 
 ## 2026-10-18 instruction-budget follow-ups
 
@@ -2374,7 +2466,10 @@ tiering are real but unmeasured. Each needs a paired A/B before rollout.
   check the prefix syntax live), or give `wf-reader` a frontmatter PreToolUse
   Bash hook; and the smoke test must show a write command (`touch`, `git
   commit`, `gh pr comment`) is denied.
-- [ ] 🔵 `doc-align.py sync` rewrites a count inside a DATED verification row and leaves the date alone. On 2026-10-23 it rewrote the hook count in VERIFY.md H6/SH1 to 35 under a 2026-07-13 date, a day the 33rd hook did not exist; the date was then set by hand after `bash -n` was re-run on all 33. Letting the tool bump the date was rejected: it would date a check the tool never ran. Candidate: when a fix lands in a table row that carries a `YYYY-MM-DD`, print the row with "re-verify, then update its date" (report-only), plus a self-test case and its mutation.
+- [x] 🔵 `doc-align.py sync` rewrites a count inside a DATED verification row and leaves the date alone. On 2026-10-23 it rewrote the hook count in VERIFY.md H6/SH1 to 35 under a 2026-07-13 date, a day the 33rd hook did not exist; the date was then set by hand after `bash -n` was re-run on all 33. Letting the tool bump the date was rejected: it would date a check the tool never ran. Candidate: when a fix lands in a table row that carries a `YYYY-MM-DD`, print the row with "re-verify, then update its date" (report-only), plus a self-test case and its mutation.
+  Done 2026-11-26 (#294): `apply`/`sync` list each rewritten row that
+  carries a `YYYY-MM-DD` under that heading. The date is never bumped and the exit code
+  is unchanged; a new `--self-test` drives the CLI on fixture repositories.
   - [x] Control half DONE 2026-10-23 — `wf-reader.md` wires a frontmatter
     PreToolUse Bash hook, `bash ~/.claude/hooks/wf-reader-guard.sh || exit 2`.
     Verified in the 2.1.283 binary: frontmatter `hooks:` is parsed for agents
@@ -2585,7 +2680,7 @@ to a differently named upstream such as `origin/main`). Not built in that fix:
 
 ## 2026-10-24 instruction-budget follow-up
 
-- [ ] 🟡 **`configs/CLAUDE.md` has no size gate, and the installed global file is
+- [x] 🟡 **`configs/CLAUDE.md` has no size gate, and the installed global file is
   at the limit.** The template is installed as the global CLAUDE.md, which
   Claude Code loads into every session and caps at 40,000 chars per file on a
   200k-context model (a warning, not a truncation). The template grew from
@@ -2596,6 +2691,10 @@ to a differently named upstream such as `origin/main`). Not built in that fix:
   template itself from growing. Add a ceiling for `configs/CLAUDE.md` to a CI
   gate (a figure with headroom for a private tail, e.g. 24,000 chars), so the
   next guidance addition has to tighten something else in the same change.
+  Done 2026-11-26 (#296): `test_conventions.py` fails past 32,555
+  bytes (the template's size that day) and when the template is more than 1,000 bytes
+  under it, so a cut lowers the ceiling. The 24,000 figure was stale (the template
+  is 32,376 chars). No guidance was cut, so the installed file stays over 40,000.
 
 ## 2026-11-05 context policy follow-ups
 
@@ -2705,6 +2804,9 @@ The value comes from a fixed-behaviour replay (30 days to 2026-11-05, aries, bot
   `/autocompact` (2.1.288), subagent frontmatter (2.1.296) and idle compaction
   (2.1.299). This change does not need the upgrade: the top-level key behaves the same
   on both. Raise `verified_through_cc_version` only after a live check.
+  **2026-11-26:** the host moved to 2.1.331 on 2026-11-23 with
+  `DISABLE_AUTOUPDATER=1` still set in every profile and no reason recorded.
+  `verified_through_cc_version` is still 2.1.283 (§ 2026-11-26 sweep follow-ups).
 - [ ] 🟡 **Re-verify the server-side window tier on every Claude Code upgrade.** In the
   2.1.283 binary the window resolver checks `CLAUDE_CODE_AUTO_COMPACT_WINDOW`, then the
   settings key, then `clientdata` (a per-model window Anthropic sets per account,
@@ -2802,7 +2904,7 @@ Cursor (production A/B, n not given) and Jain (10 runs per arm) carry numbers.
      is harmless) plus a mutation that undoes the reorder.
   8. Regen the plugin.
   Size S–M.
-- [ ] 🟠 **On or after 2026-11-13: flip `ci-local.py` to exit 2 on PARTIAL or NOTHING RAN
+- [x] 🟠 **On or after 2026-11-13: flip `ci-local.py` to exit 2 on PARTIAL or NOTHING RAN
   by default.** The report-only week started 2026-11-06. Change `--strict`'s default to True
   (`--no-strict` keeps today's behaviour) and update every site that says "report-only":
   the ci-local.py docstring and `--strict` comment, `configs/CLAUDE.md` § CI, the repo
@@ -2813,6 +2915,11 @@ Cursor (production A/B, n not given) and Jain (10 runs per arm) carry numbers.
   `$GITHUB_EVENT_NAME` / `$GITHUB_BASE_REF` would make it run locally, but its push branch
   runs `git fetch --deepen=1` against origin, so decide that first. Also check, over the
   week, how often PARTIAL fired and on which lanes, before deciding the flip is not noise.
+  Done 2026-11-26 (#293): `--strict` is the default. The Sibling facts step
+  reads `$GITHUB_EVENT_NAME`/`$GITHUB_BASE_REF` and deepens only when `HEAD~1` is
+  missing, so it runs locally with no fetch; `mainline-ci.py` classes exit 2 by its
+  verdict. PARTIAL fired on 16 of the 16 runs where nothing failed, all on that lane
+  (20 runs on one host on 2026-11-26; no earlier records were available).
 - [x] 🟠 **Correction records carry no session link, and transcripts expire at 30 days.**
   Steps 1 and 2 DONE 2026-11-06 (#180, #191). The three decisions that remain are the
   next item. Migdal, *Your agent session transcripts are precious* (Quesma, 2026-10-01): "Sessions where an
@@ -3497,12 +3604,16 @@ owner); none is a regression on main.
   Done 2026-11-25 (#272): aborted when `MERGE_HEAD` exists
   (`merge-abort-failed` if the abort fails); the breaker suite waits for the
   detached push to exit instead of 0.3 s.
-- [ ] 🔵 **Under bash 3.2, `set -e` plus `source <missing> 2>/dev/null || true`
+- [x] 🔵 **Under bash 3.2, `set -e` plus `source <missing> 2>/dev/null || true`
   exits the shell** (found in #272). bash 5.2 survives it. `memory-sync.sh` and
   `sync-health.sh` use that line under `set -e`, so on macOS a missing `lib/`
   aborts them. The breaker case "a missing backoff library cannot abort
   memory-sync" fails under bash 3.2.57 on main too (a Linux container, not a
   Mac). `[ -r "$f" ] && source "$f"` survives there.
+  Done 2026-11-26 (#288): six sites in five scripts (`sync-push.sh`,
+  `sync-setup.sh` and `fleet-install.sh` too) turn errexit off around the source;
+  `tests/lib/source-shape.sh` pins the shape. The suggested `[ -r ] && source` was not
+  used: it still aborts when the file exists but fails.
 - [ ] 🟡 **The privacy notice for a tracked `history.jsonl` is invisible** (#214).
   It goes only to `~/.claude/.sync-conflicts.log`, and `sync-health.sh` surfaces
   only REFUSED lines from that file, so no session start shows it.
@@ -3527,10 +3638,14 @@ owner); none is a regression on main.
 - [ ] 🔵 **Memory-staleness coverage** (#211): several `commit:` anchor spellings
   are undocumented and untested; an anchor under a chmod-000 directory reports as
   missing rather than unreadable; globs with literal brackets.
-- [ ] 🔵 **Backoff test mirrors** (#213): the expected local-time strings are
+- [x] 🔵 **Backoff test mirrors** (#213): the expected local-time strings are
   computed with the hook's own formula (the epochs are fixed, so only rendering
   is mirrored); a timestamp with a leading zero parses as octal (predates #213,
   shared with memory-sync's parser).
+  Done 2026-11-26 (#291): both halves. Each field is read with `10#`
+  (a prior count of `09` had made sync-push commit conflict markers and exit 0), and
+  the mirrored formula is gone: the expected strings are literals under fixed POSIX
+  zones (`TZ=UTC`, `XYZ-8`, `ABC+5`).
 - [x] 🟡 **`sync-link-projects.sh --dry-run` misses link conflicts its own
   migrations cause** (#209). On aries the dry run planned 15 migrations and 0
   conflicts; the real run made the same 15 and then reported 5 link conflicts,
@@ -3677,29 +3792,36 @@ was reconciled by hand the same day (12 of 32 files defective). Mostly condition
 
 ## 2026-11-12 Kimi bridge follow-ups (#231, #232, skill scan + view)
 
-- [ ] 🔵 **`init-profile` is misclassified claude-only.** The scanner reads "the
+- [x] 🔵 **`init-profile` is misclassified claude-only.** The scanner reads "the
   SessionStart hook will inject" as the Claude hook lifecycle. Under Kimi,
   `session-context.sh` is wired on the first UserPromptSubmit instead (#232), and it
   loads `.claude/PROJECT_PROFILE.md` the same way. So the skill works there and is
   needlessly hidden from the model. Fix: treat a SessionStart context injection that
   Kimi delivers through `--once-per-session` as adapted. Keep `iloop` claude-only:
   its Stop hook is not wired in Kimi, and Kimi allows one Stop continuation per turn.
+  Done 2026-11-26 (#301): as proposed, for hooks Kimi delivers
+  `--once-per-session` (`session-context.sh` only); `iloop` stays claude-only.
 - [ ] 🔵 **`stop-check.sh` under headless `kimi -p` workers.** Kimi's single Stop
   continuation could nudge a dispatched worker to commit despite a "do not commit"
   brief. Not observed in the Kimi worker runs of 2026-11-12. Candidate: return early
   under `CLADE_WORKER_TASK_ID`, as `correction-detector.sh` already does.
-- [ ] 🔵 **Kimi hook matchers are unanchored regexes** (`matchHooks.ts`), so
+- [x] 🔵 **Kimi hook matchers are unanchored regexes** (`matchHooks.ts`), so
   `Edit|Write` also matches any tool whose name contains either word. That is
   harmless with today's built-ins. Anchor as `^(Edit|Write)$` after confirming
   matchHooks applies the pattern unchanged.
+  Done 2026-11-26 (#290): confirmed in Kimi 2.7.3
+  (`new RegExp(pattern).test(value)`, where `Edit|Write` also selected
+  `mcp__notes__Write`). `install.sh` writes every non-empty matcher as `^(…)$` and
+  rewrites an older unanchored Clade entry in place.
 - [x] 🔵 **`--once-per-session` sentinels accumulate** in the runtime dir, one per
   Kimi session, and nothing removes them. `session-end-cleanup.sh` is already wired on
   SessionEnd and could delete its own session's sentinel.
   Done 2026-11-25 (#274).
 - [ ] 🔵 **`rule-injector.sh` and `post-edit-check.sh` are not ported.** Kimi's
   PostToolUse is fire-and-forget, and only UserPromptSubmit injects context. Their
-  output could be queued and delivered on the next prompt. Unbuilt: measure whether
-  the path-scoped channel survives its own 2026-11-16 re-measure first.
+  output could be queued and delivered on the next prompt. Unbuilt. Its precondition
+  is met: the path-scoped channel survived its re-measure (2026-11-16, and again on
+  Claude Code 2.1.331 on 2026-11-26), so the port can be designed.
 - [ ] 🔵 **Upstream: print-mode subagents time out at 0 ms. Fixed on kimi-code
   main, in no stable release yet.**
   `applyPrintModeConfigDefaults` fills `subagent.timeoutMs` with 0, and the Agent
@@ -3844,10 +3966,14 @@ or chose not to build.
   `install.sh`) does the same. The context policy already solves this shape: it
   records ownership in `~/.claude/.clade-context-state.json` and does not re-add a
   key the user deleted.
-- [ ] 🔵 **No uninstall.** `uninstall.sh` mentions neither Codex nor Kimi, so it
+- [x] 🔵 **No uninstall.** `uninstall.sh` mentions neither Codex nor Kimi, so it
   leaves the ten groups and `~/.codex/clade-hooks/` in place, and the Kimi
   `[[hooks]]` entries too. Rollback today is by hand: delete the groups whose
   command starts with `"$HOME/.codex/clade-hooks/decision-to-codex.sh"`.
+  Done 2026-11-26 (#298): `codex-hooks-merge.py --remove` takes
+  Clade's handlers out of `~/.codex/hooks.json` and each profile's own copy, the adapter
+  directory goes once nothing names it, and Kimi's Clade `[[hooks]]` tables are removed.
+  Untouched: `config.toml` and Codex trust; a user handler whose trust key moves is named.
 - [ ] 🔵 **Four ported hooks are verified hermetically only:** `correction-detector`,
   `revert-detector`, `memory-sync` and `session-end-cleanup`. A live Codex run
   would write test records into the owner's correction history and sync store,
@@ -3864,7 +3990,7 @@ ranked Hacker News stories by points for the 30 days to 2026-11-16 and checked t
 against the radar ledger. It is now step 1 of `/radar`. These are what it found and
 did not act on.
 
-- [ ] 🟠 **Upgrade Claude Code from 2.1.283 (npm latest 2.1.326).**
+- [x] 🟠 **Upgrade Claude Code from 2.1.283 (npm latest 2.1.326).**
   `DISABLE_AUTOUPDATER=1` is set in both profiles' settings, so the pin is
   deliberate. The pass found three reasons to lift it:
   - 2.1.317 asks before a web or shell tool call sends the account email.
@@ -3883,6 +4009,9 @@ did not act on.
   - 2.1.323 passes `agent_id` to compaction hooks, which the fix on
     `radar/2026-11-16` needs. That branch also queues four re-checks for after the
     upgrade.
+  Done 2026-11-26 (no PR): Claude Code on the author's host moved from 2.1.283 to
+  2.1.331 on 2026-11-23; `DISABLE_AUTOUPDATER=1` is still set in every profile. The
+  re-checks the upgrade queued ran in #289.
 - [ ] 🔵 **The attention pass reads Hacker News only.** Ranking new repositories by
   GitHub stars is the other fame signal. It is not wired, although `github.com` is
   already on the cron's WebFetch allowlist. Measure what it adds over Hacker News
@@ -4021,7 +4150,7 @@ Queued, not built:
   discovery / held out) and `Bash:sed` (33 / 19), ends in `(eval):1: ===== not
   found` after the command's output had printed. Those are ties at one
   occurrence each (99 and 92 distinct texts), so the count above, not the
-  ranking, is the evidence. Claude Code 2.1.283 (installed) reads `CLAUDE_CODE_SHELL`
+  ranking, is the evidence. Claude Code 2.1.283 (installed until 2026-11-23) reads `CLAUDE_CODE_SHELL`
   (binary strings; search snippets show `"env": {"CLAUDE_CODE_SHELL": "/bin/bash"}`
   in settings.json; the official env-var page was not read). Not built because it
   changes the owner's shell environment (PATH, rc files, zoxide) for every
@@ -4031,6 +4160,13 @@ Queued, not built:
   half, but the hooks docs show a Bash `error` of only "Command failed with exit
   code 1", so whether the zsh text reaches the hook is unverified; capture one
   real PostToolUseFailure input for a Bash failure first.
+  **2026-11-26:** half fixed upstream. Claude Code 2.1.328 fixed the `=word` trap:
+  2.1.331's Bash wrapper sets `NO_EQUALS` (with `NO_BRACE_CCL` and
+  `NO_MAGIC_EQUAL_SUBST`), which 2.1.283's did not, so only sessions started
+  before the upgrade still hit it. NOMATCH is fixed in no release through 2.1.332.
+  A narrower plan than a week on `/bin/bash`: an opt-in
+  `[[ -n $CLAUDECODE ]] && setopt NO_NOMATCH` in `~/.zshenv`. In a throwaway
+  `ZDOTDIR` it passed an unmatched glob through only when `CLAUDECODE` was set.
 - [x] 🟡 **The rm guards read flags and operands after the LAST `rm` word.**
   Fixed in #249 (2026-11-17), in all six sites, beside a second hole found in the
   same review: `DANGEROUS_TILDE` missed `~>/dev/null` and `(rm -rf ~)`, and the shell
@@ -4044,16 +4180,21 @@ Queued, not built:
   (`rm_scan_flags`, the unresolved-target loop, `rm_operands`; `_recursive_force`,
   `_delete_targets`, `_rm_operands`) by taking the FIRST `rm`, with BLOCK cases in
   `tests/test-pre-tool-guardian.sh` through `assert_both`.
-- [ ] 🔵 **`pre-tool-guardian.sh` is at 1,499 of 1,500 lines.** The depth exemption
+- [x] 🔵 **`pre-tool-guardian.sh` is at 1,499 of 1,500 lines.** The depth exemption
   went to `configs/hooks/lib/rm-targets.sh` to fit. #249 reached exactly 1,500;
   #254 condensed one comment to bring it to 1,496. Split the guardian (the rm block
   and the force-push walk are natural seams) before the next rule lands.
-- [ ] 🔵 **Re-measure the subagent-wait warning after the fleet passes 2.1.318.**
+  Done 2026-11-26 (#286): see the item below.
+- [x] 🔵 **Re-measure the subagent-wait warning after the fleet passes 2.1.318.**
   2.1.318 (2026-11-04): "background subagents … move a shell command to the
   background after 3 minutes on all providers, so the prompt cache doesn't expire".
   That is the native form of the 270 s warning in `pre-tool-guardian.sh`. aries runs
   2.1.283. Once it upgrades, replay Workflow-subagent Bash calls; if no foreground
   call outlives 270 s, retire the rule under its own retire-when.
+  Done 2026-11-26 (#289): the 2.1.318 move does not reach Workflow
+  subagents. Of 20,493 foreground Bash calls in 587 Workflow-subagent transcripts on
+  2.1.331, 103 ran 270 s or more, and all 118 moves to the background came at the
+  call's own timeout. The warning stays.
 - [ ] 🔵 **Did the reworded rm refusal change what the next calls do?** It now names
   its target and what is not refused, and keeps its first sentence so
   `friction-rank.py` still groups it. Gorokh records a guard whose added guidance
@@ -4111,7 +4252,7 @@ radar branch conflicts with `main` in TODO.md (see the first item).
   another such correction after the skill change is installed. The Codex
   plugin stamp was not bumped for the skill change, because `radar/2026-11-09`
   bumps the same line; bump it once when landing both.
-- [ ] 🔵 **Re-check four Claude Code changes after the upgrade from 2.1.283.**
+- [x] 🔵 **Re-check four Claude Code changes after the upgrade from 2.1.283.**
   - 2.1.323 passes `agent_id` to post-compaction hooks; the fix above depends on
     it.
   - 2.1.323: "a tool's permission check fails with an error after a
@@ -4124,6 +4265,12 @@ radar branch conflicts with `main` in TODO.md (see the first item).
   - 2.1.323: "the context window assumed for a model ID that Claude Code
     doesn't recognize" moves from 200K to 1M. Check the context policy's
     `autoCompactWindow` reasoning against it.
+  Done 2026-11-26 (#289): all four hold or do not apply. Subagent
+  compactions reach the subagent branch (0 of 48 got the project restore); the
+  guardian's rewrite carries no `permissionDecision`; `radar-cron.sh` is system cron
+  running `claude -p`, and /radar declares no `allowed-tools` or hooks; every model
+  ID in use is known to 2.1.331. Not raised: `verified_through_cc_version` (still
+  2.1.283; § 2026-11-26 sweep follow-ups).
 
 ## 2026-11-17 radar-landing follow-ups
 
@@ -4165,11 +4312,15 @@ Found while porting and landing the four radar branches (#247-#256 and this PR).
   Candidate: require the word to be at a command position, the start of a
   statement or after `sudo`/`command`/`env`, or a path ending `/rm`. Every
   bypass case in `tests/test-pre-tool-guardian.sh` must stay blocked.
-- [ ] 🔵 **`pre-tool-guardian.sh` is at 1,496 of 1,500 lines again** after #254.
+- [x] 🔵 **`pre-tool-guardian.sh` is at 1,496 of 1,500 lines again** after #254.
   The next guard will not fit. Split the rm section, `rm_scan_flags`, the
   named-path patterns and the unresolved-target loop, into
   `configs/hooks/lib/` next to `rm-targets.sh`, before it is needed rather
   than in the middle of a fix.
+  Done 2026-11-26 (#286): the rm rules moved to `lib/rm-guard.sh` and
+  the force-push walk to `lib/force-push-walk.sh`, byte for byte; the hook is 726
+  lines. A missing or empty lib refuses any `rm` command, or any command that may
+  push, naming the file; later rules still run.
 
 ## 2026-11-19 task-ETA and bottleneck follow-ups
 
@@ -4195,10 +4346,13 @@ base rate), so the estimate goes on the statusline as a range.
   precondition of the effort trial; the effort choice is the model's). The
   third trial, `stop-check.sh` warning instead of blocking, is a hook, not the
   model's judgement, and was not raised again; re-open it on its own evidence.
-- [ ] 🟡 **`commit-archeology.sh` hit its 15 s SessionStart timeout 26 times
+- [x] 🟡 **`commit-archeology.sh` hit its 15 s SessionStart timeout 26 times
   in 181 recorded starts** (main thread, 30 d). A timed-out SessionStart hook
   delivers nothing and delays the first turn. Profile it on the largest repo
   and cache or bound its git walk.
+  Closed 2026-11-26 (no PR): not reproducible, already fixed by #210, #212 and #215.
+  On the author's host, 0 of 90 SessionStart runs of `commit-archeology.sh` since
+  2026-11-08 timed out (p90 766 ms, max 1,223 ms).
 - [x] 🔵 **Progress on the status line — owner decided against, 2026-11-23**
   ("不要过于追求时间"; the line keeps "只保留有必要保留的信息"). Closed with it: the
   native task list as a step N/M display (`CLAUDE_CODE_ENABLE_TODO_TOOLS=1`),
@@ -4254,7 +4408,7 @@ base rate), so the estimate goes on the statusline as a range.
 
 ## 2026-11-23 Codex profile follow-ups
 
-- [ ] 🟡 **Codex profiles with their own files miss Clade's hooks and agents.**
+- [x] 🟡 **Codex profiles with their own files miss Clade's hooks and agents.**
   `install.sh` writes `~/.codex` only, and since 2026-11-23 also refreshes the
   instruction block in each `~/.codex-profiles/*/AGENTS.md` that is a file of
   its own. Nothing else reaches such a profile. On the author's host the
@@ -4264,3 +4418,242 @@ base rate), so the estimate goes on the statusline as a range.
   merges hooks into every profile (`codex-hooks-merge.py` per target) or
   links each profile's `hooks.json` to `~/.codex`, as the linked profiles
   already do for `config.toml` and `AGENTS.md`.
+  Done 2026-11-26 (#287): merge, not link. Each profile's own
+  `hooks.json` and `agents/` get the rule `~/.codex` gets, and are created where Codex
+  has used the profile as its home; Clade never writes through a link.
+
+## 2026-11-26 sweep follow-ups
+
+From [docs/research/2026-11-26-sweep.md](docs/research/2026-11-26-sweep.md), the
+[2.1.331 re-check note](docs/research/2026-11-26-claude-code-2.1.331-rechecks.md)
+and the reviews of the units the sweep closed. Each item names its evidence.
+
+**Skill selection and listing** (sweep note §1)
+
+- [ ] 🟡 **Claude Code skips heavyweight process skills it lists.** On 16
+  known-answer prompts in a throwaway 26-line repository (hooks off, one run each),
+  Claude Code 2.1.331 loaded nothing for `investigate`, `green`, `cso` and the
+  built-in `code-review`, and nothing again on a second run; where Codex 0.172.0
+  loaded `clade:green`, Claude Code ran `ci-local.py` itself. One appended
+  system-prompt sentence ("When a task matches a listed skill description, load
+  that skill with the Skill tool before acting, even when the task looks small")
+  flipped 3 of the 4, one run each, through `--append-system-prompt` only.
+  Measure over-triggering on negative prompts before it goes into
+  `configs/CLAUDE.md`. The tiny repository biases toward skipping, so the misses
+  are a floor.
+- [ ] 🔵 **Commit the known-answer skill-selection probe as an opt-in live eval.**
+  The 16 prompts (12 aimed at Clade skills, 4 at built-ins, none naming a skill)
+  were run by hand on 2026-11-26, 40 headless calls in all. Committed, they would
+  re-run per CLI upgrade and replace the one-off "Haiku re-run of the 7 selection
+  prompts" in § 2026-09-20 skill listing budget. It spends quota, so opt-in.
+- [ ] 🔵 **`check-skill-listing.py` counts Clade skills only.** It reports 149
+  skills and 36,784 chars against 40,000, but the real 2.1.331 listing, with plugin
+  and built-in skills, was 55,059 chars in the session whose make-up was read,
+  17,779 of them plugin skills the gate leaves out (up to 59,405 across 20
+  sessions). Add a mode that reads the newest transcript's `skill_listing`
+  attachment.
+
+**Gemini** (sweep note §3)
+
+- [ ] 🔵 **`second-opinion-gemini` cannot produce an answer on any host.** There is
+  no `gemini` binary on the author's host, the skill logs in through a path Google
+  no longer serves, and headless Gemini CLI 0.70.0 exits 55 in an untrusted folder
+  (it needs `--skip-trust` or `GEMINI_CLI_TRUST_WORKSPACE=true`). Unattended runs
+  need a service account: user ADC fails with `invalid_rapt` under a
+  re-authentication policy. Rewrite it for an API-key or Vertex AI login, or
+  retire it.
+
+**Upstream candidates** (sweep note §4, as corrected by its critique)
+
+- [ ] 🟡 **A Codex MCP status-line provider could replace the patched-fork footer.**
+  Codex 0.171.0 (2026-11-20, Codex pulls 61979, 61988 and 62037) lets `/statusline`
+  select an MCP provider when `tui_extensions_statusline` is on (experimental, off
+  by default in 0.172.0). The entry point goes in the tool's `_meta["openai/ui"]` in
+  `tools/list`. The snapshot carries `account.rate_limits[].primary_limit` and
+  `secondary_limit` in snake_case, so `codex_usage.py`'s camelCase `_pace` needs an
+  adapter. An error or timeout stops polling until the provider is reselected, so
+  the provider must never raise, and should return its last good string. A plugin
+  can supply the provider (the bundled `create-statusline` skill says so), so
+  Clade's Codex plugin can ship it. Today the fork is rebuilt for every Codex
+  release (six builds on disk, 0.145.0 to 0.172.0).
+- [ ] 🟡 **No evidence gate before a correction becomes a promoted rule.** The
+  unattended promoter is `configs/hooks/auto-audit.sh`: 14 days, the root-cause
+  allowlist `rule_earns_promotion`, and 2+ projects on the cross-project path; no
+  incident count or disprove pass. The claude.dev verification post (2026-11-16)
+  asks that a rule recur in at least two PRs, be identifiable from a diff, and
+  survive three agents trying to disprove it. Workable split: `auto-audit.sh`
+  withholds a rule with fewer than two linked incidents, and `/audit` runs the
+  disprove pass. First, specify how a `rules.md` line links to its
+  `history.jsonl` records; today a line is only `- [date] domain (root-cause):
+  text`. Neighbours: the items 'Most "explicit corrections" are not
+  corrections', 'Promoted rules have no half-life' and 'Corrections never become
+  checks'.
+- [ ] 🔵 **`codex-orchestrate`'s resume and version notes are stale.** Its
+  `prompt.md` was checked against codex-cli 0.167.0. Codex 0.169.0 (pull 60041)
+  keeps project config and MCP servers off for `codex exec` in untrusted
+  directories, and 0.172.0 (pull 62194) restores the sandbox, working directory
+  and roots on `exec resume`, so both listed gotchas are wrong or partly wrong.
+  Re-run the skill's checks on 0.172 and update the version line and the gotchas.
+  No trust note is needed: on 0.172.0 a linked worktree at a sibling path
+  inherited its main repository's trust.
+- [ ] 🔵 **Reviewer recall is unmeasured.** `outcome-scorecard.py` over the 60 days
+  to 2026-11-26: 167 of 167 merged PRs had no non-author review, so AI review is
+  the only review. A `review-recall.py` would run three independent reviewers on
+  the bug-introducing diff of each curated (bug PR, fix PR) pair and count it
+  detected when two name the defect, with a planted-bug and a no-bug control. Seed
+  the pairs by hand from known incidents or the 8 known-answer fixes
+  (`docs/research/2026-10-23-workflow-effort-and-reader-ab.md`), not from
+  fixed-forward rows: 45 of the 98 fixed-forward flags share only Markdown paths.
+  arXiv:2611.33639: on 90 agent-written patches, 55 of them wrong, every reviewer
+  effort setting accepted at least 45% of the wrong ones. Opt-in spend.
+- [ ] 🔵 **Re-verify the Kimi Stop-hook port on 2.7.3 or later.** kimi-code 2.6.3
+  (2026-11-17, pull 4995) fixed external Stop hooks not running after each reply.
+  `docs/kimi.md` marks `stop-check.sh` "ported with adaptation" against 2.6.0, and
+  the author's host runs 2.7.3, so the hook now really fires. In a scratch
+  repository, check that it blocks once, the circuit breaker holds and nothing
+  loops; then refresh the version in `docs/kimi.md`. Related: "`stop-check.sh`
+  under headless `kimi -p` workers" (§ 2026-11-12 Kimi bridge).
+- [ ] 🔵 **The cheap Codex agents are pinned to `gpt-5.6-luna`.** In the model
+  catalog Codex 0.172.0 fetched on 2026-11-26 it still has `multi_agent_version:
+  v1` and no upgrade target; `gpt-6-luna` has v2. Compare cost and pass rate on a
+  few bounded tasks before changing
+  `configs/codex-agents/clade_cheap_{worker,explorer}.toml`.
+- [ ] 🔵 **Watch: never name `PreSkillShellCommand` in `settings-hooks.json` until
+  every machine runs Claude Code 2.1.332 or later.** The 2.1.332 changelog: on
+  2.1.331 and older "a settings file naming it opens a dialog at start". No Clade
+  skill uses an inline `!` shell command today (grep: 0).
+- [ ] 🔵 **`configs/context-policy.json` `verified_through_cc_version` is still
+  2.1.283.** The host runs 2.1.331 since 2026-11-23, and the trigger formula and
+  the window precedence were not re-read in the 2.1.331 binary. Run the
+  re-verification in "`/model-research` re-verify step" and "Re-verify the
+  server-side window tier" (§ 2026-11-05 context policy), then raise it. From the
+  2.1.331 re-check note.
+
+**Path-scoped rule channel** (sweep note §2)
+
+- [ ] 🟡 **Nothing checks whether the path-scoped rules' facts are still true.**
+  The re-measure's step 2, `check-asserted-numbers.py`, inventories numbers and
+  cannot judge truth. Inside `configs/rules/` it flags only `measured-claims.md`'s
+  two quoted examples of unreproducible numbers, and it misses `detector.md`'s "0
+  of 825" and `measured-claims.md`'s "43%". List each rule's facts beside the
+  command that re-derives them; the script's `DERIVED_BY` map is the place, once
+  its patterns are widened. Rule violations were not scored either: delivery is
+  not adherence.
+- [ ] 🔵 **Probe whether a Workflow agent with `isolation: "worktree"` gets
+  user-level rules natively.** Changelog 2.1.161 fixed Workflow agents spawned that
+  way. At a recount, 887 of 1,296 hook deliveries on 2.1.331 were in hand-made
+  worktrees outside the session's primary directory, where the native loader does
+  not fire. If isolation loads them natively, it is the one path by which the
+  native loader could take over most of the hook's work. Untested; one probe in a
+  git repository settles it.
+
+**Guardian** (found in this batch's reviews, 2026-11-26)
+
+- [ ] 🟡 **A large command can outlast the guardian's timeout.** With a push in the
+  command, the force-push walk (`configs/hooks/lib/force-push-walk.sh`, and its
+  Python mirror `plugins/clade/hooks/pre_tool_guardian.py`) is quadratic in command
+  length: 0.3 s at 131 KB, 2.7 s at 524 KB, 5.9 s at 786 KB, 10.3 s at 1 MB. The rm
+  rules fork `grep`/`tr` for each `rm` statement, about 12 ms each (800 short
+  statements, 29 KB, took 9.7 s), and `rm-targets.sh` is quadratic on one operand
+  over 100 KB (13.6 s on 143,000 chars). A run past the timeout (15 s since
+  #289) is a refusal under `onFailure: "block"` on 2.1.295 and later,
+  and a pass on older CLIs. Latent: no Bash call in the author's transcripts over 30
+  days exceeded 128 KiB (largest 60,166 bytes).
+- [ ] 🔵 **The pkill self-match rule refuses a bracket pattern.**
+  `pkill -f "[g]ate-x"` is refused when a later `pgrep -af "[g]ate-x"` repeats the
+  pattern, although a bracket pattern cannot match its own command line: the rule
+  counts occurrences of the literal pattern. It should ask whether the pattern, as
+  a regex, matches the command text. Over-blocking, so friction, not a hole.
+
+**Merging** (found landing this batch, 2026-11-26)
+
+- [ ] 🟡 **Two PRs each green on its own head crossed a size limit together,
+  twice in one hour, and nothing tested main after either merge.** #293 and
+  #296 put `configs/CLAUDE.md` 80 bytes over the ceiling #296 had just
+  measured; #290 and #298 put `tests/test-kimi-hooks.sh` at 1,577 lines. Each
+  was gated on its exact head and merged within minutes of the other, and
+  `land-pr.py` checks only that the merge is textually clean. Main stayed red
+  until the next unit's gate failed on it; fixed forward by #300.
+  Two parts:
+  1. **No post-merge run for this repository.** The only `mainline-ci` timer on
+     the author's host serves another repository, so the "test every new main
+     tree" half of merge-then-test does not exist for Clade here. Install
+     `configs/templates/mainline-ci.{service,timer}.example` for it, sized to
+     the compute policy (one full gate per new main tree).
+  2. **Limits that sum across PRs.** `test_conventions.py` runs in under a
+     second. `land-pr.py` could run it on the `git merge-tree --write-tree`
+     result before merging, which catches exactly the additive limits (the
+     line cap, the byte ceiling) without re-gating anything. Measure first how
+     often a merge crosses one: twice in the 16 merges of 2026-11-26.
+  3. **A stack landed by squash can duplicate a block.** Landing the fix
+     first, with each dependent branch merging the fix branch before its gate,
+     left one dependent with #298's `docs/kimi.md` uninstall paragraph twice:
+     git saw it added once through the squashed main and once through the
+     branch's own history. Its gate would have passed, since no check reads
+     prose twice. It was caught by diffing the branch against main for files
+     the PR never meant to touch. `land-pr.py` could make that check: name
+     each path the head changes against the merge base that no commit
+     unique to the branch touches.
+
+**Tooling residue** (found in this batch's reviews and gates)
+
+- [x] 🔵 **`tests/test-ensure-dev-server.sh` used fixed ports, so two runs on
+  one host shared servers.** Four gates on one host made one FLAKY: its cold
+  start found another run's server on 4501 and reported `STATUS=reused`. The
+  race case's process count also passed on zero servers (`-le 2` only). Done
+  (#303): a free port per case per run, refused if it already
+  answers, and a lower bound of one server. Two concurrent copies failed 5 of
+  6 rounds before and 0 of 6 after.
+- [x] 🟠 **`tests/test-hooks.sh` is over the 1,500-line cap on main, so
+  `test_conventions.py` fails there.** Two squash merges of this batch, each under
+  the cap on its own base, added up: the file was 1,495 lines after
+  #288 and 1,503 after #289 (`git show <sha>:tests/test-hooks.sh
+  | wc -l`). Seen running `test_conventions.py` on this closing branch, which does not
+  touch the file. Split it by suite into a second file; never add it to
+  `LINE_LIMIT_EXCEPTIONS`, which is for upstream-synced code.
+  Done 2026-11-26 (#297): its worker-checkpoint cases moved
+  verbatim into `tests/test-worker-checkpoint.sh`, and main's merge into that
+  branch took `tests/test-hooks.sh` to 1,390 lines. Main was red on this gate
+  from #289 until then: each head was gated on its own base, which
+  cannot see two merges adding up.
+- [ ] 🔵 **`ci-local.py --clean-home` keeps PATH, but Python's user site follows
+  HOME.** A `pip install --user` tool on PATH (for example `~/.local/bin/mypy`)
+  crashes with `ModuleNotFoundError` under the clean HOME, and
+  `tests/test-post-edit-check.sh` then fails 4 cases on a host that has one (seen
+  2026-11-26; a host without one passes). The bundled resolve-eval fixtures failed
+  the same way (#285). Either keep the real user site
+  (`PYTHONUSERBASE`) or have the suite treat a tool that cannot import as absent.
+- [ ] 🔵 **Generated-text leftovers in the Codex plugin.** `regen-codex-plugin.py`
+  copies a skill's resource files verbatim, so `delivery/surfaces/claude-code.md`
+  reaches the plugin unadapted while the SKILL.md that lists it is adapted; decide
+  whether the plugin should ship it at all. `retro`'s text still says `--tokens`
+  gives "the host's Codex tokens", but `outcome-scorecard.py --tokens` counts Claude
+  Code tokens. `review`'s description routes PR reviews to "the CC built-in", which
+  Codex cannot reach. #299 left the last two on purpose: text that names
+  only Claude Code, and a routing judgement call.
+- [ ] 🔵 **`pytest_report.force_verbose` can split an interpreter path.** It inserts
+  ` -v` after the first `pytest` substring anywhere in the command, so a launcher
+  whose path contains `pytest` (a `~/pytest-env/bin/python`) is split.
+  `worker_utils._capture_test_baseline` passes its launcher through it too. Found
+  reviewing #285.
+- [ ] 🔵 **One sync-health mutation cannot fire on a Mac without `timeout`.** The
+  "the git timeout" mutation in `tests/test-sync-health.sh` stays green on a Mac
+  with neither `timeout` nor `gtimeout`. Found reviewing #288 and
+  #291.
+- [ ] 🔵 **`_kimi_hook_present` ends an entry only at a column-0 `[`.** The rewrite
+  in #290 ends one at any table header, so a column-0
+  `event`/`matcher`/`command` key after an indented header can make the two
+  disagree. The file is contrived, and the behaviour is as before that PR.
+- [x] 🔵 **`uninstall.sh` writes the fixed path `/tmp/claude-settings-clean.json`.**
+  Concurrent runs race on it, and per-user scratch belongs under
+  `configs/hooks/lib/runtime-dir.sh` or a `mktemp` beside the target. Found
+  reviewing #298. Done (#304): a `mktemp`
+  beside the target, written back through the file so its mode and a link
+  survive; the alias block's `sed -i`, which BSD sed rejects, went the same
+  way, and a `settings.json` jq cannot parse no longer ends the run.
+  `tests/test-uninstall.sh`.
+- [ ] 🔵 **`empty-task loop reports max iterations` failed once, then passed
+  (FLAKY).** `tests/test-loop.sh:690`, on its first run at a load average of about
+  58: `Max iterations` was missing from the output while
+  `logs/loop-empty/last-progress` recorded `Exit: max_iterations`. Green on rerun;
+  the first failure is unexplained. Seen gating #292.

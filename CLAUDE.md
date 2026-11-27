@@ -404,8 +404,10 @@ two copies (a worktree's checkout of a root rule) is injected once.
 
 **It overlaps the native loader.** Current Claude Code docs say a path-scoped
 rule also loads when Claude views a matching file with a single-file `cat` or
-`head`, so on those commands a rule can arrive twice. The "Retire
-`rule-injector.sh`" item in `TODO.md` gates removing the overlap on a re-measure.
+`head`, so on those commands a rule can arrive twice. Re-measured on Claude Code
+2.1.331 (2026-11-26, the "Retire `rule-injector.sh`" item in `TODO.md`): the native
+loader covered 6 of the hook's 1,283 deliveries, so the hook stays, and the
+duplicates are too few to pay for a transcript read on every call.
 
 `tests/test-rule-injector.sh` pins all of it, and its last suite removes each
 guard from a copy of the hook in turn and requires the suite to go red, beside
