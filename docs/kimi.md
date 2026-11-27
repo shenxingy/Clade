@@ -351,6 +351,8 @@ prompt arrays, session attribution, correction pairing and cleanup, Stop,
 once-only context, both memory-sync entries, all Claude block forms, plain
 prompt context, fail-open behavior, legacy migration, reinstall idempotency,
 user-entry preservation, and missing-config behavior.
+`tests/test-kimi-uninstall.sh` runs the real `uninstall.sh` after such an
+install and checks that only Clade's `[[hooks]]` entries leave `config.toml`.
 
 No live Kimi process is launched by the suite. A live run after install,
 on 2026-11-12, used Kimi Code 2.6.0 headless (`kimi -p`, `kimi-code/k3.1-pro`) in a
