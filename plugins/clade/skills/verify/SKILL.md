@@ -1,6 +1,6 @@
 ---
 name: verify
-description: "Verify project behavior anchors — compilation, tests, and interaction checks after autonomous runs. NOT the Codex built-in /verify (which runs the app to observe a single change working) — this one walks the AGENTS.md \"Features (Behavior Anchors)\" list."
+description: "Verify project behavior anchors — compilation, tests, and interaction checks after autonomous runs. It walks the AGENTS.md \"Features (Behavior Anchors)\" list."
 ---
 
 # Clade for Codex

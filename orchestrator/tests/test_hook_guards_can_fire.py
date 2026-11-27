@@ -203,6 +203,43 @@ HOOK_SUITES: dict[str, dict] = {
              [("Use the Read tool (or Grep/Glob where listed), or Bash limited to", "Bash is limited to")]),
         ],
     },
+    # worker-checkpoint: a snapshot holds what `git add -A` in the worktree
+    # would stage, so the shadow takes the worktree's ignore rules and its idea
+    # of what is tracked. Absent on purpose, each because it guards a run that
+    # overlaps another and this suite runs one hook at a time, so removing it
+    # changes no verdict (a mutation of each shows that): writing the copy
+    # through a temp file and `mv`, so no run reads half a file; and the
+    # check-ignore filter in the drop step, so a tracked path is never out of
+    # the index between that step and the one that would put it back.
+    "configs/hooks/worker-checkpoint.sh": {
+        "suite": "tests/test-worker-checkpoint.sh",
+        "hook_var": "WORKER_CHECKPOINT_HOOK",
+        "env": {},
+        "fail_fast_env": {"WORKER_CHECKPOINT_FAIL_FAST": "1"},
+        "mutations": [
+            ("the copy of the worktree's info/exclude into the shadow",
+             [('  cp "$EXCLUDE" "$SHADOW/info/exclude.$$" 2>/dev/null \\\n'
+               '    && mv -f "$SHADOW/info/exclude.$$" "$SHADOW/info/exclude" 2>/dev/null', "  :")]),
+            ("info/exclude found through --git-path (a linked worktree's is in the common dir)",
+             [("EXCLUDE=$(git rev-parse --git-path info/exclude 2>/dev/null)", "EXCLUDE=.git/info/exclude")]),
+            ("a copy from an earlier run blanked once the worktree has none",
+             [('  : > "$SHADOW/info/exclude" 2>/dev/null', "  :")]),
+            ("the worktree's core.excludesFile passed to the shadow",
+             [('[[ -n "$EXCLUDES_FILE" ]] && SHADOW_GIT+=', "false && SHADOW_GIT+=")]),
+            ("dropping a recorded path that a rule now matches",
+             [('[[ -n "$DROP" ]] && printf', "false && printf")]),
+            ("recording a path the worktree tracks although a rule matches it",
+             [('[[ -n "$KEEP" ]] && printf', "false && printf")]),
+            ("--remove, so a deleted tracked path does not abort the rest",
+             [("update-index --add --remove --stdin", "update-index --add --stdin")]),
+            ("the cd to the work-tree root",
+             [('cd "$WORKTREE" 2>/dev/null || exit 0\n', "")]),
+            ("a relative shadow made absolute before that cd",
+             [('case "$SHADOW" in /*) ;; *) SHADOW="$PWD/$SHADOW" ;; esac', ":")]),
+            ("a caller's repository variables dropped before any git call",
+             [('unset $(git rev-parse --local-env-vars 2>/dev/null) 2>/dev/null', ":")]),
+        ],
+    },
     "configs/hooks/pre-tool-guardian.sh": {
         "suite": "tests/test-pre-tool-guardian.sh",
         "hook_var": "GUARDIAN_HOOK",

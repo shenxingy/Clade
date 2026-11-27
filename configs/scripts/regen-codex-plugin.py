@@ -14,6 +14,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import shutil
 import sys
 import tempfile
@@ -124,6 +125,17 @@ REPLACEMENTS = (
     ("Edit tool", "file-editing tools"),
 )
 
+# The runtime-name rows above assume a Claude name means the runtime executing
+# the skill. A block (a paragraph, list or table) that already names Codex uses
+# it for the OTHER runtime, and rewriting it there merged two runtimes into one:
+# "across independent Codex, Claude Code, Kimi and human sessions" became
+# "Codex, Codex, Kimi", and linear's per-runtime setup table got two `| Codex |`
+# rows, the first carrying `claude mcp add`. In such a block these are left as
+# written; everywhere else they apply exactly as before.
+RUNTIME_NAMES = frozenset(
+    {"Claude Code session", "Claude session", "Claude Code", "Claude:", "Claude is"}
+)
+
 FORBIDDEN_NATIVE_TEXT = (
     "claude -p",
     "--dangerously-skip-permissions",
@@ -133,7 +145,8 @@ FORBIDDEN_NATIVE_TEXT = (
 
 # A canonical skill may name a runtime-installed helper. Rewrite that path
 # before the general Claude-to-Codex adaptation so the generated workflow uses
-# the helper bundled inside its own plugin directory.
+# the helper bundled inside its own plugin directory. The same hook carries a
+# skill's text that would be false once rewritten (verify, below).
 SKILL_TEXT_REPLACEMENTS = {
     "artifact": (
         ("~/.claude/scripts/artifact-lint.py", "<plugin-root>/skills/artifact/scripts/artifact-lint.py"),
@@ -149,6 +162,17 @@ SKILL_TEXT_REPLACEMENTS = {
         (
             "~/.claude/scripts/land-pr.py",
             "<plugin-root>/skills/merge-pr/scripts/land-pr.py",
+        ),
+    ),
+    "verify": (
+        # The canonical text tells this skill apart from Claude Code's bundled
+        # /verify. Codex has a /review built-in but no /verify (codex-rs
+        # tui/src/slash_command.rs, rust-v0.157.1), so the rewritten sentence
+        # named a Codex command that does not exist.
+        (
+            " NOT the Claude Code built-in /verify (which runs the app to observe"
+            " a single change working) — this one walks",
+            " It walks",
         ),
     ),
     "retro": (
@@ -225,6 +249,26 @@ def _read_manifest() -> list[str]:
     return names
 
 
+def _unquote_scalar(raw: str) -> str:
+    r"""Decode a quoted YAML flow scalar to the text a YAML loader would give.
+
+    Stripping the quote characters left the escapes in place, so the source's
+    `"\"What should I work on next?\" — ..."` was re-encoded as `\\\"` and
+    reached Codex as a literal backslash. A double-quoted scalar is decoded as
+    JSON, which covers the escapes our skills use (`\"`, `\\`, `\uXXXX`); a
+    YAML-only escape (`\x41`, `\_`) raises rather than ship mangled text.
+    Plain and block scalars are returned unchanged.
+    """
+    if len(raw) >= 2 and raw[0] == raw[-1] == '"':
+        try:
+            return json.loads(raw, strict=False)
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"unsupported escape in double-quoted YAML scalar: {raw}") from exc
+    if len(raw) >= 2 and raw[0] == raw[-1] == "'":
+        return raw[1:-1].replace("''", "'")
+    return raw
+
+
 def _split_frontmatter(text: str) -> tuple[dict[str, str], str]:
     lines = text.splitlines()
     if not lines or lines[0].strip() != "---":
@@ -237,16 +281,26 @@ def _split_frontmatter(text: str) -> tuple[dict[str, str], str]:
     for line in lines[1:end]:
         if line and not line[0].isspace() and ":" in line:
             current, value = line.split(":", 1)
-            fields[current] = value.strip().strip("\"'")
+            fields[current] = value.strip()
         elif current and line.strip():
             fields[current] = f"{fields[current]} {line.strip()}".strip()
-    return fields, "\n".join(lines[end + 1 :]).strip()
+    unquoted = {key: _unquote_scalar(value) for key, value in fields.items()}
+    return unquoted, "\n".join(lines[end + 1 :]).strip()
 
 
 def _adapt(text: str) -> str:
-    for old, new in REPLACEMENTS:
-        text = text.replace(old, new)
-    return text
+    # Judge each blank-line-separated block on its own (RUNTIME_NAMES). No
+    # REPLACEMENTS source spans a line break, so wherever a block names no
+    # Codex this is the same as replacing over the whole text.
+    blocks = re.split(r"(\n[ \t]*\n)", text)
+    for index, block in enumerate(blocks):
+        names_codex = "Codex" in block
+        for old, new in REPLACEMENTS:
+            if names_codex and old in RUNTIME_NAMES:
+                continue
+            block = block.replace(old, new)
+        blocks[index] = block
+    return "".join(blocks)
 
 
 def _namespace_plugin_skill_refs(text: str) -> str:
@@ -256,6 +310,15 @@ def _namespace_plugin_skill_refs(text: str) -> str:
             f"`$clade:{skill_name}`",
         )
     return text
+
+
+def _adapt_skill_text(name: str, value: str) -> str:
+    """The text adaptation one skill's description and body go through."""
+    for source, target in SKILL_TEXT_REPLACEMENTS.get(name, ()):
+        value = value.replace(source, target)
+    if name not in NATIVE_CORE_SKILLS:
+        value = _adapt(value)
+    return _namespace_plugin_skill_refs(value)
 
 
 def _render_skill(name: str) -> str:
@@ -276,13 +339,8 @@ def _render_skill(name: str) -> str:
 
     native_core = name in NATIVE_CORE_SKILLS
 
-    def base_adapt(value: str) -> str:
-        for source, target in SKILL_TEXT_REPLACEMENTS.get(name, ()):
-            value = value.replace(source, target)
-        return value if native_core else _adapt(value)
-
     def adapt(value: str) -> str:
-        return _namespace_plugin_skill_refs(base_adapt(value))
+        return _adapt_skill_text(name, value)
 
     header = (
         NATIVE_HEADER.format(
