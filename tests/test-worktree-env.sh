@@ -200,18 +200,29 @@ assert_contains "$OUT" "WARNING: Env bootstrap failed" "run 3: failed bootstrap 
 assert_contains "$OUT" "SUCCESS" "run 3: task still spawns and succeeds"
 assert_contains "$MARKER" "venv-symlink" "run 3: symlinks still applied after bootstrap failure"
 
-# ── Run 4: concurrent tasks never prune while a sibling sets up ──
-# A `git worktree prune` between a sibling's `git worktree add` making its entry
-# and locking it deletes the entry, and that add fails. The race itself is too
-# narrow to hit on demand, so assert the property that rules it out, through a
-# git shim that logs each call: one prune per run, before the first add. (Each
-# task pruned on its way in before; three concurrent tasks often all pruned
-# ahead of every add, so "before the first add" alone passed on the old code.)
+# ── Run 4: concurrent tasks never race each other's worktree setup ──
+# Two git races lose a task here. A `git worktree add` reads every sibling's
+# entry and fails on one still being written; a `git worktree prune` deletes an
+# entry an add has made but not locked yet. Both windows are too narrow to hit
+# on demand, so assert the properties that rule them out, through a git shim
+# that logs each call and holds every add open for half a second: adds never
+# overlap, and there is one prune per run, before the first add. (Each task
+# pruned on its way in before; three concurrent tasks often all pruned ahead of
+# every add, so "before the first add" alone passed on the old code.)
 REAL_GIT=$(command -v git)
 mkdir -p "$TMP/gitshim"
 cat > "$TMP/gitshim/git" << EOF
 #!/usr/bin/env bash
-[[ "\$1" == worktree ]] && echo "worktree \$2" >> "$TMP/git-calls"
+if [[ "\$1" == worktree ]]; then
+  echo "worktree \$2" >> "$TMP/git-calls"
+  if [[ "\$2" == add ]]; then
+    echo "add-start" >> "$TMP/git-calls"
+    "$REAL_GIT" "\$@"; rc=\$?
+    sleep 0.5
+    echo "add-end" >> "$TMP/git-calls"
+    exit \$rc
+  fi
+fi
 exec "$REAL_GIT" "\$@"
 EOF
 chmod +x "$TMP/gitshim/git"
@@ -235,6 +246,8 @@ else
   fail "run 4: every worktree prune runs before the first add" "calls: $(tr '\n' ' ' <<< "$CALLS")"
 fi
 assert_eq "3" "$(grep -c 'SUCCESS:' <<< "$OUT")" "run 4: all three concurrent tasks succeed"
+max_open=$(awk '/^add-start$/{n++; if (n > m) m = n} /^add-end$/{n--} END{print m+0}' <<< "$CALLS")
+assert_eq "1" "$max_open" "run 4: no two worktree adds run at once"
 
 # ── Run 5: a failed worktree add says why ──
 # The add's own message went to /dev/null, so a lost task read only "Could not

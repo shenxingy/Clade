@@ -343,17 +343,24 @@ run_task_in_worktree() {
 
   echo "[$task_idx] Starting: $task_name [$model]"
 
-  # Create worktree (clean up any leftover from previous failed runs first).
-  # No `git worktree prune` here: tasks set up concurrently, and a prune deletes
-  # the entry another task's `git worktree add` has made but not yet locked, so
-  # that add dies. The one prune runs before any task starts (see the launch).
+  # Create worktree (clean up any leftover from previous failed runs first),
+  # one task at a time. `git worktree add` reads every other worktree's entry,
+  # and an entry a sibling's add is still writing fails that read: measured
+  # 2026-11-27, "fatal: failed to read .git/worktrees/task-2/commondir:
+  # Success", and the task was lost. Under load tests/test-loop-goal.sh failed
+  # 10 of 288 runs on it. The lock lives in this run's own RESULTS_DIR, so a run
+  # killed while holding it cannot block the next one. No `git worktree prune`
+  # here either: the one prune runs before any task starts (see the launch).
+  local add_lock="$RESULTS_DIR/worktree-add.lock" add_err add_rc=0
+  until mkdir "$add_lock" 2>/dev/null; do sleep 0.1; done
   if [[ -d "$wt_dir" ]]; then
     git worktree remove "$wt_dir" --force 2>/dev/null || rm -rf "$wt_dir"
   fi
   git branch -D "$branch_name" 2>/dev/null || true
   git branch "$branch_name" "$MAIN_BRANCH" 2>/dev/null
-  local add_err
-  if ! add_err=$(git worktree add "$wt_dir" "$branch_name" 2>&1 >/dev/null); then
+  add_err=$(git worktree add "$wt_dir" "$branch_name" 2>&1 >/dev/null) || add_rc=$?
+  rmdir "$add_lock"
+  if [[ $add_rc -ne 0 ]]; then
     echo "[$task_idx] FAILED: Could not create worktree: ${add_err//$'\n'/ }"
     return 1
   fi
@@ -514,9 +521,7 @@ mkdir -p "$WORKTREE_BASE"
 # file that keeps prune away; a prune in that gap deletes the entry and the add
 # dies with "could not open .git/worktrees/<name>/locked". Each task used to
 # prune its own way in, concurrently with its siblings' adds: measured
-# 2026-11-27, 3 of 200 adds raced by two prunes on one core failed that way,
-# and under load tests/test-loop-goal.sh lost a task to "Could not create
-# worktree" in 3 of 56 runs, a lost attempt toward parking its goal item.
+# 2026-11-27, 3 of 200 adds raced by two prunes on one core failed that way.
 git worktree prune 2>/dev/null || true
 
 # Results dir: subshells write "success"/"failed" files here (avoids bash subshell variable loss)
