@@ -642,7 +642,7 @@ RL_TMP="$SANDBOX/files-tmp"; mkdir -p "$RL_TMP"
 OUT="$(GITHUB_ENV="$SANDBOX/outer-env" GITHUB_PATH="$SANDBOX/outer-path" GITHUB_OUTPUT="$SANDBOX/outer-output" \
   GITHUB_STATE="$SANDBOX/outer-state" RUNNER_TEMP="$SANDBOX" TMPDIR="$RL_TMP" \
   python3 "$RUNNER" --repo "$FILES" --job "Runner Files" --job "Next Job" 2>&1)"; RC=$?
-assert_eq "$RC" "0" "a job that writes \$GITHUB_PATH, \$GITHUB_ENV and \$GITHUB_OUTPUT passes"
+assert_eq "$RC" "2" "a job that writes \$GITHUB_PATH, \$GITHUB_ENV and \$GITHUB_OUTPUT passes (2: one step unproven, below)"
 assert_lacks "$OUT" "FLAKY" "on its first attempt"
 for k in temp-empty temp-outside workspace writer-unset; do
   assert_eq "$(result "$k")" "$k ok" "writer: $k"
@@ -688,7 +688,7 @@ section "each job gets an npm global prefix of its own, never the host's"
 npm_result() { grep -E "^$1 (ok|BAD)$" "$NPMW/.npm-results" 2>/dev/null | tr '\n' ' ' | sed 's/ $//'; }
 rm -f "$NPMW"/.npm-*
 OUT="$(npm_caller python3 "$RUNNER" --repo "$NPMW" 2>&1)"; RC=$?
-assert_eq "$RC" "0" "a job that installs into its npm prefix passes"
+assert_eq "$RC" "2" "a job that installs into its npm prefix passes (2: one step unproven, below)"
 assert_lacks "$OUT" "FLAKY" "on its first attempt"
 assert_contains "$OUT" "unproven Npm Expression Prefix › Its prefix only the hosted run can set" \
   "the step whose prefix is a \${{ }} still reads unproven"

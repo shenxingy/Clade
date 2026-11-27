@@ -22,6 +22,10 @@
 # Fires only when the orchestrator sets CLADE_WORKER_SHADOW_DIR at spawn.
 # Interactive sessions never set it, so this hook is inert there.
 #
+# What a snapshot holds: exactly what `git add -A` in the worktree itself would
+# stage — its tracked files plus the untracked files its ignore rules admit.
+# See "Mirror the worktree's ignore rules" below for why that takes work.
+#
 # Fail-open: any error is silently ignored. A checkpoint is evidence, never a
 # gate — it must not be able to stop a worker.
 
@@ -29,6 +33,15 @@ INPUT=$(cat)
 
 SHADOW="${CLADE_WORKER_SHADOW_DIR:-}"
 [[ -z "$SHADOW" ]] && exit 0
+# Absolute before the `cd` below, so a relative setting means what it always did.
+case "$SHADOW" in /*) ;; *) SHADOW="$PWD/$SHADOW" ;; esac
+# Every git call below names its repository by cwd or --git-dir, and a caller's
+# repository variables override both: GIT_DIR or GIT_WORK_TREE would make the
+# ignore-rule reads consult another repository, so a file info/exclude lists
+# lands in the shadow, and GIT_INDEX_FILE would make the shadow's add -A write
+# the worker's own index. So drop all of them, the list git itself clears when
+# it moves into another repository (`git rev-parse --local-env-vars`).
+unset $(git rev-parse --local-env-vars 2>/dev/null) 2>/dev/null
 
 # FILE_PATH is a LABEL, not a gate. The snapshot below is `add -A` over the whole
 # worktree, so it never needed a path — and requiring one made this hook blind to
@@ -57,10 +70,62 @@ REL="${FILE_PATH:+${FILE_PATH#"$WORKTREE"/}}"
 REL="${REL:-<bash-write>}"
 TOOL=$(echo "$INPUT" | jq -r '.tool_name // "edit"' 2>/dev/null)
 
-git --git-dir="$SHADOW" --work-tree="$WORKTREE" add -A >/dev/null 2>&1 || exit 0
+# Every path below is relative to the work-tree root. From a subdirectory git
+# would read them against it, and ls-files would list only that subtree.
+cd "$WORKTREE" 2>/dev/null || exit 0
+WORKTREE=$PWD
+
+# ─── Mirror the worktree's ignore rules ───
+# The shadow is a fresh bare repository, so its own info/exclude is empty and
+# its own index decides what counts as tracked. Left alone, `add -A` honours
+# the worktree's .gitignore files (they sit in the work tree) and a global
+# core.excludesFile (ambient config), and nothing else. Probed 2026-11-26 on a
+# linked worktree, the shape run-tasks-parallel.sh creates: a file listed only
+# in info/exclude landed in the shadow, and a file the worktree tracks although
+# a rule matches it (`git add -f`) never did.
+#
+# info/exclude lives in the COMMON git dir of a linked worktree; --git-path
+# resolves that. On a main worktree it prints a path relative to the cwd, which
+# the cd above made the work-tree root.
+EXCLUDE=$(git rev-parse --git-path info/exclude 2>/dev/null)
+mkdir -p "$SHADOW/info" 2>/dev/null
+if [[ -f "$EXCLUDE" ]]; then
+  # Copied every run, so an edit to it reaches the next snapshot; through a
+  # temp file, so a concurrent run never reads it half-written.
+  cp "$EXCLUDE" "$SHADOW/info/exclude.$$" 2>/dev/null \
+    && mv -f "$SHADOW/info/exclude.$$" "$SHADOW/info/exclude" 2>/dev/null
+else
+  : > "$SHADOW/info/exclude" 2>/dev/null
+fi
+SHADOW_GIT=(--git-dir="$SHADOW" --work-tree="$WORKTREE")
+# A repo-local core.excludesFile is in the worktree's config, which the shadow
+# never reads. `config --get` also returns a global one; passing that again
+# changes nothing.
+EXCLUDES_FILE=$(git config --get core.excludesFile 2>/dev/null)
+[[ -n "$EXCLUDES_FILE" ]] && SHADOW_GIT+=(-c "core.excludesFile=$EXCLUDES_FILE")
+
+# Ignore rules apply only to untracked files, and add -A asks the SHADOW's
+# index which files those are. So a path an earlier snapshot recorded (a shadow
+# reused from a run before this fix, or a rule added mid-run) stays in every
+# later one: drop each one a rule now matches, from the shadow's index only —
+# the worktree is never touched. check-ignore, run in the worktree, names only
+# the paths the worktree does not track, so a tracked one is never dropped:
+# the step after add -A would put it back, but a run in parallel with this one
+# could commit a snapshot without it in between.
+DROP=$(git "${SHADOW_GIT[@]}" ls-files -ci --exclude-standard 2>/dev/null)
+[[ -n "$DROP" ]] && printf '%s\n' "$DROP" | git check-ignore --stdin 2>/dev/null \
+  | git "${SHADOW_GIT[@]}" update-index --force-remove --stdin >/dev/null 2>&1
+git "${SHADOW_GIT[@]}" add -A >/dev/null 2>&1 || exit 0
+# Then record each path the worktree tracks although a rule matches it, which
+# `git status` reports and add -A into the shadow never would. update-index
+# takes paths literally, skips an unchanged one by its stat data, and --remove
+# keeps a path deleted since from aborting the rest.
+KEEP=$(git ls-files -ci --exclude-standard 2>/dev/null)
+[[ -n "$KEEP" ]] && printf '%s\n' "$KEEP" \
+  | git "${SHADOW_GIT[@]}" update-index --add --remove --stdin >/dev/null 2>&1
 # --allow-empty: a write that changed nothing is still a step in the timeline,
 # and dropping it would renumber every later checkpoint.
-git --git-dir="$SHADOW" --work-tree="$WORKTREE" \
+git "${SHADOW_GIT[@]}" \
   -c core.hooksPath=/dev/null \
   commit -q --no-verify --allow-empty -m "checkpoint: ${TOOL} ${REL}" >/dev/null 2>&1
 
