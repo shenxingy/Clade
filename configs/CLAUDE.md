@@ -170,9 +170,9 @@ tested after it merges.
 - **Merge when** that record is green for the exact head and the head merges
   cleanly into the CURRENT default branch (`git merge-tree --write-tree
   origin/main <head>` exits 0). `land-pr.py <pr> --record gate.json` checks
-  both, merges with `--match-head-commit <head>` and confirms `mergedAt`; each
-  refusal has its own exit code. A conflict resolution is new code: a new
-  head, so a new gate.
+  both, runs the repo's `.claude/merge-check.sh` on the merge result, merges
+  with `--match-head-commit` and confirms `mergedAt`. A conflict resolution is
+  new code: a new head, a new gate.
 - **Never re-gate because main moved** — no rebase, no "update branch", no
   re-run of an unchanged head. Measured in a private repository on
   2026-11-10: each PR ran about three full suites, its head plus re-gates

@@ -40,6 +40,16 @@ Checks, in order, each with its own exit code:
     13  no gate record                 18  `gh pr merge` refused
     14  the record is red              19  the forge never reported mergedAt
     20  git or gh failed               21  the merge method is not allowed
+    22  the merge result fails `.claude/merge-check.sh`
+
+Before merging it runs the repository's own `.claude/merge-check.sh`, when the
+merge result carries one, in a throwaway worktree of that result (both parents,
+the tree merge-tree wrote). It is for properties of the WHOLE tree that two
+individually green PRs can break together: a line cap, a byte ceiling, a count
+of generated files. Each PR's gate tests its own head, so it cannot see them; on
+2026-11-26 three such pairs kept Clade's main red for 2 h 44 min. Keep it to
+seconds: it is not a second gate. The script gets LAND_PR_REPO (the checkout
+land-pr was run from), LAND_PR_BASE and LAND_PR_HEAD.
 
 A conflict resolution is new code: it makes a new head, and that head needs its
 own gate. The merge runs `gh pr merge --match-head-commit <sha>`, so a push
@@ -54,8 +64,11 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+import signal
 import subprocess
 import sys
+import tempfile
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -72,6 +85,9 @@ EXIT_MERGE_FAILED = 18
 EXIT_NOT_CONFIRMED = 19
 EXIT_TOOL = 20
 EXIT_METHOD = 21
+EXIT_MERGE_CHECK = 22
+
+MERGE_CHECK = ".claude/merge-check.sh"
 
 PR_FIELDS = "number,state,isDraft,baseRefName,headRefName,headRefOid,mergedAt,url"
 REPO_FIELDS = "defaultBranchRef,mergeCommitAllowed,squashMergeAllowed,rebaseMergeAllowed"
@@ -85,9 +101,11 @@ class Refusal(Exception):
 
 # ─── Tools ───────────────────────────────────────────────────────────────────
 
-def run(cmd: list[str], cwd: Path, timeout: int = 300) -> subprocess.CompletedProcess[str]:
+def run(cmd: list[str], cwd: Path, timeout: float = 300,
+        env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
     try:
-        return subprocess.run(cmd, cwd=str(cwd), capture_output=True, text=True, timeout=timeout)
+        return subprocess.run(cmd, cwd=str(cwd), capture_output=True, text=True, timeout=timeout,
+                              env=env, stdin=subprocess.DEVNULL)
     except FileNotFoundError as exc:
         raise Refusal(EXIT_TOOL, f"{cmd[0]} not found: {exc}") from exc
     except subprocess.TimeoutExpired as exc:
@@ -170,7 +188,8 @@ def fetch(repo: Path, remote: str, default: str, pr: dict) -> None:
         raise Refusal(EXIT_TOOL, f"could not fetch the PR head {head} from {remote}")
 
 
-def merges_cleanly(repo: Path, remote: str, default: str, head: str) -> None:
+def merges_cleanly(repo: Path, remote: str, default: str, head: str) -> str:
+    """The tree the merge would produce; a conflict is a refusal."""
     out = git(repo, "merge-tree", "--write-tree", "--name-only", f"{remote}/{default}", head)
     if out.returncode == 1:
         # --name-only: the tree id, the conflicted paths, a blank line, then messages.
@@ -183,6 +202,45 @@ def merges_cleanly(repo: Path, remote: str, default: str, head: str) -> None:
                                      "Resolve it on the branch; the resolution is a new head and needs its own gate.")
     if out.returncode != 0:
         raise Refusal(EXIT_TOOL, f"git merge-tree failed (git >= 2.38 needed): {out.stderr.strip()[-300:]}")
+    return out.stdout.split("\n", 1)[0].strip()
+
+
+def merge_check(repo: Path, base_ref: str, head: str, tree: str, timeout: float) -> str:
+    """Run the merge result's own `.claude/merge-check.sh` in a throwaway worktree of that result."""
+    if git(repo, "cat-file", "-e", f"{tree}:{MERGE_CHECK}").returncode != 0:
+        return f"no {MERGE_CHECK} in the merge result"
+    base = git(repo, "rev-parse", "--verify", f"{base_ref}^{{commit}}").stdout.strip()
+    ident = {**os.environ, "GIT_AUTHOR_NAME": "land-pr", "GIT_AUTHOR_EMAIL": "land-pr@localhost",
+             "GIT_COMMITTER_NAME": "land-pr", "GIT_COMMITTER_EMAIL": "land-pr@localhost"}
+    made = run(["git", "commit-tree", tree, "-p", base, "-p", head, "-m", "land-pr merge check"], repo, env=ident)
+    if made.returncode != 0 or not base:
+        raise Refusal(EXIT_TOOL, f"could not make the merge-result commit: {made.stderr.strip()[-300:]}")
+    with tempfile.TemporaryDirectory(prefix="land-pr-check-") as tmp:
+        tree_dir = Path(tmp) / "merged"
+        add = git(repo, "worktree", "add", "--quiet", "--detach", str(tree_dir), made.stdout.strip())
+        if add.returncode != 0:
+            raise Refusal(EXIT_TOOL, f"git worktree add failed: {add.stderr.strip()[-300:]}")
+        try:
+            env = {**os.environ, "LAND_PR_REPO": str(repo), "LAND_PR_BASE": base, "LAND_PR_HEAD": head}
+            # Its own session, so a timeout ends everything it started, not only bash.
+            proc = subprocess.Popen(["bash", MERGE_CHECK], cwd=str(tree_dir), stdout=subprocess.PIPE,
+                                    stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, text=True, env=env,
+                                    start_new_session=True)
+            try:
+                output, _ = proc.communicate(timeout=timeout)
+            except subprocess.TimeoutExpired as exc:
+                os.killpg(proc.pid, signal.SIGKILL)
+                proc.communicate()
+                raise Refusal(EXIT_MERGE_CHECK, f"{MERGE_CHECK} on the merge result timed out after {timeout:g} s") from exc
+        finally:
+            git(repo, "worktree", "remove", "--force", str(tree_dir))
+            git(repo, "worktree", "prune")
+    if proc.returncode != 0:
+        tail = "\n".join(output.strip().splitlines()[-20:])
+        raise Refusal(EXIT_MERGE_CHECK, f"{MERGE_CHECK} failed (exit {proc.returncode}) on the merge of {head[:12]} into "
+                                        f"{base[:12]}: each side is green alone, together they are not. Fix forward on "
+                                        f"the branch; the fix is a new head and needs its own gate.\n{tail}")
+    return f"{MERGE_CHECK} passed on the merge result"
 
 
 def choose_method(requested: str, repo_info: dict) -> str:
@@ -238,9 +296,11 @@ def land(args: argparse.Namespace) -> str:
         raise Refusal(EXIT_UNCERTIFIED, f"the record does not certify {head[:12]}: {record.why}")
 
     fetch(repo, args.remote, default, pr)
-    merges_cleanly(repo, args.remote, default, head)
+    tree = merges_cleanly(repo, args.remote, default, head)
+    checked = merge_check(repo, f"{args.remote}/{default}", head, tree, args.merge_check_timeout)
     method = choose_method(args.method, repo_info)
-    plan = f"PR #{pr['number']} head {head[:12]}: gate green ({record.why}); merges cleanly into {args.remote}/{default}"
+    plan = (f"PR #{pr['number']} head {head[:12]}: gate green ({record.why}); merges cleanly into "
+            f"{args.remote}/{default}; {checked}")
     if args.dry_run:
         return f"would merge ({method}): {plan}"
 
@@ -276,7 +336,7 @@ def main(argv: list[str] | None = None) -> int:
     if argv == ["--self-test"]:
         return self_test()
     ap = argparse.ArgumentParser(description="Merge a PR on the gate of its own head, into the current main.",
-                                 epilog="Exit codes 10-21 name each refusal; see the module docstring.")
+                                 epilog="Exit codes 10-22 name each refusal; see the module docstring.")
     ap.add_argument("pr", help="PR number or URL")
     ap.add_argument("--record", help="gate record JSON (default <git common dir>/clade-gate/<head>.json)")
     ap.add_argument("--repo", default=".", help="local checkout of the repository (default: cwd)")
@@ -286,6 +346,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--allow-partial", action="store_true",
                     help="accept a ci-local PARTIAL verdict; its unproven lanes must be proven elsewhere")
     ap.add_argument("--dry-run", action="store_true", help="run every check, merge nothing")
+    ap.add_argument("--merge-check-timeout", type=float, default=600.0,
+                    help=f"seconds {MERGE_CHECK} may take on the merge result (default 600)")
     ap.add_argument("--confirm-wait", type=float, default=20.0,
                     help="seconds to wait for the forge to report mergedAt (default 20)")
     args = ap.parse_args(argv)
