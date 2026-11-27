@@ -31,7 +31,8 @@ Usage
     ci-local.py --all           also run jobs whose `if:` keeps them off this run
     ci-local.py --json          machine-readable result, for an automatic fixer
     ci-local.py --repo PATH     another repository
-    ci-local.py --strict        exit 2 when the run is not green (see below)
+    ci-local.py --no-strict     exit 0, not 2, when nothing failed but the run is
+                                not green (see below)
     ci-local.py --no-rerun      a failed step is a failure at once, never rerun
     ci-local.py --allow-host-mutation   on a throwaway VM: run skipped-unsafe steps
 
@@ -106,9 +107,10 @@ summary read PARTIAL, a step that passed only on rerun makes it read FLAKY,
 and a run in which no job ran at all reads NOTHING RAN; the JSON `verdict` is
 pass, partial, flaky, none or fail (a run with both an unproven lane and a
 flaky step is partial, and still lists the flaky steps), and only pass is
-green. During the report-only rollout the exit code for partial, flaky and
-none is still 0; --strict makes it 2, and the default flips on the date
-TODO.md names.
+green. Exit 2 when nothing failed and the verdict is partial, flaky or none:
+not green, and not a failure either. --no-strict exits 0 there instead, as the
+report-only week (2026-11-06 to 11-13) did; the verdict says the same either
+way, so a caller that reads the JSON reads `verdict`, not the exit code.
 
 The JSON also names the tree it judged: `head` (the commit checked out when the
 run started, null outside a git checkout), `dirty` (tracked or untracked
@@ -1193,8 +1195,8 @@ def main() -> int:
     ap = argparse.ArgumentParser(
         description="Run this repository's GitHub Actions gates locally.",
         epilog="A skipped job is always reported: nothing-ran must not look like all-passed. "
-               "Exit 1: a job failed. Exit 2: --strict and the verdict is partial, flaky "
-               "or none.",
+               "Exit 1: a job failed. Exit 2: nothing failed and the verdict is partial, "
+               "flaky or none (--no-strict: exit 0).",
     )
     ap.add_argument("--repo", type=Path, default=Path.cwd())
     ap.add_argument("--job", action="append", help="Job id or name (repeatable).")
@@ -1209,13 +1211,13 @@ def main() -> int:
                          "so a step that passes only because this machine has "
                          "~/.claude installed fails here instead of on the runner.")
     ap.add_argument("--json", action="store_true", help="Machine-readable result.")
-    # Report-only for one week, then the default (TODO.md names the date):
-    # exit 2 changes what /green --json callers see, so it is opt-in first.
-    ap.add_argument("--strict", action=argparse.BooleanOptionalAction, default=False,
+    # On by default since the report-only week (2026-11-06 to 11-13) ended.
+    # --no-strict is that week's exit code, for a caller that keys on exit 0.
+    ap.add_argument("--strict", action=argparse.BooleanOptionalAction, default=True,
                     help="Exit 2 when nothing failed but the run is not green: a lane is "
                          "unproven (a job or step the hosted run executes and this runner "
                          "could not prove), a step passed only on its rerun (FLAKY), or "
-                         "no job ran at all.")
+                         "no job ran at all. The default; --no-strict exits 0 there.")
     ap.add_argument("--no-rerun", action="store_true",
                     help="Do not rerun a failed step. By default a step that exits "
                          "non-zero runs once more with the same command, env and "
@@ -1455,7 +1457,7 @@ def main() -> int:
     for r in skipped:
         if not r.unproven:
             print(f"  skipped {r.job.display}: {r.reason}")
-    strict_note = " — exit 2 under --strict." if not args.strict else "."
+    strict_note = " — exit 2 (--no-strict: 0)." if args.strict else " — exit 0 under --no-strict."
     if verdict == "partial":
         print("  PARTIAL is not green: the hosted run executes the lanes above and this one "
               "did not prove them. Prove them hosted (or where their services exist)"

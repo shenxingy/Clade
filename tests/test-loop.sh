@@ -1438,11 +1438,11 @@ fi
 fi
 
 # ═══════════════════════════════════════════════════════════════════════
-# TEST SUITES 12–16 — tests/test-loop-env.sh
+# TEST SUITES 12–17 — tests/test-loop-env.sh
 # ═══════════════════════════════════════════════════════════════════════
 # models.env parity, deployed-script parity, signal handling, the wall-clock
-# bound and the scan-health probe live in a sibling file: this one stood at
-# 1448 lines against the 1500-line ceiling.
+# bound, the scan-health probe and the commit sweep's scope live in a sibling
+# file: this one stood at 1448 lines against the 1500-line ceiling.
 #
 # SOURCED, not spawned. TESTS_RUN/TESTS_PASSED/TESTS_FAILED, the filter, and
 # the fixture's ORIG_DIR/TEST_DIR/SCRIPTS_DIR/REPO_DIR are this shell's
@@ -1456,7 +1456,7 @@ fi
 # gone is worse than no suite.
 LOOP_ENV_SUITES="$TEST_LOOP_DIR/test-loop-env.sh"
 if [[ ! -r "$LOOP_ENV_SUITES" ]]; then
-  echo "FATAL: cannot read $LOOP_ENV_SUITES — suites 12-16 would be skipped silently" >&2
+  echo "FATAL: cannot read $LOOP_ENV_SUITES — suites 12-17 would be skipped silently" >&2
   exit 1
 fi
 # shellcheck source=test-loop-env.sh

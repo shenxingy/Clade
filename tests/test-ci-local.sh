@@ -15,11 +15,12 @@
 # secrets, unusual job ids, compound job-level if:, mixed triggers and gates
 # that are actions. Those lanes run on every hosted push and could not run
 # here; the suite asserts they come back UNPROVEN (summary PARTIAL, JSON
-# `unproven`, exit 2 under --strict) and never as passed. A step that passes
+# `unproven`, exit 2 unless --no-strict) and never as passed. A step that passes
 # only on its rerun must come back FLAKY, never green (tests/lib/
 # ci-local-flaky.sh); runner labels, tag-only tiers and the runner files are in
 # tests/lib/ci-local-runner.sh, host-mutating steps in ci-local-host-mutation.sh,
-# the record's head, dirty flag and clean stdout in ci-local-record.sh.
+# the record's head, dirty flag and clean stdout in ci-local-record.sh, the
+# default exit 2 and --no-strict in ci-local-strict.sh.
 # The last suite removes each guard from a copy of ci-local.py and
 # ci_local_runner.py and requires this suite to go red (a stale anchor fails).
 #
@@ -197,7 +198,7 @@ assert_contains "$OUT" "1/1 job(s) passed" "the count reflects what actually ran
 # ─── 4. Skips are reported, never silent ─────────────────────────────
 section "nothing-ran must not look like everything-passed"
 OUT="$(run_it --job "Mac Only")"; RC=$?
-assert_eq "$RC" "0" "a job that cannot run here is not a failure"
+assert_eq "$RC" "2" "a job that cannot run here is not a failure (1) and not green: exit 2"
 assert_contains "$OUT" "skipped Mac Only" "the skip is reported in the summary"
 assert_contains "$OUT" "0/0 job(s) passed" "zero jobs ran, and the summary says zero"
 # And zero jobs is not a pass. The verdict read "pass" here when it was first
@@ -206,8 +207,8 @@ assert_contains "$OUT" "ci-local: NOTHING RAN: 0/0" "the summary line says NOTHI
 VERDICT=$(python3 "$RUNNER" --repo "$FAKE" --job "Mac Only" --json 2>/dev/null \
   | python3 -c "import json,sys; print(json.load(sys.stdin)['verdict'])" 2>/dev/null)
 assert_eq "$VERDICT" "none" "the JSON verdict is none, not pass, when no job ran"
-run_it --job "Mac Only" --strict >/dev/null; RC=$?
-assert_eq "$RC" "2" "--strict exits 2 when nothing ran"
+run_it --job "Mac Only" --no-strict >/dev/null; RC=$?
+assert_eq "$RC" "0" "--no-strict exits 0 when nothing ran, as in the report-only week"
 
 # A job whose every step is skipped executed NOTHING. Reporting it as passed is
 # the exact lie this tool exists to prevent, and the first version did it.
@@ -236,9 +237,9 @@ OUT="$(run_it --job "Matrix Job")"
 assert_contains "$OUT" "0/0 job(s) passed" "a matrix job is never counted as passed"
 assert_contains "$OUT" "unproven Matrix Job" "and it is named as an unproven lane"
 
-# A failure outranks everything: --strict's exit 2 is for "nothing failed, but".
-OUT="$(run_it --strict)"; RC=$?
-assert_eq "$RC" "1" "a failed job exits 1 under --strict too, not 2"
+# A failure outranks everything: the exit 2 is for "nothing failed, but".
+OUT="$(run_it)"; RC=$?
+assert_eq "$RC" "1" "a failed job exits 1 beside an unproven lane, not 2"
 assert_contains "$OUT" "lane(s) unproven" "and the unproven lanes are still listed beside the failure"
 
 # ─── 5. JSON is usable by an automatic fixer ─────────────────────────
@@ -432,8 +433,8 @@ assert_contains "$OUT" "After Comment" "a column-0 comment does not end the jobs
 
 section "a run with an unproven lane is PARTIAL, never green"
 clear_markers
-OUT="$(lanes)"; RC=$?
-assert_eq "$RC" "0" "report-only rollout: without --strict the exit code is still 0"
+OUT="$(lanes --no-strict)"; RC=$?
+assert_eq "$RC" "0" "--no-strict keeps the report-only week's exit 0 on PARTIAL"
 assert_contains "$OUT" "ci-local: PARTIAL: 3/3 job(s) passed" "the summary line says PARTIAL"
 assert_contains "$OUT" "4 lane(s) unproven: Defaults Build, Backend Tests, E2E › Run E2E, E2E › Changed-only step" \
   "and names every unproven lane on that line"
@@ -451,29 +452,29 @@ for m in backend e2e changed nightly triage defaults; do
   assert_not_ran "$m" "the .$m-ran lane was not executed here"
 done
 
-section "--strict exits 2 on an unproven lane"
-OUT="$(lanes --strict)"; RC=$?
-assert_eq "$RC" "2" "--strict exits 2 when nothing failed but a lane is unproven"
+section "an unproven lane exits 2 by default"
+OUT="$(lanes)"; RC=$?
+assert_eq "$RC" "2" "with no flag it exits 2 when nothing failed but a lane is unproven"
 assert_contains "$OUT" "ci-local: PARTIAL:" "and it is the PARTIAL verdict that made it 2, not a usage error"
-OUT="$(lanes --strict --job "Unit Tests")"; RC=$?
-assert_eq "$RC" "0" "--strict exits 0 when every lane that was asked for is proven"
+OUT="$(lanes --job "Unit Tests")"; RC=$?
+assert_eq "$RC" "0" "it exits 0 when every lane that was asked for is proven"
 assert_contains "$OUT" "ci-local: 1/1 job(s) passed" "a fully proven run has no PARTIAL in its summary"
 assert_lacks "$OUT" "PARTIAL" "not even in the explanation line"
 
 # An explicitly named conditional job runs — but it is still planned in full,
 # so its services: keep it from running on the host.
 clear_markers
-OUT="$(lanes --strict --job "Nightly DB")"; RC=$?
+OUT="$(lanes --job "Nightly DB")"; RC=$?
 assert_not_ran nightly "--job on a conditional services job does not run it on the host"
-assert_eq "$RC" "2" "and --strict reports it as unproven"
+assert_eq "$RC" "2" "and its exit 2 reports it as unproven"
 assert_contains "$OUT" "unproven Nightly DB: uses services" "naming services as the reason"
 OUT="$(lanes --all --list)"
 assert_contains "$(after 'Nightly DB')" "UNPROVEN — uses services" "with --all the nightly services job is an unproven lane"
 
 section "the JSON names the unproven lanes for /green"
 clear_markers
-JSON="$(python3 "$RUNNER" --repo "$LANES" --json --strict 2>/dev/null)"; RC=$?
-assert_eq "$RC" "2" "--json --strict exits 2 as well"
+JSON="$(python3 "$RUNNER" --repo "$LANES" --json 2>/dev/null)"; RC=$?
+assert_eq "$RC" "2" "--json exits 2 as well"
 CHECK=$(python3 - "$JSON" <<'PY'
 import json, sys
 d = json.loads(sys.argv[1])
@@ -808,7 +809,7 @@ section "the edges run: PARTIAL with each lane named, the right steps executed"
 rm -f "$EDGES"/.*-ran
 # A value the developer's shell exports must not stand in for one the hosted run sets.
 OUT="$(CI_LOCAL_T_REPO=from-the-shell CI_LOCAL_T_JOBX=from-the-shell edges)"; RC=$?
-assert_eq "$RC" "0" "nothing failed: an inherited expression was unset, not left as its literal"
+assert_eq "$RC" "2" "nothing failed (2, not 1): an inherited expression was unset, not left as its literal"
 assert_contains "$OUT" "ci-local: PARTIAL: 10/10 job(s) passed" "the summary is PARTIAL over the 10 jobs that ran"
 assert_contains "$OUT" "18 lane(s) unproven: Job Secret › Upload coverage, Step Secret › Own secret, Step Secret › Secret in run, Step Secret › Indexed secret, Step Secret › All secrets, Step Secret › Indexed token, Run Expression › Print SHA, Runner Variable, PR Services, PR Only, Block Scalar Env, Script Action › actions/github-script@v7, Reusable, Flow Steps, Job Defaults, Workflow Expression › Runs without it, Job Expression › Runs without the job value, Workflow Token" \
   "and names all eighteen unproven lanes on that line"
@@ -822,8 +823,8 @@ for m in job-secret own-secret run-secret idx-secret all-secrets idx-token wf-to
          flow job-defaults; do
   if edge_ran "$m"; then fail "the .$m-ran lane was not executed here" "it executed"; else pass "the .$m-ran lane was not executed here"; fi
 done
-JSON="$(CI_LOCAL_T_REPO=from-the-shell python3 "$RUNNER" --repo "$EDGES" --json --strict 2>/dev/null)"; RC=$?
-assert_eq "$RC" "2" "--strict exits 2 on the edges run"
+JSON="$(CI_LOCAL_T_REPO=from-the-shell python3 "$RUNNER" --repo "$EDGES" --json 2>/dev/null)"; RC=$?
+assert_eq "$RC" "2" "--json exits 2 on the edges run"
 CHECK=$(python3 - "$JSON" <<'PY'
 import json, sys
 d = json.loads(sys.argv[1])
@@ -1149,8 +1150,8 @@ print("; ".join(problems) or "ok")
 PY
 )
 assert_eq "$CHECK" "ok" "verdict, unproven, passed and skipped are exact for action gates"
-python3 "$RUNNER" --repo "$ACTS" --job "Lint Action" --strict >/dev/null 2>&1; RC=$?
-assert_eq "$RC" "2" "a run of only an action-gated job is not green under --strict"
+python3 "$RUNNER" --repo "$ACTS" --job "Lint Action" >/dev/null 2>&1; RC=$?
+assert_eq "$RC" "2" "a run of only an action-gated job is not green: exit 2"
 
 # ─── 8f. A step that passes only on rerun is FLAKY ──────────────────
 # Its fixtures, assertions and mutations live together in a sourced file,
@@ -1168,6 +1169,9 @@ assert_eq "$RC" "2" "a run of only an action-gated job is not green under --stri
 # ─── 8g. The JSON is a gate record: head, dirty, nothing else on stdout ──
 # shellcheck source=lib/ci-local-record.sh
 . "$REPO_ROOT/tests/lib/ci-local-record.sh"
+# 8j. Exit 2 by default, --no-strict for the old exit 0.
+# shellcheck source=lib/ci-local-strict.sh
+. "$REPO_ROOT/tests/lib/ci-local-strict.sh"
 
 # ─── 9. Mutations: removing each guard turns this suite red ──────────
 # A clean run and a run with a guard missing print the same "ALL PASSED"
@@ -1214,7 +1218,7 @@ PY
 }
 
 mutation green "no-op control (a comment reworded)" \
-  '# Report-only for one week, then the default' '# Report-only for one week,  then the default'
+  '# On by default since the report-only week' '# On by default since the report-only  week'
 mutation red "the reasoned-first order (unmodelled tested before pull_request_target)" \
   '    triggers = workflow_triggers(on_block)
 ' '    if job.unmodelled:
@@ -1422,6 +1426,7 @@ ci_local_flaky_mutations
 ci_local_runner_mutations
 ci_local_host_mutation_mutations   # tests/lib/ci-local-host-mutation.sh
 ci_local_record_mutations          # tests/lib/ci-local-record.sh
+ci_local_strict_mutations          # tests/lib/ci-local-strict.sh
 
 # A shared host and a 4-core hosted runner both run this: at most 4 at once.
 CL_JOBS=$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 2)

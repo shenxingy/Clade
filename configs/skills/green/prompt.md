@@ -91,8 +91,9 @@ Use `--json`: it gives the failing job, the step name, the exit code, the exact
 command, and the output tail, which is what you need to fix without guessing.
 Pass a job argument through as `--job <name>` when the user named one.
 
-Read `verdict` first, not the exit code — during the report-only rollout a
-`partial`, `flaky` or `none` run still exits 0 (`--strict` makes it 2):
+Read `verdict` first, not the exit code — exit 1 is a failure, but a
+`partial`, `flaky` or `none` run exits 2 (`--no-strict` would make it 0), and
+the verdict is what says which of the three it was:
 
 - `pass` with a non-empty `passed` → green. Report and stop. Do not push
   unless asked.

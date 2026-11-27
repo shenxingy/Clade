@@ -191,6 +191,17 @@ network_count() {
   fi
 }
 
+# hook_stderr_clean MSG — the last run_hook wrote no shell error from the
+# backoff parser. Failing open is not enough: a guard that a bash error skips
+# fails open too, so each malformed state must be rejected before arithmetic.
+hook_stderr_clean() {
+  if grep -qE 'sync-push-backoff|value too great|syntax error|unbound variable' "$H/hook.err"; then
+    fail "$1" "$(cat "$H/hook.err")"
+  else
+    pass "$1"
+  fi
+}
+
 spawned_at_least() { [[ "$(spawn_count)" -ge "$1" ]]; }
 backoff_is() { [[ "$(backoff_line)" == "$1" ]]; }
 wait_count() { poll 60 spawned_at_least "$1"; }
@@ -594,11 +605,7 @@ t_robustness() {
   wait_count 1
   assert_eq "$HOOK_RC" "0" "no backoff file leaves the normal path successful"
   assert_eq "$(spawn_count)" "1" "no backoff file fails open"
-  if grep -q 'sync-push-backoff' "$H/hook.err"; then
-    fail "the no-state fast path avoids a missing-file read error" "$(cat "$H/hook.err")"
-  else
-    pass "the no-state fast path avoids a missing-file read error"
-  fi
+  hook_stderr_clean "the no-state fast path avoids a missing-file read error"
 
   new_store no-newline
   install_stub
@@ -614,6 +621,7 @@ t_robustness() {
   wait_count 1
   assert_eq "$HOOK_RC" "0" "a malformed timestamp does not abort the hook"
   assert_eq "$(spawn_count)" "1" "a malformed timestamp fails open"
+  hook_stderr_clean "a malformed timestamp is rejected before any arithmetic"
 
   new_store malformed-count
   install_stub
@@ -622,6 +630,41 @@ t_robustness() {
   wait_count 1
   assert_eq "$HOOK_RC" "0" "a malformed count does not abort the hook"
   assert_eq "$(spawn_count)" "1" "a malformed count fails open"
+  hook_stderr_clean "a malformed count is rejected before any arithmetic"
+
+  # A leading zero is decimal. Bash arithmetic read 07000 as octal 3584, which
+  # opened the window early, and rejected 08000 and 09 outright: bash dropped
+  # the breaker check mid-parse and the hook went on to push, failing open.
+  new_store leading-zero-octal-time
+  install_stub
+  printf '07000 1 push-failed\n' > "$H/.claude/.sync-push-backoff"
+  fire_write 7001 "$H/.claude/skills/demo/SKILL.md"
+  assert_eq "$HOOK_RC" "0" "a leading-zero timestamp leaves the hook successful"
+  assert_eq "$(spawn_count)" "0" "07000 is 7000, an active window, not octal 3584"
+  assert_eq "$(backoff_line)" "07000 1 push-failed" "an active leading-zero state claims no probe"
+
+  new_store leading-zero-invalid-octal-time
+  install_stub
+  printf '08000 1 push-failed\n' > "$H/.claude/.sync-push-backoff"
+  fire_write 8001 "$H/.claude/skills/demo/SKILL.md"
+  assert_eq "$HOOK_RC" "0" "a timestamp octal rejects (08000) leaves the hook successful"
+  assert_eq "$(spawn_count)" "0" "08000 is 8000, an active window"
+
+  new_store leading-zero-count
+  install_stub
+  printf '8000 09 push-failed\n' > "$H/.claude/.sync-push-backoff"
+  fire_write 8100 "$H/.claude/skills/demo/SKILL.md"
+  assert_eq "$(spawn_count)" "0" "a count of 09 is nine failures, a capped active window"
+  hook_stderr_clean "a leading-zero count reaches no arithmetic error"
+
+  new_store leading-zero-claim
+  install_stub
+  printf '07000 010 push-failed\n' > "$H/.claude/.sync-push-backoff"
+  fire_write 7239 "$H/.claude/skills/demo/SKILL.md"
+  assert_eq "$(spawn_count)" "0" "07000 with ten failures stays closed until its 240-second cap"
+  fire_write 7240 "$H/.claude/skills/demo/SKILL.md"
+  check "the leading-zero state opens exactly at its decimal boundary" wait_count 1
+  assert_eq "$(backoff_line)" "7240 10 push-failed" "the claim rewrites the count in decimal"
 
   new_store malformed-reason
   install_stub
@@ -687,6 +730,27 @@ t_robustness() {
   run_push 8001
   assert_eq "$(backoff_line)" "8001 1 conflict-markers" \
     "a malformed prior count restarts at one instead of aborting the recording"
+
+  new_store leading-zero-previous
+  printf '8000 010 push-failed\n' > "$H/.claude/.sync-push-backoff"
+  printf -- '<<<<<<< Updated upstream\n=======\n>>>>>>> Stashed changes\n' \
+    >> "$STORE/corrections/rules.md"
+  run_push 8001
+  assert_eq "$(backoff_line)" "8001 11 conflict-markers" \
+    "a leading-zero prior count is decimal: 010 + 1 is 11, not octal 9"
+
+  new_store invalid-octal-previous
+  printf '8000 09 push-failed\n' > "$H/.claude/.sync-push-backoff"
+  printf -- '<<<<<<< Updated upstream\n=======\n>>>>>>> Stashed changes\n' \
+    >> "$STORE/corrections/rules.md"
+  run_push 8001
+  # Before, the arithmetic error left the refusal block ahead of its `exit 1`:
+  # the run went on to commit the markers, clear the breaker and exit 0.
+  assert_eq "$PUSH_RC" "1" "a REFUSED push over a 09 prior count still exits nonzero"
+  assert_eq "$(backoff_line)" "8001 10 conflict-markers" \
+    "a prior count octal rejects (09) is still recorded as the tenth failure"
+  assert_eq "$(git -C "$STORE" rev-list --count HEAD)" "1" \
+    "a REFUSED push over a 09 prior count commits no conflict markers"
 
   new_store previous-no-newline
   printf '7000 1 push-failed' > "$H/.claude/.sync-push-backoff"
@@ -1008,8 +1072,14 @@ set -e' '{ source "$HOOK_LIBDIR/sync-push-backoff.sh"; } 2>/dev/null || true'
   mutation red push "prior-count validation" robustness \
     "case \"\$count\" in
       ''|*[!0-9]*) ;;
-      *) previous=\$count ;;
+      *) previous=\$((10#\$count)) ;;
     esac" 'previous=$count'
+  mutation red push "reading the prior count as decimal" robustness \
+    'previous=$((10#$count))' 'previous=$count'
+  mutation red lib "reading the timestamp as decimal" robustness \
+    '_failed_at=$((10#$_failed_at))' ':'
+  mutation red lib "reading the failure count as decimal" robustness \
+    '_failures=$((10#$_failures))' ':'
   mutation red lib "the missing-file fast path" robustness \
     '[[ -f "$_file" ]] || return 1' ':'
   mutation red lib "the complete-state shape check" robustness \
