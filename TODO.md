@@ -4575,11 +4575,16 @@ and the reviews of the units the sweep closed. Each item names its evidence.
   `land-pr.py` checks only that the merge is textually clean. Main stayed red
   until the next unit's gate failed on it; fixed forward by #300.
   Two parts:
-  1. **No post-merge run for this repository.** The only `mainline-ci` timer on
-     the author's host serves another repository, so the "test every new main
-     tree" half of merge-then-test does not exist for Clade here. Install
-     `configs/templates/mainline-ci.{service,timer}.example` for it, sized to
-     the compute policy (one full gate per new main tree).
+  1. **No post-merge run for this repository.** Decided 2026-11-27: none is
+     needed while Clade is public. Hosted CI runs on every push to main at no
+     cost here, so it is the post-merge test, and it went red on each of the
+     eleven bad pushes of 2026-11-26. Nothing watches those runs, though: that
+     red main was noticed when the next unit's gate failed on it. #306 now
+     refuses the merges that caused it. A local `mainline-ci` timer would add
+     its bisect and a status other runs can check. Install
+     `configs/templates/mainline-ci.{service,timer}.example` if the repository
+     goes private, or if a red main ever needs bisecting faster than by reading
+     the merges since the last green run.
   2. **Limits that sum across PRs.** DONE 2026-11-27: `land-pr.py` runs the
      merge result's `.claude/merge-check.sh` in a throwaway worktree before
      merging (exit 22 on a failure); Clade's runs the five drift gates,
@@ -4658,3 +4663,27 @@ and the reviews of the units the sweep closed. Each item names its evidence.
   58: `Max iterations` was missing from the output while
   `logs/loop-empty/last-progress` recorded `Exit: max_iterations`. Green on rerun;
   the first failure is unexplained. Seen gating #292.
+
+**Worktrees and branches** (left open by #306-#308, 2026-11-27)
+
+- [ ] 🔵 **A worker's own git commands can still read a half-written worktree
+  entry.** #308 serialises the runner's `git worktree add` calls with a lock,
+  because an add fails on a sibling's entry that is still being written
+  (`fatal: failed to read .git/worktrees/task-2/commondir: Success`). A worker
+  that runs `git branch -d` or `git checkout <branch>` also walks every
+  worktree, and it does so outside that lock, while a later task's add may be
+  running. Not measured: `tests/test-loop-goal.sh`'s mock workers run neither
+  command. One way to close it is to create every worktree before any worker
+  starts.
+- [ ] 🔵 **Two runner processes in one repository still race each other.** The
+  #308 lock lives in each run's own `RESULTS_DIR`, so two concurrent
+  `run-tasks-parallel.sh` runs on one repository (a `/batch-tasks` during a
+  `/loop`) do not share it. No caller does this today. A lock under the
+  repository's git dir would cover the case, but it would also need a stale-lock
+  rule, which a per-run lock does not.
+- [ ] 🔵 **`branch-sweep.py` sees branch protection rules, not rulesets.**
+  `protected` reads `branchProtectionRule` only. A ruleset that forbids
+  deletion makes the push refuse that branch: the run exits 3 and nothing is
+  lost, but the report calls the branch deletable. `--apply` has also run only
+  against a local bare remote. This repository's 19 merged branches were deleted
+  by hand before the tool existed.
