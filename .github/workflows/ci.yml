@@ -501,6 +501,11 @@ jobs:
       - name: Run Kimi hook compatibility tests
         run: bash tests/test-kimi-hooks.sh
 
+      # uninstall.sh takes out exactly the [[hooks]] entries install.sh appended
+      # to Kimi's config.toml, with a parse check and a mutation per guard.
+      - name: Run Kimi uninstall tests
+        run: bash tests/test-kimi-uninstall.sh
+
       # Codex 0.169.0 hooks.json append/trust-index preservation and the exact
       # installed adapter commands: apply_patch fan-out, deny/context schemas,
       # correction state, Stop continuation, cleanup, sync and guard mutations.
