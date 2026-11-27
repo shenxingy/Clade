@@ -163,6 +163,10 @@ SKILL_TEXT_REPLACEMENTS = {
             "~/.claude/scripts/land-pr.py",
             "<plugin-root>/skills/merge-pr/scripts/land-pr.py",
         ),
+        (
+            "~/.claude/scripts/branch-sweep.py",
+            "<plugin-root>/skills/merge-pr/scripts/branch-sweep.py",
+        ),
     ),
     "verify": (
         # The canonical text tells this skill apart from Claude Code's bundled
@@ -218,6 +222,10 @@ DECLARED_RESOURCES = {
         (
             REPO_ROOT / "configs" / "scripts" / "merge_then_test_cases.py",
             Path("scripts/merge_then_test_cases.py"),
+        ),
+        (
+            REPO_ROOT / "configs" / "scripts" / "branch-sweep.py",
+            Path("scripts/branch-sweep.py"),
         ),
     ),
     "retro": (

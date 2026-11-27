@@ -149,3 +149,11 @@ deleted after squash rather than pretending safe `-d` ancestry applies.
 Completion requires clean tree, default branch checked out, local/remote
 default exactly aligned, no local/remote topic branch, descendants repaired,
 and the delivery state `CLEAN`.
+
+Branches an earlier session left behind are not this delivery's to delete by
+hand. `python3 ~/.claude/scripts/branch-sweep.py` reports every remote branch
+by class; `--apply` deletes only those whose tip is the head of a PR merged
+over a day ago (each PR page restores its branch), under a lease, after
+writing a log. When the report says `delete_branch_on_merge OFF`, tell the
+owner; `--enable-auto-delete` changes that repository setting and needs their
+yes.
