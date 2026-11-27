@@ -198,9 +198,22 @@ echo "Removed orchestrator-settings.example.json + kit markers"
 
 echo "Cleaning settings.json..."
 if [[ -f "$CLAUDE_DIR/settings.json" ]] && command -v jq &>/dev/null; then
-  jq 'del(.hooks) | del(.statusLine)' "$CLAUDE_DIR/settings.json" > /tmp/claude-settings-clean.json
-  mv /tmp/claude-settings-clean.json "$CLAUDE_DIR/settings.json"
-  echo "  Removed hooks + statusLine from settings.json"
+  # The candidate is a private file beside the target, as in install.sh, not
+  # a fixed /tmp path another account can hold or two runs can share. Guarded
+  # like the Kimi edit below: under `set -e` a settings.json jq cannot parse
+  # ended the whole uninstall here, with the Codex, Kimi and alias steps not
+  # run. The write-back goes through the file, keeping its mode and a link.
+  if ! _settings_candidate=$(mktemp "$CLAUDE_DIR/.settings.json.XXXXXX" 2>/dev/null); then
+    echo "  WARNING: settings.json unchanged (cannot create a temporary file in $CLAUDE_DIR)"
+  elif ! jq 'del(.hooks) | del(.statusLine)' "$CLAUDE_DIR/settings.json" > "$_settings_candidate" 2>/dev/null; then
+    echo "  WARNING: settings.json unchanged (jq cannot parse it); remove its hooks and statusLine by hand"
+  elif { cat "$_settings_candidate" > "$CLAUDE_DIR/settings.json"; } 2>/dev/null; then
+    echo "  Removed hooks + statusLine from settings.json"
+  else
+    echo "  WARNING: settings.json unchanged (cannot write it)"
+  fi
+  [[ -z "${_settings_candidate:-}" ]] || rm -f "$_settings_candidate"
+  unset _settings_candidate
 else
   echo "  Skipped (no settings.json or jq not available)"
 fi
@@ -381,9 +394,20 @@ echo "Removing shell aliases..."
 for rc_file in "$HOME/.zshrc" "$HOME/.bashrc"; do
   [[ -f "$rc_file" ]] || continue
   if grep -q "dangerously-skip-permissions" "$rc_file" 2>/dev/null; then
-    # Remove the block added by install.sh (comment + 2 alias lines)
-    sed -i '/# Claude Code: skip permission prompts (added by clade)/,/^alias cc=/d' "$rc_file"
-    echo "  Removed aliases from $rc_file"
+    # Remove the block added by install.sh (comment + 2 alias lines). Not
+    # `sed -i`: BSD sed reads the script as its backup suffix and fails, which
+    # under `set -e` ended the uninstall on macOS. The write-back goes through
+    # the file, so a linked or 0600 rc file stays as it was.
+    if ! _rc_candidate=$(mktemp "$rc_file.clade.XXXXXX" 2>/dev/null); then
+      echo "  WARNING: aliases left in $rc_file (cannot create a temporary file beside it)"
+    elif sed '/# Claude Code: skip permission prompts (added by clade)/,/^alias cc=/d' "$rc_file" > "$_rc_candidate" \
+        && { cat "$_rc_candidate" > "$rc_file"; } 2>/dev/null; then
+      echo "  Removed aliases from $rc_file"
+    else
+      echo "  WARNING: aliases left in $rc_file (cannot rewrite it)"
+    fi
+    [[ -z "${_rc_candidate:-}" ]] || rm -f "$_rc_candidate"
+    unset _rc_candidate
   fi
 done
 

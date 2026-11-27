@@ -512,6 +512,12 @@ jobs:
       - name: Run Codex hook compatibility tests
         run: bash tests/test-codex-hooks.sh
 
+      # uninstall.sh rewriting settings.json and the shell rc files: a private
+      # candidate beside each, the mode and a link kept, the run going on past a
+      # file jq cannot parse, and no `sed -i`, which BSD sed rejects.
+      - name: Run uninstall tests
+        run: bash tests/test-uninstall.sh
+
       # Project auto-memory reaches the sync store: a real memory dir is
       # adopted (verified copy, link back, commit), store entries link at
       # Claude Code's own slug in ~/.claude, $CLAUDE_CONFIG_DIR and every
