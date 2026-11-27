@@ -114,7 +114,8 @@ input=$(cat)
 printf '=== ARGS\n%s\n=== STDIN\n%s\n' "$args" "$input" >> "${LH_PROMPTS:-/dev/null}"
 if [[ "$args" == *"Verify these changed files"* ]]; then
   echo '{"passed":true,"items":[],"summary":"mock pass"}'
-elif [[ "$args" == *"autonomous improvement loop"* ]]; then
+elif [[ "$input" == *"autonomous improvement loop"* ]]; then
+  # The supervisor reads its prompt on stdin (loop-runner.sh node_supervisor).
   if [[ -n "${MOCK_EMPTY_PLAN:-}" ]]; then echo '[]'; exit 0; fi
   echo '[{"description":"Update README.md and commit it to satisfy the exact item","model":"haiku","files":["README.md"],"goal_items":[{"line":3,"text":"exact item"}]}]'
 elif [[ "$args" == *"stream-json"* ]]; then
@@ -199,9 +200,10 @@ scenario() {
 
 PROMPTS="$TEST_ROOT/prompts.log"
 # run_loop REPO ARGS... → OUT, RC; every prompt lands in $PROMPTS.
-# stdin is /dev/null: the supervisor call inherits the runner's stdin and the
-# mock reads it, so an inherited pipe that never closes (a backgrounded shell)
-# hangs every call until the 90 s timeout instead of failing anything.
+# stdin is /dev/null: a claude call that takes its prompt in argv (verify)
+# inherits the runner's stdin and the mock reads it, so an inherited pipe that
+# never closes (a backgrounded shell) hangs every call until the 90 s timeout
+# instead of failing anything. The supervisor's prompt is its own stdin.
 run_loop() {
   local repo="$1"
   shift

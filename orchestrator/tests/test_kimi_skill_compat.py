@@ -50,6 +50,46 @@ def test_real_scan_classifies_every_skill_directory_without_dropping_one() -> No
             assert item["fact"]
 
 
+def _load_scanner():
+    spec = importlib.util.spec_from_file_location("kimi_skill_compat_rules", SCANNER)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_once_per_session_context_is_adapted_and_the_stop_loop_is_not() -> None:
+    """init-profile's profile reaches Kimi through session-context.sh, which
+    install.sh wires on the first UserPromptSubmit with --once-per-session, so
+    it is adapted. iloop needs a Stop hook that re-prompts every iteration;
+    Kimi allows one Stop continuation per turn and iloop-hook.sh is not wired,
+    so it stays claude-only."""
+    result = subprocess.run(
+        [sys.executable, str(SCANNER), "--root", str(SKILLS), "--json"],
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    rows = {row["name"]: row for row in json.loads(result.stdout)["skills"]}
+    profile = rows["init-profile"]
+    assert profile["classification"] == "adapted", profile
+    assert profile["unsupported"] == []
+    assert profile["adaptations"] == ["SessionStart context→first UserPromptSubmit (--once-per-session)"]
+    assert len(profile["evidence"]) == 2, profile["evidence"]
+    iloop = rows["iloop"]
+    assert iloop["classification"] == "claude-only", iloop
+    assert iloop["required_unsupported"] == ["Claude hook lifecycle"]
+
+
+def test_scanner_once_per_session_hooks_are_install_sh_once_rows() -> None:
+    """The scanner adapts a SessionStart injection only for the hooks install.sh
+    actually delivers with --once-per-session. One stated set, checked from both ends."""
+    once = {hook for _, _, hook, _, mode in _install_hook_rows() if mode == "once"}
+    assert once, "no once-per-session row would make this test vacuous"
+    assert _load_scanner().KIMI_ONCE_PER_SESSION_HOOKS == once
+
+
 def _base_config(home: Path, extra: str | None = None) -> str:
     root = [
         "# keep this comment",
@@ -70,6 +110,17 @@ def _base_config(home: Path, extra: str | None = None) -> str:
     ])
 
 
+def _install_hook_rows() -> list[tuple[str, str, str, str, str]]:
+    """install.sh §11c's declarative Kimi hook list: (event, matcher, hook, timeout, mode)."""
+    text = (REPO_ROOT / "install.sh").read_text(encoding="utf-8")
+    start = text.index("_kimi_hook_present \"$_event\"")
+    body = text[text.index("<<'EOF'\n", start) + len("<<'EOF'\n"):]
+    body = body[:body.index("\nEOF\n")]
+    rows = [tuple(row.split("^")) for row in body.splitlines()]
+    assert rows and all(len(row) == 5 for row in rows), "install.sh's Kimi hook list changed shape"
+    return rows  # type: ignore[return-value]
+
+
 def _clade_hook_tables(home: Path) -> list[str]:
     """Every [[hooks]] table install.sh writes, read from its own declarative list.
 
@@ -84,12 +135,8 @@ def _clade_hook_tables(home: Path) -> list[str]:
     text = (REPO_ROOT / "install.sh").read_text(encoding="utf-8")
     anchoring = '[[ -z "$_matcher" ]] || _kimi_matcher="^(${_matcher})\\$"'
     assert anchoring in text, "install.sh no longer anchors Kimi matchers as ^(...)$; recheck this fixture"
-    start = text.index("_kimi_hook_present \"$_event\"")
-    body = text[text.index("<<'EOF'\n", start) + len("<<'EOF'\n"):]
-    body = body[:body.index("\nEOF\n")]
     tables: list[str] = []
-    for row in body.splitlines():
-        event, matcher, hook, timeout, mode = row.split("^")
+    for event, matcher, hook, timeout, mode in _install_hook_rows():
         matcher = f"^({matcher})$" if matcher else ""
         command = f"{home}/.kimi-code/hooks/decision-to-kimi.sh"
         if mode == "once":
@@ -246,9 +293,10 @@ def test_install_builds_view_without_touching_claude_store(install_sandbox) -> N
     view = home / ".kimi-code" / "clade-skills"
     assert view.is_dir() and not view.is_symlink()
     assert (view / ".clade-managed").read_text() == "clade-kimi-skill-view-v1\n"
-    for name in ("commit", "user-native"):
+    for name in ("commit", "user-native", "init-profile"):
         assert (view / name).is_symlink()
         assert os.readlink(view / name) == str(home / ".claude" / "skills" / name)
+    assert "disableModelInvocation: true" in (view / "iloop" / "SKILL.md").read_text(encoding="utf-8")
     assert (view / "user-native" / "references" / "note.txt").read_text() == "keep me\n"
 
     flagged = view / "blog"
@@ -584,10 +632,7 @@ def test_text_only_config_rule_when_tomllib_is_unavailable(tmp_path, monkeypatch
 def test_kimi_agents_tool_map_matches_every_scanner_rule() -> None:
     """KIMI_AGENTS.md's map is what a Kimi session reads; the scanner's RULES
     are what classified the skills. One stated mapping, checked from both ends."""
-    spec = importlib.util.spec_from_file_location("kimi_skill_compat_rules", SCANNER)
-    assert spec is not None and spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    module = _load_scanner()
     text = (REPO_ROOT / "configs" / "KIMI_AGENTS.md").read_text(encoding="utf-8")
     section = text[text.index("### Clade Skills Written for Claude Code"):]
     section = section[:section.index("\n## ")]
