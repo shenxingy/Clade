@@ -10,9 +10,12 @@ import shutil
 import sys
 from pathlib import Path
 
+import yaml
+
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 PLUGIN_ROOT = REPO_ROOT / "plugins" / "clade"
+GENERATOR = REPO_ROOT / "configs" / "scripts" / "regen-codex-plugin.py"
 
 
 _PLUGIN_PYCACHE = PLUGIN_ROOT / "hooks" / "__pycache__"
@@ -93,6 +96,131 @@ def test_codex_plugin_skills_are_generated_and_provider_native() -> None:
         PLUGIN_ROOT / "skills" / "status" / "SKILL.md"
     ).read_text()
 
+
+# ─── What Codex hands the model: frontmatter text and runtime names ───
+#
+# These read the GENERATED tree, which is what Codex loads, and parse its
+# frontmatter with a YAML loader, which is how Codex reads it. Two defects
+# shipped there: `next` reached the model as `\"What should I work on next?\"`
+# (the source's YAML escapes were never decoded, then escaped again), and the
+# blanket "Claude Code" -> "Codex" rewrite turned runtime lists and tables into
+# duplicates ("independent Codex, Codex, Kimi and human sessions"; two
+# `| Codex |` rows in linear, the first carrying `claude mcp add`).
+
+_REPEATED_RUNTIME = re.compile(r"\bCodex(?:,| and| or)\s+Codex\b")
+_RUNTIME_ROW_LABELS = frozenset({"Codex", "Claude Code", "Kimi Code"})
+
+
+def _generator():
+    return _load_module("clade_regen_codex_plugin", GENERATOR)
+
+
+def _frontmatter(text: str) -> dict:
+    assert text.startswith("---\n"), text[:40]
+    return yaml.safe_load(text[4 : text.index("\n---\n", 4)])
+
+
+def test_generated_skills_never_name_one_runtime_twice() -> None:
+    offenders: list[str] = []
+    runtime_rows = 0
+    skills = sorted((PLUGIN_ROOT / "skills").glob("*/SKILL.md"))
+    assert skills
+    for path in skills:
+        lines = path.read_text(encoding="utf-8").splitlines()
+        table_labels: set[str] = set()
+        for number, line in enumerate(lines, 1):
+            if _REPEATED_RUNTIME.search(line):
+                offenders.append(f"{path.parent.name}:{number}: {line.strip()}")
+            if not line.startswith("|"):
+                table_labels = set()
+                continue
+            label = line.split("|")[1].strip()
+            if label not in _RUNTIME_ROW_LABELS:
+                continue
+            runtime_rows += 1
+            if label in table_labels:
+                offenders.append(f"{path.parent.name}:{number}: second `| {label} |` row")
+            table_labels.add(label)
+    assert offenders == [], "\n".join(offenders)
+    # The table scan must have something to scan: linear's per-runtime setup
+    # table has three rows. Without this an empty tree would pass.
+    assert runtime_rows >= 3, runtime_rows
+
+
+def test_generated_descriptions_parse_to_the_source_text() -> None:
+    gen = _generator()
+    names = gen._read_manifest()
+    for name in names:
+        source = _frontmatter(
+            (REPO_ROOT / "configs" / "skills" / name / "SKILL.md").read_text(encoding="utf-8")
+        )
+        generated = _frontmatter(
+            (PLUGIN_ROOT / "skills" / name / "SKILL.md").read_text(encoding="utf-8")
+        )
+        assert generated["name"] == name
+        description = generated["description"]
+        assert '\\"' not in description, f"{name}: {description}"
+        assert description == gen._adapt_skill_text(name, source["description"]), name
+    assert len(names) == 31
+    next_description = _frontmatter(
+        (PLUGIN_ROOT / "skills" / "next" / "SKILL.md").read_text(encoding="utf-8")
+    )["description"]
+    assert next_description.startswith('"What should I work on next?" — two modes.')
+
+
+def test_runtime_names_are_rewritten_only_where_codex_is_not_already_named(
+    tmp_path, monkeypatch
+) -> None:
+    """Drive the generator's real entry point on a probe skill."""
+    gen = _generator()
+    probe = tmp_path / "probe"
+    probe.mkdir()
+    (probe / "SKILL.md").write_text(
+        "---\n"
+        "name: probe\n"
+        "description: across Claude Code, Codex and Kimi sessions\n"
+        "---\n\n"
+        "| Runtime | Setup |\n"
+        "|---|---|\n"
+        "| Claude Code | `claude mcp add x` |\n"
+        "| Codex | `codex mcp add x` |\n\n"
+        "Run it in Claude Code. A Claude session is fine.\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(gen, "SOURCE_ROOT", tmp_path)
+    rendered = gen._render_skill("probe")
+    # A list that already names Codex uses "Claude Code" for the other runtime.
+    assert _frontmatter(rendered)["description"] == "across Claude Code, Codex and Kimi sessions"
+    assert "| Claude Code | `claude mcp add x` |\n| Codex | `codex mcp add x` |" in rendered
+    # Text that names only Claude Code is still rewritten.
+    assert "Run it in Codex. A Codex session is fine." in rendered
+
+    (probe / "SKILL.md").write_text(
+        "---\nname: probe\n"
+        'description: "\\"What next?\\" \'quoted\' — NOT the Claude Code built-in /x"\n'
+        "---\n\nBody.\n",
+        encoding="utf-8",
+    )
+    assert _frontmatter(gen._render_skill("probe"))["description"] == (
+        "\"What next?\" 'quoted' — NOT the Codex built-in /x"
+    )
+    (probe / "SKILL.md").write_text(
+        "---\nname: probe\ndescription: 'it''s \"here\"'\n---\n\nBody.\n",
+        encoding="utf-8",
+    )
+    assert _frontmatter(gen._render_skill("probe"))["description"] == 'it\'s "here"'
+
+
+def test_verify_description_names_no_codex_built_in_that_does_not_exist() -> None:
+    # Codex has a /review built-in but no /verify (codex-rs tui/src/slash_command.rs,
+    # rust-v0.157.1). The canonical text tells verify apart from Claude Code's
+    # bundled /verify; rewritten, it pointed Codex at a command it does not have.
+    description = _frontmatter(
+        (PLUGIN_ROOT / "skills" / "verify" / "SKILL.md").read_text(encoding="utf-8")
+    )["description"]
+    assert "built-in /verify" not in description
+    assert description.startswith("Verify project behavior anchors")
+    assert 'walks the AGENTS.md "Features (Behavior Anchors)" list' in description
 
 
 def test_artifact_helpers_run_outside_clade_without_claude_install(tmp_path) -> None:
