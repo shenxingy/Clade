@@ -4580,11 +4580,12 @@ and the reviews of the units the sweep closed. Each item names its evidence.
      tree" half of merge-then-test does not exist for Clade here. Install
      `configs/templates/mainline-ci.{service,timer}.example` for it, sized to
      the compute policy (one full gate per new main tree).
-  2. **Limits that sum across PRs.** `test_conventions.py` runs in under a
-     second. `land-pr.py` could run it on the `git merge-tree --write-tree`
-     result before merging, which catches exactly the additive limits (the
-     line cap, the byte ceiling) without re-gating anything. Measure first how
-     often a merge crosses one: twice in the 16 merges of 2026-11-26.
+  2. **Limits that sum across PRs.** DONE 2026-11-27: `land-pr.py` runs the
+     merge result's `.claude/merge-check.sh` in a throwaway worktree before
+     merging (exit 22 on a failure); Clade's runs the five drift gates,
+     `test_conventions.py` and `test_codex_plugin.py`, about 3 s. Replayed on
+     the three pairs that kept main red for 2 h 44 min on 2026-11-26 (a third
+     pair took `tests/test-hooks.sh` to 1,503 lines), it refuses all three.
   3. **A stack landed by squash can duplicate a block.** Landing the fix
      first, with each dependent branch merging the fix branch before its gate,
      left one dependent with #298's `docs/kimi.md` uninstall paragraph twice:

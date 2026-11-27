@@ -9,6 +9,7 @@ semantic versioning。
 
 ### 变更
 
+- `land-pr.py` 合并前会在合并结果上运行仓库自己的 `.claude/merge-check.sh`，失败则以 22 退出、不合并。检查在 `git merge-tree` 写出的那棵树（带两个父提交）的临时 worktree 里运行，所以能看到两边各自都没有的东西；没有这个脚本的仓库照旧合并，输出里会写明。它针对的是整棵树的性质：两个各自在自己 head 上通过的 PR，合在一起才越线。2026-11-26 就有三对这样的 PR（`tests/test-hooks.sh` 到 1,503 行，`tests/test-kimi-hooks.sh` 到 1,577 行，`configs/CLAUDE.md` 超出字节上限 80 字节），让 Clade 的 main 连红 2 小时 44 分、连续 11 次推送。Clade 自己的脚本跑五个生成物漂移检查、`test_conventions.py` 和 `test_codex_plugin.py`，约 3 秒；在那三次合并上重放，三次都会拒绝，在今天的 main 上通过。检查卡住时，超过 `--merge-check-timeout`（600 秒）连同整个进程组一起结束。
 - `design-lint.py` 在 1,500 行上限处拆分，行为不变（#284）。它原有 1,489 行，留给下一次改动的只剩 11 行。source 通道移到 `design_lint_source.py`（633 行），两个静态通道共用的五个部件移到 `design_lint_common.py`（98 行）；`design-lint.py` 保留 CLI 以及 deck、render 和 html 通道（818 行）。CLI 从自己所在的目录导入这两个模块；Codex 插件的 `artifact` 技能现在也带上了这两个模块，否则它的副本会报 `ModuleNotFoundError`。
 - `pre-tool-guardian.sh` 在 1,500 行上限处拆分，它加载的每一部分都失败即关闭（#286）。这个 hook 原有 1,496 行，下一个守卫已经放不下。rm 规则逐字节移到 `hooks/lib/rm-guard.sh`，force-push 遍历移到 `hooks/lib/force-push-walk.sh`，hook 本身现在是 726 行。如果某个库缺失或什么都没定义，含 `rm` 一词的命令、或可能推送的命令会被拒绝，并点名缺失的文件；之后的规则照常运行。不可能推送的命令不再加载 force-push 遍历。
 - `ci-local.py` 默认在 PARTIAL、FLAKY 或 NOTHING RAN 时以 2 退出（#293）。只报告的那一周（2026-11-06 至 11-13）已经结束，`--no-strict` 保留原来的退出码 0。本仓库自己的本地运行原本接不住这次切换：在没有失败的 16 次运行里 16 次都是 PARTIAL（一台主机，2026-11-26），每次都卡在 Sibling facts 步骤，因为它的 `${{ }}` 表达式 ci-local 无法求值。这个步骤现在读取 `$GITHUB_EVENT_NAME` 和 `$GITHUB_BASE_REF`，并且只在缺少 `HEAD~1` 时才加深克隆，所以在本地运行无需 fetch。`mainline-ci.py` 按 verdict 归类退出码 2（partial 算绿，flaky 算 flaky），因此 partial 的 main 不会被当成红色去二分。

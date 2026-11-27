@@ -75,8 +75,11 @@ forge's `MERGEABLE`). Main moving after the gate never calls for a rebase, an
 resolution is a new head and needs its own gate. A PR with a gate record but no
 delivery state lands through
 `python3 <plugin-root>/skills/merge-pr/scripts/land-pr.py <pr> --record <gate.json>`, which
-checks the same condition, merges with `--match-head-commit` and confirms
-`mergedAt`.
+checks the same condition, runs the repository's own merge-check script (when
+it has one; `land-pr.py --help` names its path) on the merge result, merges
+with `--match-head-commit` and confirms `mergedAt`. That script holds the
+whole-tree checks two PRs green alone can fail together (a line cap, a byte
+ceiling, a generated count); keep it to seconds.
 
 ## 3. Lock READY and choose history semantics
 
