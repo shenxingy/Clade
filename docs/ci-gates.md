@@ -406,13 +406,13 @@ python3 configs/scripts/check-sibling-facts.py
 #     here used to be neither: it ran one file, and did not run at all.
 bash configs/scripts/checks.sh shellcheck configs/hooks/*.sh configs/hooks/lib/*.sh configs/codex-hooks/*.sh configs/kimi-hooks/*.sh configs/scripts/*.sh install.sh uninstall.sh .claude/pre-commit.sh
 
-# 12. Every suite the `shell-tests` job runs — all 38, not a convenient subset
+# 12. Every suite the `shell-tests` job runs — all 39, not a convenient subset
 #     (`loop` also runs test-loop-holdout.sh, and sources test-loop-env.sh, through
 #     tests/lib/loop-fixture.sh — neither has a step of its own)
 for t in loop checks commit-archeology skill-routing pr-scope-policy audit worktree-env \
          rule-injector mailbox-drain correction-pairing sync-store hooks hook-provenance \
          worker-checkpoint \
-         kimi-hooks codex-hooks sync-link-projects sync-link-projects-remote sync-health memory-sync-breaker \
+         kimi-hooks kimi-uninstall codex-hooks sync-link-projects sync-link-projects-remote sync-health memory-sync-breaker \
          post-edit-check session-context session-scorecard post-compact-reinject \
          memory-staleness \
          context-warning-drain ensure-dev-server quiet-run scan-health \
@@ -487,7 +487,7 @@ added to that script in the same commit too.**
 On push/PR to `main`, four workflow files fire:
 
 - `ci.yml` — `syntax-check` (29 gates), `pytest` (suite + 2 offline evals),
-  `shell-tests` (38 suites), `install-test`. `run_hack_eval.py` scores
+  `shell-tests` (39 suites), `install-test`. `run_hack_eval.py` scores
   `judge_diversity.test_integrity` against the labelled reward-hack corpus in
   `evals/hack_cases/` — read its README before changing either, because that
   gate's floor and ceiling are measured, not chosen.
