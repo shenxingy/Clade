@@ -63,7 +63,7 @@ start, which is the larger saving on a public repo where the minutes are free.
 python3 ~/.claude/scripts/ci-local.py --list   # what runs here, what cannot, and why
 python3 ~/.claude/scripts/ci-local.py          # run them; exit 1 on a failure, 2 on PARTIAL (unproven lanes), FLAKY (green only on rerun) or NOTHING RAN
 python3 ~/.claude/scripts/ci-local.py --json   # machine-readable, for an automatic fixer; read its verdict, not the exit code
-python3 ~/.claude/scripts/ci-local.py --no-strict # exit 0, not 2, on PARTIAL, FLAKY or NOTHING RAN (the report-only week's exit)
+python3 ~/.claude/scripts/ci-local.py --no-strict # exit 0, not 2, on those three
 ```
 
 It parses `.github/workflows/*.yml` and executes the same `run:` blocks, so it
@@ -117,8 +117,7 @@ are **unproven**: the summary line reads `PARTIAL`, names each one, and the JSON
 `unproven`. A run in which no job ran at all reads `NOTHING RAN` (JSON
 `verdict: none`). **Neither is green** — prove those lanes hosted (or where
 their services exist) before reading a local run as a merge signal. Either
-exits 2 (a failure is 1); `--no-strict` exits 0 there, as the report-only week
-of 2026-11-06 to 11-13 did.
+exits 2 (a failure is 1); `--no-strict` exits 0.
 
 **A pass on rerun is FLAKY, not green.** A step that exits non-zero runs once
 more, with the same command, env and directory. Red again, it failed. Green the
