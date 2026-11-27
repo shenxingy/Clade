@@ -89,8 +89,9 @@ args="$*"
 input=$(cat)
 if [[ "$args" == *"Verify these changed files"* ]]; then
   echo '{"passed":true,"items":[],"summary":"mock pass"}'
-elif [[ "$args" == *"autonomous improvement loop"* ]]; then
-  [[ -n "${MOCK_PROMPT_LOG:-}" ]] && printf '=====PROMPT=====\n%s\n' "$args" >> "$MOCK_PROMPT_LOG"
+elif [[ "$input" == *"autonomous improvement loop"* ]]; then
+  # The supervisor reads its prompt on stdin (loop-runner.sh node_supervisor).
+  [[ -n "${MOCK_PROMPT_LOG:-}" ]] && printf '=====PROMPT=====\n%s\n' "$input" >> "$MOCK_PROMPT_LOG"
   if [[ "${MOCK_TWO_TASKS:-false}" == "true" ]]; then
     echo '[{"description":"Create work file and commit it to satisfy the first item","model":"haiku","files":["work.txt"],"goal_items":[{"line":3,"text":"exact item"}]},{"description":"NOOP: try the second item, change nothing and exit cleanly","model":"haiku","files":["other.txt"],"goal_items":[{"line":4,"text":"second item"}]}]'
   else

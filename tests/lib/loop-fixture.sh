@@ -66,10 +66,14 @@ assert_eq() {
   fi
 }
 
+# Here-strings, not `echo | grep -q`: grep -q exits at its first match, so on a
+# haystack past the pipe buffer (64 KiB) echo takes SIGPIPE and pipefail turns
+# the pipeline into 141. assert_contains then failed on text that was there,
+# and assert_not_contains passed on text it was meant to refuse.
 assert_contains() {
   local haystack="$1" needle="$2" msg="$3"
   TESTS_RUN=$((TESTS_RUN + 1))
-  if echo "$haystack" | grep -qF "$needle"; then
+  if grep -qF -- "$needle" <<< "$haystack"; then
     pass "$msg"
   else
     fail "$msg" "output does not contain '$needle'"
@@ -80,7 +84,7 @@ assert_contains() {
 assert_not_contains() {
   local haystack="$1" needle="$2" msg="$3"
   TESTS_RUN=$((TESTS_RUN + 1))
-  if echo "$haystack" | grep -qF "$needle"; then
+  if grep -qF -- "$needle" <<< "$haystack"; then
     fail "$msg" "output unexpectedly contains '$needle'"
   else
     pass "$msg"
@@ -143,10 +147,15 @@ cat > "$MOCK_BIN/claude" <<'MOCKEOF'
 # modifying a tracked file so loop-runner's commit_changes has work to do)
 # If MOCK_CLAUDE_ARGS_LOG is set, record argv (one line per invocation) so
 # tests can assert which flags each caller passed (e.g. --setting-sources)
+# If MOCK_CLAUDE_STDIN_LOG is set, record stdin too: the supervisor's prompt
+# arrives there, not in argv (loop-runner.sh node_supervisor)
 if [[ -n "${MOCK_CLAUDE_ARGS_LOG:-}" ]]; then
   printf 'ARGS: %s\n' "$*" >> "$MOCK_CLAUDE_ARGS_LOG"
 fi
 mock_input=$(cat)
+if [[ -n "${MOCK_CLAUDE_STDIN_LOG:-}" ]]; then
+  printf '=== STDIN\n%s\n' "$mock_input" >> "$MOCK_CLAUDE_STDIN_LOG"
+fi
 if [[ -n "${MOCK_CLAUDE_FIX_MARKER:-}" ]] \
     && [[ "$mock_input" == *"${MOCK_CLAUDE_FIX_TRIGGER:-Repair verification marker}"* ]]; then
   touch "$MOCK_CLAUDE_FIX_MARKER"
