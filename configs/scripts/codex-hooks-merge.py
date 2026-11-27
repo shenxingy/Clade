@@ -1,5 +1,12 @@
 #!/usr/bin/env python3
-"""Append Clade's portable hook groups to Codex's hooks.json without reordering it."""
+"""Append Clade's portable hook groups to Codex's hooks.json without reordering it.
+
+With --remove (uninstall.sh) it takes them out again: every handler whose command
+starts with the quoted adapter path, then any group or event list that removal
+emptied. Nothing else changes, and a file with nothing to remove is not rewritten.
+A user handler that sat behind a removed one moves up, and Codex keys hook trust
+by position, so each such handler is named for review in /hooks.
+"""
 
 from __future__ import annotations
 
@@ -7,6 +14,7 @@ import argparse
 import json
 import os
 from pathlib import Path
+import re
 import stat
 import sys
 import tempfile
@@ -158,14 +166,78 @@ def merge(target: Path, adapter: str, claude_hooks: Path, stream: Any) -> str:
     )
 
 
+def trust_position(event: str, group_index: int, handler_index: int) -> str:
+    """The part of Codex's trust-state key after the hooks.json path.
+
+    Codex keys trust as `<path>:<event label>:<group>:<handler>`
+    (codex-rs/hooks/src/lib.rs hook_key), and the label is the event in snake case.
+    """
+    label = re.sub(r"(?<!^)(?=[A-Z])", "_", event).lower()
+    return f"{label}:{group_index}:{handler_index}"
+
+
+def remove(target: Path, adapter: str) -> str:
+    if not target.exists():
+        return f"Codex hooks: nothing to remove in {target}"
+    with target.open("r", encoding="utf-8") as handle:
+        document = validate_document(json.load(handle))
+    prefix = shell_quote(adapter) + " "
+    removed = 0
+    moved = []
+    for event in list(document["hooks"]):
+        kept_groups: list[dict[str, Any]] = []
+        event_removed = 0
+        for group_index, group in enumerate(document["hooks"][event]):
+            handlers = [
+                (index, h) for index, h in enumerate(group["hooks"])
+                if not h.get("command", "").startswith(prefix)
+            ]
+            dropped = len(group["hooks"]) - len(handlers)
+            event_removed += dropped
+            if dropped:
+                if not handlers:
+                    continue
+                group["hooks"] = [handler for _, handler in handlers]
+            # A handler behind a removed group or handler takes a new position,
+            # and Codex finds its trust by position, not by content.
+            for new_index, (old_index, handler) in enumerate(handlers):
+                old = trust_position(event, group_index, old_index)
+                new = trust_position(event, len(kept_groups), new_index)
+                if old != new:
+                    moved.append(f"  {old} -> {new}  {handler.get('command', '')}")
+            kept_groups.append(group)
+        removed += event_removed
+        if event_removed and not kept_groups:
+            del document["hooks"][event]
+        else:
+            document["hooks"][event] = kept_groups
+
+    if removed:
+        write_preserving_target(target, document)
+    report = [f"Codex hooks: {removed} removed from {target}"]
+    if moved:
+        report.append(
+            f"WARNING: {len(moved)} of your Codex hooks moved, and Codex keys hook trust by "
+            "position, so each needs review in the Codex TUI with /hooks before it runs again:"
+        )
+        report.extend(moved)
+    return "\n".join(report)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--target", required=True, type=Path)
     parser.add_argument("--adapter", required=True)
-    parser.add_argument("--claude-hooks", required=True, type=Path)
+    parser.add_argument("--claude-hooks", type=Path, help="required unless --remove")
+    parser.add_argument("--remove", action="store_true", help="take Clade's handlers out instead")
     args = parser.parse_args()
+    if not args.remove and args.claude_hooks is None:
+        parser.error("--claude-hooks is required unless --remove is given")
     try:
-        print(merge(args.target, args.adapter, args.claude_hooks, sys.stdin))
+        if args.remove:
+            print(remove(args.target, args.adapter))
+        else:
+            print(merge(args.target, args.adapter, args.claude_hooks, sys.stdin))
     except (OSError, ValueError, json.JSONDecodeError) as error:
         print(f"{WARNING}: {error}")
     return 0
