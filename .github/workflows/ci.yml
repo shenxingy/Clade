@@ -392,6 +392,15 @@ jobs:
       - name: Session keeper self-test (can it go red?)
         run: python3 configs/scripts/keep-sessions.py --self-test
 
+      # branch-sweep.py deletes remote branches whose tip is a merged PR's
+      # head. A sweep that lost its lease, its log-before-delete or one of the
+      # classes that keep a branch would still print "deleted N" — over a
+      # branch someone was still using. The self-test drives main() through a
+      # fake gh against a real bare remote; its mutations live in
+      # orchestrator/tests/can_fire/branch_sweep.py.
+      - name: Branch sweep self-test (can it go red?)
+        run: python3 configs/scripts/branch-sweep.py --self-test
+
       # The status line's task-time estimate: elapsed since the latest human
       # prompt, a p25-p75 band from a survival lookup, "beyond history" past
       # 4 h, background work in flight. An estimator whose lookup quietly fell

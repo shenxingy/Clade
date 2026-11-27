@@ -196,6 +196,16 @@ python3 configs/scripts/check-workflow-script.py --self-test
 #     test_self_tests_can_fire.py loads.
 python3 configs/scripts/keep-sessions.py --self-test
 
+# 2f2. And of the branch sweep (pytest job). branch-sweep.py deletes only the
+#     remote branches whose tip is the head of a PR merged over a day ago, each
+#     under a lease on the sha it was read at, after writing a log. A sweep
+#     that lost one of those guards, or one of the classes that keep a branch
+#     (open PR, base of an open PR, protected, archived, a tip that moved after
+#     the merge), would still print "deleted N". The self-test drives main()
+#     through a fake gh (two GraphQL pages) against a real bare remote; its
+#     mutations are in orchestrator/tests/can_fire/branch_sweep.py.
+python3 configs/scripts/branch-sweep.py --self-test
+
 # 2g. And of the harness-usage report, in the same `pytest` job. A report that
 #     cannot attribute a hook's trace lists that hook as never fired, and the
 #     never-fired list is what a reviewer retires from. Its first draft, over
