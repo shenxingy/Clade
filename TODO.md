@@ -4687,3 +4687,70 @@ and the reviews of the units the sweep closed. Each item names its evidence.
   lost, but the report calls the branch deletable. `--apply` has also run only
   against a local bare remote. This repository's 19 merged branches were deleted
   by hand before the tool existed.
+
+## 2026-11-28 doc-structure review follow-ups
+
+The owner asked whether this repository's documents make clear to an agent what
+is being worked on now, what is roadmap and what is history, and how that
+compares with what OpenAI and Anthropic recommend. The role split decided on
+2026-08-29 holds, and `check-roadmap-authority.py` enforces it: only this file
+carries open work. These items are what that split does not cover, measured on
+2026-11-28 at `9825fbc`. Sources: OpenAI, "Harness engineering"
+(openai.com/index/harness-engineering) and "Shipping Sora for Android with
+Codex"; Anthropic, "Effective harnesses for long-running agents" and the Claude
+Code best-practices page.
+
+- [ ] 🟡 **Nothing records the work in flight.** This file is 4,689 lines in 41
+  sections, with 160 open and 244 done items, grouped by the session that filed
+  each item, not by status. `PROGRESS.md`'s newest entry is 2026-11-07, while
+  #284-#309 merged by 2026-11-27. The pre-compact snapshot of 2026-11-28 recorded
+  "(none recorded)" as the task. So what is in flight can be answered only from
+  `git log` and open PRs. OpenAI's harness repository keeps
+  `docs/exec-plans/active/` apart from `completed/`. Anthropic's long-running
+  harness has the agent read a progress file at the start of every session.
+  Proposed: a short `## Now` block at the top of this file (the current goal,
+  the open PRs and branches, the next three items), rewritten at each merge and
+  handoff. It would be the only TODO text the session hooks inject.
+- [ ] 🟡 **The two session hooks inject different "next" items, and one of them
+  picks the oldest.** `configs/hooks/pre-compact.sh:61` takes the first ten
+  `- [ ]` lines in file order. On 2026-11-28 those were:
+  - two GUI-trial items;
+  - four from "Active execution program — reconciled 2026-07-28";
+  - three Tech Debt items;
+  - one Codex-cache item.
+
+  At least four of the ten are in the orchestrator layer, which
+  `docs/layers.json` marks dormant. `configs/hooks/session-context.sh:213-289`
+  picks by priority marker instead (today the 🟠 correction-pairing item) and
+  prints it as "Next TODO:" with no backlog label. Proposed: both hooks read the
+  Now block. Failing that, both should use the one priority picker and skip
+  sections in a dormant layer.
+- [ ] 🔵 **Done items and stale section titles are back in this file.** The
+  2026-09-02 move to `docs/archive/TODO-completed-phases.md` was a one-off.
+  Nothing repeats it, and 244 `[x]` items are inline again. TODO.md:139 still
+  calls a section reconciled on 2026-07-28 "Active". `BRAINSTORM.md` already
+  archives its resolved entries, and this file could do the same on a schedule.
+  It could also group open items by surface (cli, dormant orchestrator, needs
+  the owner) rather than by filing date.
+- [ ] 🔵 **CLAUDE.md mixes incident history into current instructions.** It is
+  623 lines and 56,175 characters, and 49 of its lines carry a date. Two section
+  titles name incidents ("a THIRD remote, and it was eating data", "the channel
+  that was wired and empty"). Lines like "Until 2026-10-18 it mostly could not
+  fire" describe past behaviour next to current rules. OpenAI names this
+  failure: "Agents can't tell what's still true". Its own `AGENTS.md` is about
+  100 lines and serves as a map. Anthropic's guide says to stay under 200 lines
+  and keep only what Claude cannot read from the repository. The harness-weight
+  decision (#238, #245) applies here: relocate one group at a time and delete
+  nothing. Move the history into the doc it explains and keep the current rule.
+  `check-ci-checklist.py` and `check-arch-map.py` pin some of this text, so each
+  move updates them too.
+- [ ] 🔵 **`docs/` has no index, and two plans carry no status.** The folder holds
+  97 Markdown files and 28,096 lines, with no `docs/README.md`. Neither
+  `docs/goals/align-elites.md` ("Approved plan (2026-06-12)") nor
+  `docs/plans/2026-03-01-portfolio-mode.md` (Phase 10, done by this file's
+  "Phases 3 through 14 … are complete") has a status line, as
+  `IMPLEMENTATION_PLAN.md` does. `BRAINSTORM.md:3` points at a `GOALS.md` that
+  does not exist. Proposed:
+  - a `docs/README.md` that marks each doc current, reference or history;
+  - rule 2 of `check-roadmap-authority.py` (each document states its role)
+    extended to `docs/plans/` and `docs/goals/`.
